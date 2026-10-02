@@ -37,8 +37,10 @@
   el('account-purchase').hidden=status==='lifetime'||status==='blocked';
   el('device-details').textContent=profile?.plugin_version?String(profile.device_platform||'Plugin')+' · v'+profile.plugin_version+' · Last seen '+(profile.last_active_at?new Date(profile.last_active_at).toLocaleString():'not available')+'. One plugin device can be active at a time. Sign in on the new device to switch.':'No plugin installation connected yet. Download the installer and sign in inside Premiere. Your 7-day trial begins on first plugin activation.';
  }
- async function loadAccount(){const rows=await authed('/rest/v1/plugin_profiles?select=license_status,trial_started_at,trial_expires_at,lifetime_activated_at,device_platform,plugin_version,last_active_at&user_id=eq.'+encodeURIComponent(user.id));profile=rows[0]||null;render();
-  const orders=await authed('/rest/v1/plugin_payment_orders?select=order_id,status,charge_currency,gross_amount_idr,created_at&user_id=eq.'+encodeURIComponent(user.id)+'&order=created_at.desc&limit=5');
+ async function loadAccount(){const epoch=generation,account=user?.id;if(!account)return;const [rows,orders]=await Promise.all([
+ authed('/rest/v1/plugin_profiles?select=license_status,trial_started_at,trial_expires_at,lifetime_activated_at,device_platform,plugin_version,last_active_at&user_id=eq.'+encodeURIComponent(account)),
+ authed('/rest/v1/plugin_payment_orders?select=order_id,status,charge_currency,gross_amount_idr,created_at&user_id=eq.'+encodeURIComponent(account)+'&order=created_at.desc&limit=5')]);
+ if(epoch!==generation||user?.id!==account)return;profile=rows[0]||null;render();
   el('orders-list').replaceChildren();if(!orders.length)el('orders-list').textContent='No orders yet.';
   for(const order of orders){const row=document.createElement('p');row.className='order-row';row.textContent=order.status+' · '+order.charge_currency+' '+Number(order.gross_amount_idr).toLocaleString()+' · '+new Date(order.created_at).toLocaleDateString();el('orders-list').appendChild(row);}
   if(affiliateIntent&&affiliateUI)await affiliateUI.refresh();
