@@ -1,0 +1,32 @@
+name: Deploy r-multicam website
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'scripts/**', '.github/workflows/deploy.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: r-multicam-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Restore verified media assets
+        run: python3 scripts/fetch-assets.py
+      - name: Check required website files
+        run: |
+          test -f site/index.html
+          test -f site/config.js
+          test -f site/auth/confirmed/index.html
+          test -f site/sitemap.xml
+      - name: Deploy existing Cloudflare Pages project
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: '3e561fc2707674ded69117e558d10a9f'
+          command: pages deploy site --project-name=r-multicam --branch=main

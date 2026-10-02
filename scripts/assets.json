@@ -1,0 +1,52 @@
+[
+  {
+    "path": "apple-touch-icon.png",
+    "sha256": "404976769b0712b1db1c77d0efad735165371d60986610b52fd38a0ba6b8d44c",
+    "url": "https://1858aed2.r-multicam.pages.dev/apple-touch-icon.png"
+  },
+  {
+    "path": "social-preview.png",
+    "sha256": "cd2e72e4edd0525c1fda9612ae43f29a9a6166c438823d4294ab5a963d4241e3",
+    "url": "https://1858aed2.r-multicam.pages.dev/social-preview.png"
+  },
+  {
+    "path": "favicon.png",
+    "sha256": "a2a8cc0344261d944279aef0761b3dde6a3ea534a2aa37673a0368acbea2cd36",
+    "url": "https://1858aed2.r-multicam.pages.dev/favicon.png"
+  },
+  {
+    "path": "fonts/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2",
+    "sha256": "0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d",
+    "url": "https://1858aed2.r-multicam.pages.dev/fonts/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+  },
+  {
+    "path": "fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2",
+    "sha256": "9fea608a947e67020c33cad9a6fe3d60c54119dfb8cff87768a8117a15ed7543",
+    "url": "https://1858aed2.r-multicam.pages.dev/fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2"
+  },
+  {
+    "path": "assets/practice-cam-4.webp",
+    "sha256": "d7168286f5053b65bda49ba172fa1c4f60afe2a7018a3e811e17cb918b7b0775",
+    "url": "https://1858aed2.r-multicam.pages.dev/assets/practice-cam-4.webp"
+  },
+  {
+    "path": "assets/practice-final-higgsfield.mp4",
+    "sha256": "a2fdd4921e431905cccacc3299fdaf9d35287df87f51dc9694bca7ea67f328e3",
+    "url": "https://1858aed2.r-multicam.pages.dev/assets/practice-final-higgsfield.mp4"
+  },
+  {
+    "path": "assets/practice-cam-2.webp",
+    "sha256": "e3ad06704bae4fae6b5c0d0c80dca9b35b0aa990563d010bef727a180a16144f",
+    "url": "https://1858aed2.r-multicam.pages.dev/assets/practice-cam-2.webp"
+  },
+  {
+    "path": "assets/practice-cam-3.webp",
+    "sha256": "1e89b2ff23cc72ef6b2ce8ab23686d179aa2023a5adb42eec2cd5cc3eede0834",
+    "url": "https://1858aed2.r-multicam.pages.dev/assets/practice-cam-3.webp"
+  },
+  {
+    "path": "assets/practice-cam-1.webp",
+    "sha256": "b18d0f443b298d87cd613212e585f4fe1a576fab9ffe9043fad0252f07312eda",
+    "url": "https://1858aed2.r-multicam.pages.dev/assets/practice-cam-1.webp"
+  }
+]
