@@ -38,6 +38,7 @@
   if(platform!=='windows'&&platform!=='macos')throw Error('Choose Windows or macOS.');
   if(!user)throw Error('Sign in first.');
   const access=await token();
+  window.RP_ANALYTICS?.track('download_requested',{platform},access);
   const res=await fetch(cfg.supabaseUrl+(cfg.websiteDownloadPath||'/functions/v1/website-download')+'?platform='+encodeURIComponent(platform),{
    method:'GET',
    headers:{apikey:cfg.supabasePublishableKey,Authorization:'Bearer '+access},
@@ -50,6 +51,7 @@
   const filename=match?.[1]||('R-Project-Multicam-AI-'+(platform==='macos'?'macOS':'Windows')+'-PUBLIC.zip');
   const objectUrl=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=objectUrl;a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();a.remove();
+  window.RP_ANALYTICS?.track('download_started',{platform,filename},access);
   setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
   say((platform==='macos'?'macOS':'Windows')+' download started. Save your Premiere project and close Premiere before installing.');
  }
@@ -78,6 +80,7 @@
  }
  async function purchase(){if(!user){say('Create an account or sign in to continue to checkout.');return;}await loadAccount();if(profile?.license_status==='blocked')throw Error('This account cannot purchase. Please contact support.');if(profile?.license_status==='lifetime'){say('Your lifetime license is already active.');return;}
   el('checkout-confirm').hidden=true;
+  window.RP_ANALYTICS?.track('checkout_started',{price_usd:200,promo_code_used:!!el('promo-code').value.trim()},session?.access_token||null);
   const data=await authed('/functions/v1/create-lifetime-checkout',{method:'POST',body:{promo_code:el('promo-code').value.trim()}});
   const url=new URL(data.checkout_url);if(url.protocol!=='https:'||url.hostname!=='app.midtrans.com')throw Error('The payment server returned an unexpected checkout address.');
   el('checkout-amount').textContent='Lifetime license · US$'+data.display_price_usd+(data.discount_percent?' · '+data.discount_percent+'% off → US$'+data.net_price_usd:'')+' · Pay '+data.charge_currency+' '+Number(data.gross_amount_idr).toLocaleString()+'. Review this amount before paying on Midtrans.';
@@ -90,9 +93,15 @@
  el('login-form').onsubmit=event=>{event.preventDefault();run(async()=>{const email=el('account-email').value.trim(),password=el('account-password').value;
  if(authMode==='signup'){if(password.length<8)throw Error('Use a password with at least 8 characters.');if(password!==el('account-confirm-password').value)throw Error('Passwords do not match.');
  const data=await request('/auth/v1/signup?redirect_to='+encodeURIComponent('https://r-multicam.pages.dev/auth/confirmed/'),{method:'POST',body:{email,password}});el('account-password').value='';el('account-confirm-password').value='';
+ window.RP_ANALYTICS?.track('signup_submitted',{requires_confirmation:!data.access_token},data.access_token||null);
  if(!data.access_token){setMode('signin');say('Account created. Check your inbox and spam folder, click Confirm email, then sign in here. Download access is available only after you sign in with a confirmed account.');return;}
  await acceptSession(data);
- }else{el('account-password').value='';await acceptSession(await request('/auth/v1/token?grant_type=password',{method:'POST',body:{email,password}}));}
+ }else{
+  el('account-password').value='';
+  const loginData=await request('/auth/v1/token?grant_type=password',{method:'POST',body:{email,password}});
+  await acceptSession(loginData);
+  window.RP_ANALYTICS?.track('login_success',{method:'password'},loginData.access_token);
+ }
  if(downloadIntent){const pending=downloadIntent;downloadIntent=null;await downloadRelease(pending);}
  else if(purchaseIntent)await purchase();
  else say('Signed in. You can download the installer, manage your license, or buy lifetime access here.');});};
