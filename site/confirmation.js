@@ -7,7 +7,7 @@
  if(!callback&&!standalone)return;
  if(callback)history.replaceState(null,'',location.pathname);
  let title=document.getElementById('confirmation-title'),message=document.getElementById('confirmation-message');
- if(!title){const box=document.createElement('dialog');box.id='email-confirmation';box.innerHTML='<div class="dialog-top"><span class="eyebrow">ACCOUNT EMAIL</span><button aria-label="Close confirmation">✕</button></div><h2 id="confirmation-title"></h2><p id="confirmation-message" role="status"></p><a class="button" href="/?account=signin">Sign in</a><a class="button secondary" href="/#downloads">Download Windows / macOS</a><a class="button secondary" href="/help/">Get help</a>';document.body.appendChild(box);box.querySelector('button').onclick=()=>box.close();box.showModal();title=box.querySelector('h2');message=box.querySelector('p');}
+ if(!title){const box=document.createElement('dialog');box.id='email-confirmation';box.innerHTML='<div class="dialog-top"><span class="eyebrow">ACCOUNT EMAIL</span><button aria-label="Close confirmation">✕</button></div><h2 id="confirmation-title"></h2><p id="confirmation-message" role="status"></p><a class="button" href="/?account=signin">Sign in</a><a class="button secondary" href="/?account=signin">Sign in to download</a><a class="button secondary" href="/help/">Get help</a>';document.body.appendChild(box);box.querySelector('button').onclick=()=>box.close();box.showModal();title=box.querySelector('h2');message=box.querySelector('p');}
  const show=(heading,text)=>{title.textContent=heading;message.textContent=text;};
  if(error||code){show('This email link could not be used.','The link may have expired or already been used. Sign in if you already confirmed your email, or request a new email from the website or plugin.');return;}
  if(!access){show('Thank you for choosing R Project Multicam AI!','Download the plugin and sign in inside Premiere after confirming your email. If you still need confirmation, open the link from your inbox or request a new email.');return;}
@@ -26,6 +26,6 @@
   }
   if(type&&type!=='signup'){access=null;show('Return to your account.','This page handles signup confirmation and password reset. Contact support if you need another account action.');return;}
   if(!user.email_confirmed_at)throw Error('Email is not confirmed.');access=null;
-  show('Thank you! Your email is confirmed.','Your next step is to download R Project Multicam AI for Windows or macOS, then sign in inside Premiere using the same email and password. Your 7-day trial starts on first plugin activation.');
+  show('Thank you! Your email is confirmed.','Sign in on the website to unlock the Windows or macOS installer, then sign in inside Premiere using the same account. Your 7-day trial starts on first plugin activation.');
  }catch(e){access=null;show('Please check your account.', 'This link could not be verified. Request a new email or try signing in if you already confirmed your email.');}
 })();
