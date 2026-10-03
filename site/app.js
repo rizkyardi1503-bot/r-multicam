@@ -18,7 +18,7 @@ document.querySelectorAll('[data-buy]').forEach(button => button.onclick = () =>
 document.querySelectorAll('[data-account]').forEach(button => button.onclick = () => message('Your Multicam AI license', 'You can check your current license by signing in to the Multicam AI panel inside Premiere. '+(safeUrl(config.customerPortalUrl) ? 'Open the customer portal to manage your account.' : 'The website customer portal is not available yet.'), config.customerPortalUrl, 'Open customer portal'));
 document.querySelectorAll('[data-download]').forEach(button => button.onclick = () => {
  const isWindows = button.dataset.download === 'windows'; const url = config[isWindows ? 'windowsDownloadUrl' : 'macosDownloadUrl'];
- message(isWindows ? 'Windows release' : 'macOS release', safeUrl(url) ? 'PUBLIC v2.3.10.134. Download the public release ZIP. Save your project and close Premiere before installing. Follow the instructions included in the release ZIP.' : 'A verified public download is not available on this website yet. Please check back for the release package.', url, 'Download release');
+ message(isWindows ? 'Windows release' : 'macOS release', safeUrl(url) ? 'PUBLIC v2.3.10.136. Download the public release ZIP. Save your project and close Premiere before installing. Follow the instructions included in the release ZIP.' : 'A verified public download is not available on this website yet. Please check back for the release package.', url, 'Download release');
 });
 const waveform = document.querySelector('#waveform');
 for(let i=0;i<72;i++){const bar=document.createElement('span');bar.style.height=(18+Math.abs(Math.sin(i*1.3)*Math.cos(i*.37))*75)+'%';waveform.appendChild(bar);}
