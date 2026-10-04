@@ -46,6 +46,23 @@
   window.RP_ANALYTICS=Object.freeze({track,visitorId,sessionId});
   track('page_view',{title:document.title});
 
+  document.querySelectorAll('[data-signup]').forEach((button,index)=>{
+    button.addEventListener('click',()=>track('trial_cta_clicked',{
+      label:(button.textContent||'').trim().slice(0,100),
+      position:index+1
+    }));
+  });
+
+  const demoButton=document.getElementById('practice-next');
+  if(demoButton){
+    let demoSent=false;
+    demoButton.addEventListener('click',()=>{
+      if(demoSent)return;
+      demoSent=true;
+      track('demo_started',{label:'interactive_practice'});
+    });
+  }
+
   const pricing=document.getElementById('pricing');
   if(pricing && 'IntersectionObserver' in window){
     let sent=false;
