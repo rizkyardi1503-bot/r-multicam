@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "r-project-premiere": {
+      "command": "npm",
+      "args": [
+        "--prefix",
+        "C:/RProject/premiere-mcp",
+        "start"
+      ],
+      "env": {
+        "RPROJECT_MCP_TOKEN": "replace-with-the-same-local-token-used-by-the-plugin",
+        "RPROJECT_MCP_HOST": "127.0.0.1",
+        "RPROJECT_MCP_PORT": "47821"
+      }
+    }
+  }
+}
