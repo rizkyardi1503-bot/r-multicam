@@ -1,0 +1,32 @@
+name: Premiere MCP CI
+
+on:
+  push:
+    paths:
+      - "premiere-mcp/**"
+      - ".github/workflows/mcp-ci.yml"
+  pull_request:
+    paths:
+      - "premiere-mcp/**"
+      - ".github/workflows/mcp-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: premiere-mcp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Typecheck MCP server
+        run: npm run typecheck
