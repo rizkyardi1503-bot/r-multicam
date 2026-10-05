@@ -6,11 +6,11 @@
   const UTM_KEY='rp_analytics_utm_v1';
 
   const uuid=()=>crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(+c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>+c/4).toString(16));
-  function getId(store,key){
-    try{let value=store.getItem(key);if(!value){value=uuid();store.setItem(key,value);}return value;}catch{return uuid();}
+  function getId(storeName,key){
+    try{const store=window[storeName];let value=store.getItem(key);if(!value){value=uuid();store.setItem(key,value);}return value;}catch{return uuid();}
   }
-  const visitorId=getId(localStorage,VISITOR_KEY);
-  const sessionId=getId(sessionStorage,SESSION_KEY);
+  const visitorId=getId('localStorage',VISITOR_KEY);
+  const sessionId=getId('sessionStorage',SESSION_KEY);
 
   const query=new URLSearchParams(location.search);
   let attribution={};

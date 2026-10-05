@@ -6,3 +6,12 @@
 .affiliate-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}#affiliate-dashboard{border-top:1px solid #383344;margin-top:24px;padding-top:12px}#affiliate-dashboard input[type=checkbox]{width:auto;display:inline-block;margin-right:8px}#affiliate-dashboard input[readonly]{font-size:12px}#affiliate-dashboard .license-box{margin:10px 0;padding:16px}#affiliate-dashboard button{margin:8px 8px 8px 0}#affiliate-dashboard label{display:block;margin:12px 0}
 
 .header-account-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.header-account-actions .button{white-space:nowrap}@media(max-width:600px){.header-account-actions{gap:8px}.header-account-actions .button{padding:10px 12px;font-size:12px}}
+
+/* Account usability and motion preferences. */
+#customer-portal {width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;box-sizing:border-box;}
+#customer-portal .actions {flex-wrap:wrap;}
+#customer-portal input {box-sizing:border-box;max-width:100%;}
+#account-message {overflow-wrap:anywhere;}
+:focus-visible {outline:3px solid #c4ff65;outline-offset:4px;}
+@media (prefers-reduced-motion:reduce) {html {scroll-behavior:auto;} *,*::before,*::after {animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;}}
+@media (max-width:600px) {#customer-portal {padding:20px;} #customer-portal .actions .button {width:100%;} header .header-account-actions {flex-wrap:wrap;}}

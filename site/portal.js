@@ -3,12 +3,13 @@
  const cfg=window.RP_CONFIG;
  const SESSION_KEY='rp_multicam_refresh_v1';
  const LATEST_VERSION='2.3.10.136';
+ const newerVersion=(installed,latest)=>{const a=String(installed).split('.').map(Number),b=latest.split('.').map(Number);if(a.length!==b.length||a.some(n=>!Number.isFinite(n)))return false;for(let i=0;i<b.length;i++){if(b[i]!==a[i])return b[i]>a[i];}return false;};
  let session=null, user=null, profile=null, busy=false, generation=0, refreshFlight=null, authMode="signin", purchaseIntent=false, downloadIntent=null;
  let affiliateIntent=window.location.pathname==='/affiliate/', affiliateUI=null;
  const promoFromLink=new URLSearchParams(window.location.search).get('ref')||'';
- const portal=document.createElement('dialog'); portal.id='customer-portal';
+ const portal=document.createElement('dialog'); portal.id='customer-portal';portal.setAttribute('aria-labelledby','customer-portal-title');
  portal.innerHTML=`<div class="dialog-top"><span class="eyebrow">CUSTOMER ACCOUNT</span><button data-close aria-label="Close account">✕</button></div>
- <h2>Your Multicam AI.</h2><p>Create an account here or sign in with your existing plugin account.</p><div id="auth-options" class="auth-options"><button id="mode-signin" type="button" class="button secondary" aria-pressed="true">Sign in</button><button id="mode-signup" type="button" class="button secondary" aria-pressed="false">Create account</button></div><p id="auth-guide" class="subtle">Already using the plugin? Use the same email and password.</p>
+ <h2 id="customer-portal-title">Your Multicam AI.</h2><p>Create an account here or sign in with your existing plugin account.</p><div id="auth-options" class="auth-options"><button id="mode-signin" type="button" class="button secondary" aria-pressed="true">Sign in</button><button id="mode-signup" type="button" class="button secondary" aria-pressed="false">Create account</button></div><p id="auth-guide" class="subtle">Already using the plugin? Use the same email and password.</p>
  <form id="login-form"><label for="account-email">Email</label><input id="account-email" type="email" autocomplete="username" required><label for="account-password">Password</label><input id="account-password" type="password" autocomplete="current-password" required><div id="confirm-password-group" hidden><label for="account-confirm-password">Confirm password</label><input id="account-confirm-password" type="password" autocomplete="new-password"></div><button id="auth-submit" class="button full" type="submit">Sign in</button></form>
  <div id="email-help"><button class="text-button" id="resend-confirmation" type="button">Resend confirmation email</button><button class="text-button" id="forgot-password" type="button">Forgot password?</button></div>
  <div id="account-details" hidden><p id="signed-in-email"></p><div class="license-box"><span class="eyebrow">ACCOUNT OVERVIEW</span><strong id="account-summary"></strong><p id="trial-summary"></p><p id="version-summary"></p></div><div class="license-box"><span class="eyebrow">LICENSE STATUS</span><strong id="license-state"></strong><p id="license-detail"></p></div><div class="actions"><button class="button" id="account-purchase">Buy lifetime · Rp3.575.000</button><button class="button secondary" id="check-payment">Check payment</button><button class="button secondary" id="refresh-license">Refresh license</button></div><h3>Your active plugin</h3><div id="device-details" class="license-box"></div><h3>Downloads & help</h3><div class="actions"><button class="button secondary" id="download-windows" type="button">Download Windows</button><button class="button secondary" id="download-macos" type="button">Download macOS</button><a class="button secondary" href="/help/">Open help center</a><a class="button secondary" href="/releases/">Release notes</a></div><h3>Promo code</h3><label for="promo-code">Optional affiliate code · 10% off</label><input id="promo-code" type="text" maxlength="40" autocomplete="off"><p class="subtle">The server checks the code before creating your order. Remove it to pay the standard price.</p><button class="button secondary" id="account-affiliate" type="button">Affiliate dashboard</button><section id="affiliate-dashboard" hidden></section><h3>Recent orders</h3><div id="orders-list"></div><button class="text-button" id="account-signout">Sign out of website</button></div>
@@ -21,7 +22,7 @@
  const say=(text,error=false)=>{el('account-message').textContent=text;el('account-message').classList.toggle('error',error);};
  function show(){if(!portal.open)portal.showModal();}
  function controls(){portal.querySelectorAll('button:not([data-close])').forEach(b=>{if(!b.closest('#affiliate-dashboard'))b.disabled=busy;});}
- function friendly(error){const m=String(error.message||error);if(/invalid login credentials/i.test(m))return 'Email or password is incorrect.';if(/email not confirmed/i.test(m))return 'Confirm your email before signing in. Use Resend confirmation email if needed.';if(/email rate limit|over_email_send_rate_limit|over_request_rate_limit|too many requests/i.test(m))return 'Too many email requests. Wait a few minutes and try once, or contact support.';if(/email address not authorized|email_address_not_authorized/i.test(m))return 'Email delivery is not available for this address yet. Contact R Project support.';if(/PRODUCTION_NOT_CONFIGURED|SERVER_NOT_CONFIGURED/i.test(m))return 'Checkout is temporarily unavailable. Please try again later.';return m;}
+ function friendly(error){const m=String(error.message||error);if(error.name==='TimeoutError'||error.name==='AbortError')return 'The request took too long. Check your connection and try again.';if(/failed to fetch|networkerror|load failed/i.test(m))return 'Connection unavailable. Check your internet connection and try again.';if(/invalid login credentials/i.test(m))return 'Email or password is incorrect.';if(/email not confirmed/i.test(m))return 'Confirm your email before signing in. Use Resend confirmation email if needed.';if(/email rate limit|over_email_send_rate_limit|over_request_rate_limit|too many requests/i.test(m))return 'Too many email requests. Wait a few minutes and try once, or contact support.';if(/email address not authorized|email_address_not_authorized/i.test(m))return 'Email delivery is not available for this address yet. Contact R Project support.';if(/PRODUCTION_NOT_CONFIGURED|SERVER_NOT_CONFIGURED/i.test(m))return 'Checkout is temporarily unavailable. Please try again later.';return m;}
  async function run(action){if(busy)return;busy=true;controls();say('Please wait…');try{await action();}catch(error){say(friendly(error),true);}finally{busy=false;controls();}}
  async function request(path,{method='GET',body,token}={}){
   const headers={apikey:cfg.supabasePublishableKey,'Content-Type':'application/json'};if(token)headers.Authorization='Bearer '+token;
@@ -44,8 +45,10 @@
    headers:{apikey:cfg.supabasePublishableKey,Authorization:'Bearer '+access},
    signal:AbortSignal.timeout(60000)
   });
-  if(!res.ok){const body=await res.text().catch(()=>(''));throw Error(body||'Download could not be started.');}
+  if(!res.ok){if(res.status===401)throw Error('Your session has expired. Sign out and sign in again to download.');if(res.status===403)throw Error('Confirm your email before downloading.');throw Error('The installer is temporarily unavailable. Please try again or contact support.');}
   const blob=await res.blob();
+  const signature=new Uint8Array(await blob.slice(0,4).arrayBuffer());
+  if(signature[0]!==0x50||signature[1]!==0x4b||signature[2]!==0x03||signature[3]!==0x04)throw Error('The server returned an invalid installer. Please try again or contact support.');
   const disposition=res.headers.get('content-disposition')||'';
   const match=/filename="?([^";]+)"?/i.exec(disposition);
   const filename=match?.[1]||('R-Project-Multicam-AI-'+(platform==='macos'?'macOS':'Windows')+'-PUBLIC.zip');
@@ -66,7 +69,7 @@
   el('account-summary').textContent=status==='lifetime'?'Lifetime customer':status==='expired'?'Trial ended':'Multicam AI account';
   el('trial-summary').textContent=trialText;
   const installed=profile?.plugin_version?String(profile.plugin_version):'not connected';
-  el('version-summary').textContent='Installed plugin: '+(installed==='not connected'?installed:'v'+installed)+' · Latest public: v'+LATEST_VERSION+(installed!=='not connected'&&installed!==LATEST_VERSION?' · Update available.':'');
+  el('version-summary').textContent='Installed plugin: '+(installed==='not connected'?installed:'v'+installed)+' · Latest public: v'+LATEST_VERSION+(installed!=='not connected'&&newerVersion(installed,LATEST_VERSION)?' · Update available.':'');
   el('account-purchase').hidden=status==='lifetime'||status==='blocked';
   el('device-details').textContent=profile?.plugin_version?String(profile.device_platform||'Plugin')+' · v'+profile.plugin_version+' · Last seen '+(profile.last_active_at?new Date(profile.last_active_at).toLocaleString():'not available')+'. One plugin device can be active at a time. Sign in on the new device to switch.':'No plugin installation connected yet. Download the installer and sign in inside Premiere. Your 7-day trial begins on first plugin activation.';
  }
@@ -82,10 +85,11 @@
   el('checkout-confirm').hidden=true;
   window.RP_ANALYTICS?.track('checkout_started',{price_idr:3575000,promo_code_used:!!el('promo-code').value.trim()},session?.access_token||null);
   const data=await authed('/functions/v1/create-lifetime-checkout',{method:'POST',body:{promo_code:el('promo-code').value.trim()}});
+  if(data.charge_currency!=='IDR'||!Number.isSafeInteger(Number(data.gross_amount_idr))||Number(data.gross_amount_idr)<=0)throw Error('Checkout returned an invalid payment amount. Please contact support.');
   const url=new URL(data.checkout_url);if(url.protocol!=='https:'||url.hostname!=='app.midtrans.com')throw Error('The payment server returned an unexpected checkout address.');
   el('checkout-amount').textContent='Lifetime license · '+data.charge_currency+' '+Number(data.gross_amount_idr).toLocaleString('id-ID')+(data.discount_percent?' · '+data.discount_percent+'% affiliate discount applied':'')+'. Review this final amount before paying on Midtrans.';
   el('checkout-rate').textContent='Standard lifetime price: Rp3.575.000 one-time. No recurring plugin subscription.';
-  el('checkout-link').href=url.href;el('checkout-confirm').hidden=false;say('Checkout is ready. No payment has been taken. Review the final IDR amount on Midtrans.');await loadAccount();
+  el('checkout-link').href=url.href;el('checkout-confirm').hidden=false;window.RP_ANALYTICS?.track('checkout_created',{amount_idr:Number(data.gross_amount_idr)},session?.access_token);say('Checkout is ready. No payment has been taken. Review the final IDR amount on Midtrans.');await loadAccount();
  }
  portal.querySelector('[data-close]').onclick=()=>portal.close();
  function setMode(mode){authMode=mode;el('account-password').value='';el('account-confirm-password').value='';el('confirm-password-group').hidden=mode!=='signup';el('account-confirm-password').required=mode==='signup';el('account-password').minLength=mode==='signup'?8:1;el('account-password').autocomplete=mode==='signup'?'new-password':'current-password';el('auth-submit').textContent=mode==='signup'?'Create account':'Sign in';el('mode-signin').setAttribute('aria-pressed',String(mode==='signin'));el('mode-signup').setAttribute('aria-pressed',String(mode==='signup'));el('auth-guide').textContent=mode==='signup'?'1. Create account → 2. Confirm email → 3. Sign in and download. Your 7-day trial starts only when you first activate the plugin in Premiere.':'Already using the plugin? Use the same email and password.';say('');}
@@ -94,7 +98,7 @@
  if(authMode==='signup'){if(password.length<8)throw Error('Use a password with at least 8 characters.');if(password!==el('account-confirm-password').value)throw Error('Passwords do not match.');
  const data=await request('/auth/v1/signup?redirect_to='+encodeURIComponent('https://r-multicam.pages.dev/auth/confirmed/'),{method:'POST',body:{email,password}});el('account-password').value='';el('account-confirm-password').value='';
  window.RP_ANALYTICS?.track('signup_submitted',{requires_confirmation:!data.access_token},data.access_token||null);
- if(!data.access_token){setMode('signin');say('Account created. Check your inbox and spam folder, click Confirm email, then sign in here. Download access is available only after you sign in with a confirmed account.');return;}
+ if(!data.access_token){setMode('signin');say('Thank you for creating your R Project account. Check your inbox and spam folder, click Confirm email, then sign in here. Download access is available only after you sign in with a confirmed account.');return;}
  await acceptSession(data);
  }else{
   el('account-password').value='';
@@ -105,7 +109,7 @@
  if(downloadIntent){const pending=downloadIntent;downloadIntent=null;await downloadRelease(pending);}
  else if(purchaseIntent)await purchase();
  else say('Signed in. You can download the installer, manage your license, or buy lifetime access here.');});};
- async function acceptSession(data){generation++;session={...data,expires_at:Date.now()/1000+(data.expires_in||3600)};persistSession();user=await request('/auth/v1/user',{token:session.access_token});render();await loadAccount();}
+ async function acceptSession(data){const epoch=++generation;const identity=await request('/auth/v1/user',{token:data.access_token});if(epoch!==generation)throw Error('Session changed. Please sign in again.');session={...data,expires_at:Date.now()/1000+(data.expires_in||3600)};user=identity;persistSession();render();await loadAccount();}
  async function restoreStoredSession(){
   let saved=null;
   try{saved=JSON.parse(localStorage.getItem(SESSION_KEY)||'null');}catch{clearStoredSession();}
@@ -114,8 +118,8 @@
    const next=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:saved.refresh_token}});
    await acceptSession(next);
    return true;
-  }catch{
-   clearStoredSession();generation++;session=null;user=null;profile=null;render();
+  }catch(error){
+   if(error.status===400||error.status===401||error.status===403)clearStoredSession();generation++;session=null;user=null;profile=null;render();
    return false;
   }
  }
@@ -128,12 +132,12 @@
  el('download-windows').onclick=()=>run(()=>downloadRelease('windows'));
  el('download-macos').onclick=()=>run(()=>downloadRelease('macos'));
  el('account-affiliate').onclick=()=>{affiliateIntent=true;run(async()=>{if(affiliateUI)await affiliateUI.refresh();else say('Open the affiliate program from the website homepage.');});};
- document.querySelectorAll('[data-affiliate]').forEach(b=>b.onclick=()=>{affiliateIntent=true;purchaseIntent=false;show();if(user)run(()=>affiliateUI.refresh());else say('Create and confirm an account, then sign in to apply or manage your affiliate account.');});
+ document.querySelectorAll('[data-affiliate]').forEach(b=>b.onclick=()=>{affiliateIntent=true;purchaseIntent=false;downloadIntent=null;show();if(user)run(()=>affiliateUI.refresh());else say('Create and confirm an account, then sign in to apply or manage your affiliate account.');});
  el('check-payment').onclick=()=>run(async()=>{const data=await authed('/functions/v1/check-lifetime-payment',{method:'POST',body:{}});await loadAccount();say(data.paid?'Payment verified. Refresh your license in the Premiere plugin.':data.status==='no_order'?'No payment order was found for this account.':'No completed payment was confirmed yet. Please check again after paying.');});
  el('refresh-license').onclick=()=>run(async()=>{await loadAccount();say('License status refreshed from your plugin account.');});
- document.querySelectorAll('[data-login]').forEach(b=>b.onclick=()=>{show();purchaseIntent=false;if(user)run(loadAccount);else{setMode('signin');say('Sign in to access your license and affiliate dashboard.');}});
- document.querySelectorAll('[data-signup]').forEach(b=>b.onclick=()=>{show();purchaseIntent=false;if(user)run(loadAccount);else setMode('signup');});
- document.querySelectorAll('[data-account]').forEach(button=>button.onclick=()=>{show();purchaseIntent=false;if(user)run(async()=>{await loadAccount();say('License status refreshed.');});else say('Create an account or sign in with your existing plugin account.');});
+ document.querySelectorAll('[data-login]').forEach(b=>b.onclick=()=>{show();purchaseIntent=false;downloadIntent=null;if(user)run(loadAccount);else{setMode('signin');say('Sign in to access your license and affiliate dashboard.');}});
+ document.querySelectorAll('[data-signup]').forEach(b=>b.onclick=()=>{show();purchaseIntent=false;downloadIntent=null;if(user)run(loadAccount);else setMode('signup');});
+ document.querySelectorAll('[data-account]').forEach(button=>button.onclick=()=>{show();purchaseIntent=false;downloadIntent=null;if(user)run(async()=>{await loadAccount();say('License status refreshed.');});else say('Create an account or sign in with your existing plugin account.');});
  document.querySelectorAll('[data-buy]').forEach(button=>button.onclick=()=>{show();purchaseIntent=true;downloadIntent=null;if(user)run(purchase);else say('Create an account or sign in to buy a lifetime license.');});
  document.querySelectorAll('[data-download]').forEach(button=>button.onclick=()=>{
   const platform=button.dataset.download==='macos'?'macos':'windows';
@@ -142,7 +146,7 @@
   else{downloadIntent=platform;show();setMode('signin');say('Sign in or create a free account to download the '+(platform==='macos'?'macOS':'Windows')+' installer. New accounts must confirm their email before signing in.');}
  });
  async function bootstrap(){
-  const restored=await restoreStoredSession();
+  busy=true;controls();let restored=false;try{restored=await restoreStoredSession();}finally{busy=false;controls();}
   const initialParams=new URLSearchParams(window.location.search);
   const initialDownload=initialParams.get('download');
   if(initialDownload==='windows'||initialDownload==='macos'){
@@ -155,5 +159,6 @@
    else{setMode('signin');say('Sign in with the email and password you used when creating your account.');}
   }
  }
- bootstrap();
+ window.addEventListener('storage',event=>{if(event.key===SESSION_KEY&&!event.newValue){generation++;session=null;user=null;profile=null;purchaseIntent=false;downloadIntent=null;el('checkout-confirm').hidden=true;el('checkout-link').removeAttribute('href');render();say('Signed out in another tab. Sign in again to continue.');}});
+ bootstrap().catch(error=>say(friendly(error),true));
 })();
