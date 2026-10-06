@@ -1,6 +1,17 @@
 'use strict';
 (() => {
  const cfg=window.RP_CONFIG;
+ // Google uses PKCE; only the temporary verifier is kept in this tab.
+ const GOOGLE_FLOW_KEY='rp_google_pkce_v1';
+ const callbackParams=new URLSearchParams(window.location.search);
+ const callbackHash=new URLSearchParams((window.location.hash||'').replace(/^#/,''));
+ let googleCallback=null;
+ if(callbackParams.has('code')){
+  googleCallback={code:callbackParams.get('code')};
+ }else if(callbackParams.get('oauth')==='google'&&(callbackParams.has('error')||callbackHash.has('error'))){
+  googleCallback={error:true};
+ }
+ if(googleCallback)history.replaceState(null,'',window.location.pathname);
  const SESSION_KEY='rp_multicam_refresh_v1';
  const LATEST_VERSION='2.3.10.136';
  const newerVersion=(installed,latest)=>{const a=String(installed).split('.').map(Number),b=latest.split('.').map(Number);if(a.length!==b.length||a.some(n=>!Number.isFinite(n)))return false;for(let i=0;i<b.length;i++){if(b[i]!==a[i])return b[i]>a[i];}return false;};
@@ -10,9 +21,10 @@
  const portal=document.createElement('dialog'); portal.id='customer-portal';portal.setAttribute('aria-labelledby','customer-portal-title');
  portal.innerHTML=`<div class="dialog-top"><span class="eyebrow">CUSTOMER ACCOUNT</span><button data-close aria-label="Close account">✕</button></div>
  <h2 id="customer-portal-title">Your Multicam AI.</h2><p>Create an account here or sign in with your existing plugin account.</p><div id="auth-options" class="auth-options"><button id="mode-signin" type="button" class="button secondary" aria-pressed="true">Sign in</button><button id="mode-signup" type="button" class="button secondary" aria-pressed="false">Create account</button></div><p id="auth-guide" class="subtle">Already using the plugin? Use the same email and password.</p>
+ <div id="google-auth"><button id="google-signin" class="button secondary full" type="button">Continue with Google</button><p class="subtle">Or use email and password below. Use the same email as your existing account.</p></div>
  <form id="login-form"><label for="account-email">Email</label><input id="account-email" type="email" autocomplete="username" required><label for="account-password">Password</label><input id="account-password" type="password" autocomplete="current-password" required><div id="confirm-password-group" hidden><label for="account-confirm-password">Confirm password</label><input id="account-confirm-password" type="password" autocomplete="new-password"></div><button id="auth-submit" class="button full" type="submit">Sign in</button></form>
  <div id="email-help"><button class="text-button" id="resend-confirmation" type="button">Resend confirmation email</button><button class="text-button" id="forgot-password" type="button">Forgot password?</button></div>
- <div id="account-details" hidden><p id="signed-in-email"></p><div class="license-box"><span class="eyebrow">ACCOUNT OVERVIEW</span><strong id="account-summary"></strong><p id="trial-summary"></p><p id="version-summary"></p></div><div class="license-box"><span class="eyebrow">LICENSE STATUS</span><strong id="license-state"></strong><p id="license-detail"></p></div><div class="actions"><button class="button" id="account-purchase">Buy lifetime · Rp3.575.000</button><button class="button secondary" id="check-payment">Check payment</button><button class="button secondary" id="refresh-license">Refresh license</button></div><h3>Your active plugin</h3><div id="device-details" class="license-box"></div><h3>Downloads & help</h3><div class="actions"><button class="button secondary" id="download-windows" type="button">Download Windows</button><button class="button secondary" id="download-macos" type="button">Download macOS</button><a class="button secondary" href="/help/">Open help center</a><a class="button secondary" href="/releases/">Release notes</a></div><h3>Promo code</h3><label for="promo-code">Optional affiliate code · 10% off</label><input id="promo-code" type="text" maxlength="40" autocomplete="off"><p class="subtle">The server checks the code before creating your order. Remove it to pay the standard price.</p><button class="button secondary" id="account-affiliate" type="button">Affiliate dashboard</button><section id="affiliate-dashboard" hidden></section><h3>Recent orders</h3><div id="orders-list"></div><button class="text-button" id="account-signout">Sign out of website</button></div>
+ <div id="account-details" hidden><p id="signed-in-email"></p><div class="license-box"><span class="eyebrow">ACCOUNT OVERVIEW</span><strong id="account-summary"></strong><p id="trial-summary"></p><p id="version-summary"></p></div><div class="license-box"><span class="eyebrow">LICENSE STATUS</span><strong id="license-state"></strong><p id="license-detail"></p></div><div class="actions"><button class="button" id="account-purchase">Buy lifetime · Rp3.575.000</button><button class="button secondary" id="check-payment">Check payment</button><button class="button secondary" id="refresh-license">Refresh license</button></div><div id="google-plugin-help" hidden><p class="subtle">Signed up with Google? The Premiere plugin still uses email and password. Request a password setup email for this same account. Do not use your Google password.</p><button id="google-password-email" class="button secondary" type="button">Set up plugin password by email</button></div><h3>Your active plugin</h3><div id="device-details" class="license-box"></div><h3>Downloads & help</h3><div class="actions"><button class="button secondary" id="download-windows" type="button">Download Windows</button><button class="button secondary" id="download-macos" type="button">Download macOS</button><a class="button secondary" href="/help/">Open help center</a><a class="button secondary" href="/releases/">Release notes</a></div><h3>Promo code</h3><label for="promo-code">Optional affiliate code · 10% off</label><input id="promo-code" type="text" maxlength="40" autocomplete="off"><p class="subtle">The server checks the code before creating your order. Remove it to pay the standard price.</p><button class="button secondary" id="account-affiliate" type="button">Affiliate dashboard</button><section id="affiliate-dashboard" hidden></section><h3>Recent orders</h3><div id="orders-list"></div><button class="text-button" id="account-signout">Sign out of website</button></div>
  <p id="account-message" role="status" aria-live="polite"></p>
  <div id="checkout-confirm" hidden><h3>Review your checkout</h3><p id="checkout-amount"></p><p id="checkout-rate" class="subtle"></p><a class="button" id="checkout-link" target="_blank" rel="noopener noreferrer">Open Midtrans checkout</a><p class="subtle">The standard lifetime price is fixed at Rp3.575.000. Approved affiliate codes can reduce the amount before the order is created.</p><p class="subtle">After paying, return here and click Check payment. Your license is activated only after server verification.</p></div>`;
  document.body.appendChild(portal);
@@ -58,7 +70,7 @@
   setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
   say((platform==='macos'?'macOS':'Windows')+' download started. Save your Premiere project and close Premiere before installing.');
  }
- function render(){document.querySelectorAll('[data-login]').forEach(b=>b.textContent=user?'My account':'Login');el('login-form').hidden=!!user;el('auth-options').hidden=!!user;el('email-help').hidden=!!user;el('auth-guide').hidden=!!user;el('account-details').hidden=!user;if(!user)return;el('signed-in-email').textContent='Signed in as '+user.email;
+ function render(){document.querySelectorAll('[data-login]').forEach(b=>b.textContent=user?'My account':'Login');el('google-auth').hidden=!!user;el('google-plugin-help').hidden=!user?.identities?.some(identity=>identity.provider==='google');el('login-form').hidden=!!user;el('auth-options').hidden=!!user;el('email-help').hidden=!!user;el('auth-guide').hidden=!!user;el('account-details').hidden=!user;if(!user)return;el('signed-in-email').textContent='Signed in as '+user.email;
   const expired=profile?.license_status==='trial'&&profile?.trial_expires_at&&Date.parse(profile.trial_expires_at)<=Date.now();
   const status=expired?'expired':profile?.license_status||'not activated';el('license-state').textContent=status.toUpperCase();
   el('license-detail').textContent=status==='lifetime'?'Your account has a lifetime license. Sign in to the plugin with this account.':status==='trial'?profile.trial_expires_at?'Trial ends '+new Date(profile.trial_expires_at).toLocaleString()+'.':'Trial is ready and begins on first plugin activation.':status==='expired'?'Your free trial has ended. Lifetime access remains available as a one-time purchase.':profile?'Buy a lifetime license to continue using Multicam AI.':'Your account is ready. Your 7-day trial begins on first plugin activation.';
@@ -91,6 +103,40 @@
   el('checkout-rate').textContent='Standard lifetime price: Rp3.575.000 one-time. No recurring plugin subscription.';
   el('checkout-link').href=url.href;el('checkout-confirm').hidden=false;window.RP_ANALYTICS?.track('checkout_created',{amount_idr:Number(data.gross_amount_idr)},session?.access_token);say('Checkout is ready. No payment has been taken. Review the final IDR amount on Midtrans.');await loadAccount();
  }
+ async function startGoogle(){
+  if(window.location.origin!=='https://r-multicam.pages.dev')throw Error('Google login is available on the official R Project website.');
+  if(!crypto?.subtle)throw Error('Google login requires a secure browser with Web Crypto support.');
+  const settings=await request('/auth/v1/settings');
+  if(!settings.external?.google)throw Error('Google login is temporarily unavailable. Use email and password.');
+  const verifier=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier));
+  const challenge=btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  try{sessionStorage.setItem(GOOGLE_FLOW_KEY,JSON.stringify({verifier,createdAt:Date.now(),purchaseIntent,downloadIntent,affiliateIntent,promo:el('promo-code').value}));}
+  catch{throw Error('Allow session storage in this browser to continue with Google, or use email and password.');}
+  const params=new URLSearchParams({provider:'google',redirect_to:'https://r-multicam.pages.dev/?oauth=google',code_challenge:challenge,code_challenge_method:'s256'});
+  // Navigate, rather than fetch: Auth responds with a 302 to Google's consent page.
+  try{window.location.assign(cfg.supabaseUrl+'/auth/v1/authorize?'+params);}
+  catch(error){sessionStorage.removeItem(GOOGLE_FLOW_KEY);throw error;}
+ }
+ async function finishGoogle(){
+  let pending=null;
+  try{pending=JSON.parse(sessionStorage.getItem(GOOGLE_FLOW_KEY)||'null');sessionStorage.removeItem(GOOGLE_FLOW_KEY);}catch{}
+  show();
+  if(googleCallback.error)throw Error('Google sign-in was cancelled or could not be completed. Try again or use email and password.');
+  if(!pending||typeof pending.createdAt!=='number'||Date.now()-pending.createdAt>600000||pending.createdAt>Date.now()||!/^[0-9a-f]{64}$/.test(pending.verifier||'')||!googleCallback.code)throw Error('Google sign-in expired or belongs to another browser tab. Click Continue with Google again.');
+  const data=await request('/auth/v1/token?grant_type=pkce',{method:'POST',body:{auth_code:googleCallback.code,code_verifier:pending.verifier}});
+  if(!data.access_token||!data.refresh_token)throw Error('Google did not return a valid session. Try signing in again.');
+  // Discard provider tokens: the website only needs its Supabase session.
+  await acceptSession({access_token:data.access_token,refresh_token:data.refresh_token,expires_in:data.expires_in});
+  el('promo-code').value=/^[a-z0-9]{3,40}$/i.test(pending.promo||'')?pending.promo.toUpperCase():'';
+  affiliateIntent=!!pending.affiliateIntent;
+  if(affiliateIntent&&affiliateUI)await affiliateUI.refresh();
+  window.RP_ANALYTICS?.track('login_success',{method:'google'},session.access_token);
+  say(pending.purchaseIntent?'Signed in with Google. Click Buy lifetime to continue to checkout.':'Signed in with Google. You can download the installer and manage your license. For a new Google account, set up a plugin password by email.');
+  if(pending.downloadIntent==='windows'||pending.downloadIntent==='macos')await downloadRelease(pending.downloadIntent);
+ }
+ el('google-signin').onclick=()=>run(startGoogle);
+ el('google-password-email').onclick=()=>run(async()=>{if(!user?.email)throw Error('Sign in first.');el('account-email').value=user.email;await sendAccountEmail('recovery');});
  portal.querySelector('[data-close]').onclick=()=>portal.close();
  function setMode(mode){authMode=mode;el('account-password').value='';el('account-confirm-password').value='';el('confirm-password-group').hidden=mode!=='signup';el('account-confirm-password').required=mode==='signup';el('account-password').minLength=mode==='signup'?8:1;el('account-password').autocomplete=mode==='signup'?'new-password':'current-password';el('auth-submit').textContent=mode==='signup'?'Create account':'Sign in';el('mode-signin').setAttribute('aria-pressed',String(mode==='signin'));el('mode-signup').setAttribute('aria-pressed',String(mode==='signup'));el('auth-guide').textContent=mode==='signup'?'1. Create account → 2. Confirm email → 3. Sign in and download. Your 7-day trial starts only when you first activate the plugin in Premiere.':'Already using the plugin? Use the same email and password.';say('');}
  el('mode-signin').onclick=()=>setMode('signin');el('mode-signup').onclick=()=>setMode('signup');
@@ -146,6 +192,7 @@
   else{downloadIntent=platform;show();setMode('signin');say('Sign in or create a free account to download the '+(platform==='macos'?'macOS':'Windows')+' installer. New accounts must confirm their email before signing in.');}
  });
  async function bootstrap(){
+  if(googleCallback){await run(finishGoogle);return;}
   busy=true;controls();let restored=false;try{restored=await restoreStoredSession();}finally{busy=false;controls();}
   const initialParams=new URLSearchParams(window.location.search);
   const initialDownload=initialParams.get('download');
