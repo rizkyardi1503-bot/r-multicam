@@ -1,0 +1,17 @@
+{
+  "version": "2.3.11.0",
+  "channel": "PUBLIC",
+  "engine": "V18",
+  "platforms": {
+    "Windows": {
+      "filename": "R-Project-Multicam-AI-Windows-v2.3.11.0-PUBLIC.zip",
+      "bytes": 151411,
+      "sha256": "317f3412b0c0db3f4df5adc87e1f9e7668194f39217f094e38fb068bc0a052a2"
+    },
+    "macOS": {
+      "filename": "R-Project-Multicam-AI-macOS-v2.3.11.0-PUBLIC.zip",
+      "bytes": 151384,
+      "sha256": "a21bb1d9bc38bb74a2557785efe7668d41a547b74a3036e77c9e81929c073bf3"
+    }
+  }
+}
