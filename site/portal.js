@@ -13,7 +13,7 @@
  }
  if(googleCallback)history.replaceState(null,'',window.location.pathname);
  const SESSION_KEY='rp_multicam_refresh_v1';
- const LATEST_VERSION='2.3.10.136';
+ const LATEST_VERSION='2.3.10.137';
  const newerVersion=(installed,latest)=>{const a=String(installed).split('.').map(Number),b=latest.split('.').map(Number);if(a.length!==b.length||a.some(n=>!Number.isFinite(n)))return false;for(let i=0;i<b.length;i++){if(b[i]!==a[i])return b[i]>a[i];}return false;};
  let session=null, user=null, profile=null, busy=false, generation=0, refreshFlight=null, authMode="signin", purchaseIntent=false, downloadIntent=null;
  let affiliateIntent=window.location.pathname==='/affiliate/', affiliateUI=null;
