@@ -12,7 +12,7 @@ async function portalTest(){
  const w={RP_CONFIG:{supabaseUrl:'https://api.test',supabasePublishableKey:'public'},location:{pathname:'/',search:''},addEventListener(){}};
  const ctx={window:w,document:{createElement:t=>t==='dialog'?portal:elem(),body:{appendChild(){}},querySelectorAll:()=>[]},localStorage:{getItem:()=>null,setItem(){},removeItem(){restoredToken=null}},URL:TestURL,URLSearchParams,AbortSignal,Uint8Array,Date,setTimeout(){},fetch:async(u,o)=>{
   if(u.includes('/auth/v1/user'))return{ok:true,json:async()=>({id:'user1',email:'person@example.com'})};
-  if(u.includes('/rest/v1/plugin_profiles'))return{ok:true,json:async()=>[{license_status:'trial',plugin_version:'2.3.10.137'}]};
+  if(u.includes('/rest/v1/plugin_profiles'))return{ok:true,json:async()=>[{license_status:'trial',plugin_version:'2.3.11.0'}]};
   if(u.includes('/rest/v1/plugin_payment_orders'))return{ok:true,json:async()=>[]};
   if(u.includes('create-lifetime-checkout'))return{ok:true,json:async()=>({checkout_url:mode==='evil'?'https://app.midtrans.com.evil.test/':'https://app.midtrans.com/snap/test',charge_currency:'IDR',gross_amount_idr:mode==='amount'?0:3575000})};
   if(u.includes('website-download'))return{ok:true,headers:{get:()=>''},blob:async()=>new Blob([mode==='badzip'?'<!doctype html>':new Uint8Array([0x50,0x4b,0x03,0x04,1])])};

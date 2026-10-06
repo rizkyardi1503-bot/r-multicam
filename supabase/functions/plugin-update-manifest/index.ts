@@ -3,14 +3,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.10.137",
-    download: base + "?platform=windows&version=2.3.10.137",
-    sha256: "6248406f8a3f0728089cc3df7fa844c171063f8201afa7dc28853376b29df6c1"
+    version: "2.3.11.0",
+    download: base + "?platform=windows&version=2.3.11.0",
+    sha256: "317f3412b0c0db3f4df5adc87e1f9e7668194f39217f094e38fb068bc0a052a2"
   },
   macos: {
-    version: "2.3.10.137",
-    download: base + "?platform=macos&version=2.3.10.137",
-    sha256: "fe37fb17cde21cd367f56b7ddba9d2fdab08eb387cb58315bb9067cb8b2251fa"
+    version: "2.3.11.0",
+    download: base + "?platform=macos&version=2.3.11.0",
+    sha256: "a21bb1d9bc38bb74a2557785efe7668d41a547b74a3036e77c9e81929c073bf3"
   }
 };
 
@@ -39,7 +39,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), selected.version),
     minimum_version: selected.version,
     grace_period_days: 0,
-    release_notes: "v2.3.10.137 PUBLIC: Music Engine V18 multi-signal BPM/beat tracking, tempo-continuity handling, attack-ramp onset backtracking, optional local model/benchmark tools. No trained model bundled. Balanced UI default 64 beats; saved settings and cutting cadence retained. Re-run Analyze Music and generate a fresh plan. Existing .137 TEST users must manually reinstall the PUBLIC ZIP. Windows installer and rollback passed isolated tests; macOS installer/updater passed syntax and mocked checks, not native macOS/Premiere validation. Online update is mandatory below this public release with no grace period.",
+    release_notes: "v2.3.11.0 PUBLIC: Continue with Google is included in Windows/macOS plugin panels. Secure browser-to-plugin PKCE sign-in, identity verification, existing license/device checks, local Google icon, cancel and timeout. Email/password retained. Music Engine V18 unchanged; accounts, trial dates and paid licenses retained. Windows isolated installer/rollback tests and macOS mocked tests pass; native macOS/Premiere and user Google consent still require validation. Save your project, close Premiere to install, then reopen. Mandatory online update below this release; zero grace period.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
