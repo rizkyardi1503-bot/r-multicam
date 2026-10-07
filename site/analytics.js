@@ -22,10 +22,15 @@
   else if(external&&/(^|\.)threads\.(net|com)$/.test(external))inferred={utm_source:'threads',utm_medium:'social'};
   else if(external&&/^(www\.|m\.)?google\.(com|co\.(id|uk|in|jp|kr|nz|za)|com\.(au|br|sg|my|mx|tr)|[a-z]{2})$/.test(external))inferred={utm_source:'google',utm_medium:'organic'};
   const current={utm_source:sourceName((query.get('utm_source')||inferred?.utm_source||'').trim().toLowerCase().slice(0,120)),utm_medium:(query.get('utm_medium')||inferred?.utm_medium||'').slice(0,120),utm_campaign:(query.get('utm_campaign')||'').slice(0,200)};
+  const contentId=(query.get('utm_content')||'').replace(/[^a-zA-Z0-9_.-]/g,'').slice(0,100);
+  const qa=query.get('analytics_test')==='1'||current.utm_source==='qa';
   let attribution={};
   try{const saved=JSON.parse(window.sessionStorage.getItem(UTM_KEY)||'null');if(saved&&Number.isFinite(saved.expires_at)&&saved.expires_at>Date.now()&&saved.expires_at<=Date.now()+1800000)attribution=saved;}catch{}
   // Explicit campaign / recognized external entry wins. Internal pages and OAuth returns preserve it.
   if(current.utm_source||current.utm_medium||current.utm_campaign||external){attribution={...current,referrer_host:external,expires_at:Date.now()+1800000};try{window.sessionStorage.setItem(UTM_KEY,JSON.stringify(attribution));}catch{}}
+  if(contentId)attribution.content_id=contentId;
+  if(qa){attribution.reporting_exclude=true;attribution.expires_at=Date.now()+1800000;}
+  try{if(Object.keys(attribution).length)window.sessionStorage.setItem(UTM_KEY,JSON.stringify(attribution));}catch{}
   referrerHost=attribution.referrer_host||external||null;
 
   function track(eventName,metadata={},authToken=null){
@@ -37,7 +42,8 @@
       body:JSON.stringify({
         event_name:eventName,visitor_id:visitorId,session_id:sessionId,path:location.pathname,
         referrer_host:referrerHost,utm_source:attribution.utm_source||null,
-        utm_medium:attribution.utm_medium||null,utm_campaign:attribution.utm_campaign||null,metadata
+        utm_medium:attribution.utm_medium||null,utm_campaign:attribution.utm_campaign||null,
+        metadata:{...metadata,content_id:attribution.content_id||null,reporting_exclude:attribution.reporting_exclude===true}
       }),
       keepalive:true
     }).catch(()=>{});
@@ -45,6 +51,9 @@
 
   window.RP_ANALYTICS=Object.freeze({track,visitorId,sessionId});
   track('page_view',{title:document.title});
+  document.querySelectorAll('[data-track="guide_opened"]').forEach(link=>{
+    link.addEventListener('click',()=>track('guide_opened',{entry_point:(link.dataset.content||'guide_link').slice(0,100)}));
+  });
 
   document.querySelectorAll('[data-signup]').forEach((button,index)=>{
     button.addEventListener('click',()=>track('trial_cta_clicked',{

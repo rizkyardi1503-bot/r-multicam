@@ -9,7 +9,7 @@ const allowedOrigins = new Set([
 const allowedEvents = new Set([
   "page_view","pricing_view","trial_cta_clicked","demo_started","signup_submitted","login_success",
   "download_requested","download_started","checkout_started",
-  "checkout_created","purchase_paid"
+  "checkout_created","purchase_paid","guide_opened","compatibility_checked","checkout_opened"
 ]);
 
 function cors(req: Request) {
@@ -72,16 +72,23 @@ Deno.serve(async (req: Request) => {
   }
 
   const ua=req.headers.get("user-agent")||"";
-  const metadata=body.metadata && typeof body.metadata==="object" && !Array.isArray(body.metadata)
+  const supplied=body.metadata && typeof body.metadata==="object" && !Array.isArray(body.metadata)
     ? (JSON.stringify(body.metadata).length <= 2000 ? body.metadata : {})
     : {};
+  const metadata:Record<string,string|number|boolean|null>={};
+  for(const key of ["title","label","position","requires_confirmation","method","platform","filename","price_idr","promo_code_used","amount_idr","content_id","entry_point","premiere_major","ram_bucket","result","reporting_exclude"]){
+    const value=supplied[key];
+    if(typeof value==="string")metadata[key]=value.slice(0,key==="title"?200:100);
+    else if(typeof value==="boolean"||value===null)metadata[key]=value;
+    else if(typeof value==="number"&&Number.isFinite(value))metadata[key]=value;
+  }
 
   const row={
     event_name:body.event_name,
     visitor_id:visitorId,
     session_id:sessionId,
     user_id:userId,
-    path:clean(body.path,500)||"/",
+    path:(clean(body.path,500)||"/").split(/[?#]/)[0],
     referrer_host:clean(body.referrer_host,255),
     utm_source:clean(body.utm_source,120),
     utm_medium:clean(body.utm_medium,120),

@@ -178,7 +178,8 @@
  el('resend-confirmation').onclick=()=>run(()=>sendAccountEmail('confirmation'));
  el('forgot-password').onclick=()=>run(()=>sendAccountEmail('recovery'));
  el('account-signout').onclick=()=>run(async()=>{const access=session?.access_token;try{if(access)await request('/auth/v1/logout',{method:'POST',token:access});}catch{}affiliateUI?.clear();clearStoredSession();generation++;session=null;user=null;profile=null;downloadIntent=null;purchaseIntent=false;el('orders-list').replaceChildren();el('checkout-confirm').hidden=true;el('checkout-link').removeAttribute('href');render();say('Signed out of this website.');});
- el('account-purchase').onclick=()=>run(purchase);
+  el('account-purchase').onclick=()=>run(purchase);
+  el('checkout-link').onclick=()=>window.RP_ANALYTICS?.track('checkout_opened',{},session?.access_token||null);
  el('download-windows').onclick=()=>run(()=>downloadRelease('windows'));
  el('download-macos').onclick=()=>run(()=>downloadRelease('macos'));
  el('account-affiliate').onclick=()=>{affiliateIntent=true;run(async()=>{if(affiliateUI)await affiliateUI.refresh();else say('Open the affiliate program from the website homepage.');});};

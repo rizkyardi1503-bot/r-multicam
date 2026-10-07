@@ -32,6 +32,8 @@ jobs:
           node scripts/test-plugin-google-relay.cjs
           node scripts/test-pricing.cjs
           node scripts/test-growth.cjs
+          node scripts/test-conversion.cjs
+          node scripts/test-analytics-edge.cjs
           python3 scripts/test-mac-public.py
           node scripts/test-mac-release.cjs
       - name: Deploy existing Cloudflare Pages project
