@@ -1,12 +1,15 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const browserOrigins = new Set(["https://r-multicam.pages.dev","http://127.0.0.1:8765"]);
-const latest = "2.3.11.0";
 const filenames: Record<string, string> = {
   windows: "R-Project-Multicam-AI-Windows-v2.3.11.0-PUBLIC.zip",
-  macos: "R-Project-Multicam-AI-macOS-v2.3.11.0-PUBLIC.zip"
+  macos: "R-Project-Multicam-AI-macOS-v2.3.11.1-PUBLIC.zip"
 };
 const fallbackBase = "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/2c60fe73ab57abeabc427532af282b2f21bcdf6b/site/downloads/";
+const fallbackUrls: Record<string, string> = {
+  windows: fallbackBase + filenames.windows,
+  macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/245814b70cbac98a9fef9d2309571b3ff19c71e0/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.1-PUBLIC.zip"
+};
 
 function corsHeaders(req: Request) {
   const origin = req.headers.get("origin") || "";
@@ -54,7 +57,7 @@ Deno.serve(async (req: Request) => {
   let source = "private-storage";
 
   if (!upstream?.ok || !upstream.body) {
-    upstream = await fetch(fallbackBase + filename, { redirect: "follow", signal: AbortSignal.timeout(30000) }).catch(() => null);
+    upstream = await fetch(fallbackUrls[platform], { redirect: "follow", signal: AbortSignal.timeout(30000) }).catch(() => null);
     source = "temporary-pinned-fallback";
   }
   if (!upstream?.ok || !upstream.body) return new Response("Download source is temporarily unavailable.", { status: 502, headers: cors });

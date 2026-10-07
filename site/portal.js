@@ -14,7 +14,7 @@
  }
  if(googleCallback)history.replaceState(null,'',window.location.pathname);
  const SESSION_KEY='rp_multicam_refresh_v1';
- const LATEST_VERSION='2.3.11.0';
+ const LATEST_VERSIONS=Object.freeze({windows:'2.3.11.0',macos:'2.3.11.1'});
  const newerVersion=(installed,latest)=>{const a=String(installed).split('.').map(Number),b=latest.split('.').map(Number);if(a.length!==b.length||a.some(n=>!Number.isFinite(n)))return false;for(let i=0;i<b.length;i++){if(b[i]!==a[i])return b[i]>a[i];}return false;};
  let session=null, user=null, profile=null, busy=false, generation=0, refreshFlight=null, authMode="signin", purchaseIntent=false, downloadIntent=null;
  let affiliateIntent=window.location.pathname==='/affiliate/', affiliateUI=null;
@@ -82,7 +82,9 @@
   el('account-summary').textContent=status==='lifetime'?'Lifetime customer':status==='expired'?'Trial ended':'Multicam AI account';
   el('trial-summary').textContent=trialText;
   const installed=profile?.plugin_version?String(profile.plugin_version):'not connected';
-  el('version-summary').textContent='Installed plugin: '+(installed==='not connected'?installed:'v'+installed)+' · Latest public: v'+LATEST_VERSION+(installed!=='not connected'&&newerVersion(installed,LATEST_VERSION)?' · Update available.':'');
+  const devicePlatform=String(profile?.device_platform||'').toLowerCase();
+  const latest=devicePlatform==='macos'||devicePlatform==='darwin'?LATEST_VERSIONS.macos:devicePlatform==='windows'||devicePlatform==='win32'?LATEST_VERSIONS.windows:null;
+  el('version-summary').textContent='Installed plugin: '+(installed==='not connected'?installed:'v'+installed)+' · Latest public: '+(latest?'v'+latest:'Windows v'+LATEST_VERSIONS.windows+' / macOS v'+LATEST_VERSIONS.macos)+(installed!=='not connected'&&latest&&newerVersion(installed,latest)?' · Update available.':'');
   el('account-purchase').hidden=status==='lifetime'||status==='blocked';
   el('device-details').textContent=profile?.plugin_version?String(profile.device_platform||'Plugin')+' · v'+profile.plugin_version+' · Last seen '+(profile.last_active_at?new Date(profile.last_active_at).toLocaleString():'not available')+'. One plugin device can be active at a time. Sign in on the new device to switch.':'No plugin installation connected yet. Download the installer and sign in inside Premiere. Your 7-day trial begins on first plugin activation.';
  }

@@ -1,8 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const latest = "2.3.11.0";
+const latest: Record<string, string> = { windows: "2.3.11.0", macos: "2.3.11.1" };
 const rawBase = "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/2d21a5f088155034ff1868b41b3690e13b18460d/site/downloads/";
 const releases: Record<string, { windows?: string; macos?: string }> = {
+  "2.3.11.1": {
+    macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/245814b70cbac98a9fef9d2309571b3ff19c71e0/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.1-PUBLIC.zip"
+  },
   "2.3.11.0": {
     windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/2c60fe73ab57abeabc427532af282b2f21bcdf6b/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.0-PUBLIC.zip",
     macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/2c60fe73ab57abeabc427532af282b2f21bcdf6b/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.0-PUBLIC.zip"
@@ -37,12 +40,12 @@ const releases: Record<string, { windows?: string; macos?: string }> = {
 
 Deno.serve(async (req: Request) => {
   const u = new URL(req.url);
-  const version = u.searchParams.get("version") || latest;
   const explicit = (u.searchParams.get("platform") || "").toLowerCase();
   const ua = req.headers.get("user-agent") || "";
   const platform = explicit === "macos" || explicit === "windows"
     ? explicit
     : /Macintosh|Mac OS X/i.test(ua) ? "macos" : "windows";
+  const version = u.searchParams.get("version") || latest[platform];
 
   const source = releases[version]?.[platform];
   if (!source) return new Response("Unknown version or platform", { status: 404 });

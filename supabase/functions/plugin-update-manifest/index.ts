@@ -8,9 +8,9 @@ const releases = {
     sha256: "317f3412b0c0db3f4df5adc87e1f9e7668194f39217f094e38fb068bc0a052a2"
   },
   macos: {
-    version: "2.3.11.0",
-    download: base + "?platform=macos&version=2.3.11.0",
-    sha256: "a21bb1d9bc38bb74a2557785efe7668d41a547b74a3036e77c9e81929c073bf3"
+    version: "2.3.11.1",
+    download: base + "?platform=macos&version=2.3.11.1",
+    sha256: "f945488da9be7d45e97e6744d1ca4cde87b64583895bac1d74c1d24bebe1eded"
   }
 };
 
@@ -39,7 +39,9 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), selected.version),
     minimum_version: selected.version,
     grace_period_days: 0,
-    release_notes: "v2.3.11.0 PUBLIC: Continue with Google is included in Windows/macOS plugin panels. Secure browser-to-plugin PKCE sign-in, identity verification, existing license/device checks, local Google icon, cancel and timeout. Email/password retained. Music Engine V18 unchanged; accounts, trial dates and paid licenses retained. Windows isolated installer/rollback tests and macOS mocked tests pass; native macOS/Premiere and user Google consent still require validation. Save your project, close Premiere to install, then reopen. Mandatory online update below this release; zero grace period.",
+    release_notes: platform === "macos"
+      ? "v2.3.11.1 PUBLIC macOS-only: Automatic Low Memory mode on Macs with 12 GiB RAM or less (including M1 8 GB and Rosetta). Optional AI Vision uses one CPU decoding thread and up to 24 samples; timeline batches are smaller with 250 ms pacing. macOS reclaimable-page estimates, analysis preflight and periodic audio memory checks replace Windows-style thresholds. Beat/BPM/drop detail and Google/manual login retained; trial dates and paid licenses unchanged. Automated tests and installer syntax pass; native M1/Premiere performance remains unmeasured. Save your project and close Premiere before installing. Zero grace period below the macOS release. Windows stays v2.3.11.0."
+      : "v2.3.11.0 PUBLIC Windows: Continue with Google, secure PKCE sign-in and existing license/device checks. Email/password and Music Engine V18 retained. No new Windows package or minimum-version change in the macOS-only 2.3.11.1 release. Save your project and close Premiere before installing. Zero grace period below v2.3.11.0.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
