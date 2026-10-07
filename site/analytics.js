@@ -3,7 +3,7 @@
   const ENDPOINT='https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/website-analytics';
   const VISITOR_KEY='rp_analytics_visitor_v1';
   const SESSION_KEY='rp_analytics_session_v1';
-  const UTM_KEY='rp_analytics_utm_v1';
+  const UTM_KEY='rp_analytics_attribution_v2';
 
   const uuid=()=>crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(+c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>+c/4).toString(16));
   function getId(storeName,key){
@@ -12,21 +12,21 @@
   const visitorId=getId('localStorage',VISITOR_KEY);
   const sessionId=getId('sessionStorage',SESSION_KEY);
 
-  const query=new URLSearchParams(location.search);
-  let attribution={};
-  try{
-    const current={
-      utm_source:(query.get('utm_source')||'').slice(0,120),
-      utm_medium:(query.get('utm_medium')||'').slice(0,120),
-      utm_campaign:(query.get('utm_campaign')||'').slice(0,200)
-    };
-    if(current.utm_source||current.utm_medium||current.utm_campaign){
-      sessionStorage.setItem(UTM_KEY,JSON.stringify(current));attribution=current;
-    }else attribution=JSON.parse(sessionStorage.getItem(UTM_KEY)||'{}')||{};
-  }catch{}
-
   let referrerHost=null;
   try{referrerHost=document.referrer?new URL(document.referrer).hostname:null;}catch{}
+  const query=new URLSearchParams(location.search);
+  const sourceName=value=>value==='ig'||value==='insta'?'instagram':value==='thread'?'threads':value;
+  const external=referrerHost&&referrerHost!=='r-multicam.pages.dev'&&referrerHost!=='accounts.google.com'&&!referrerHost.endsWith('.supabase.co')?referrerHost:null;
+  let inferred=null;
+  if(external&&/(^|\.)instagram\.com$/.test(external))inferred={utm_source:'instagram',utm_medium:'social'};
+  else if(external&&/(^|\.)threads\.(net|com)$/.test(external))inferred={utm_source:'threads',utm_medium:'social'};
+  else if(external&&/^(www\.|m\.)?google\.(com|co\.(id|uk|in|jp|kr|nz|za)|com\.(au|br|sg|my|mx|tr)|[a-z]{2})$/.test(external))inferred={utm_source:'google',utm_medium:'organic'};
+  const current={utm_source:sourceName((query.get('utm_source')||inferred?.utm_source||'').trim().toLowerCase().slice(0,120)),utm_medium:(query.get('utm_medium')||inferred?.utm_medium||'').slice(0,120),utm_campaign:(query.get('utm_campaign')||'').slice(0,200)};
+  let attribution={};
+  try{const saved=JSON.parse(window.sessionStorage.getItem(UTM_KEY)||'null');if(saved&&Number.isFinite(saved.expires_at)&&saved.expires_at>Date.now()&&saved.expires_at<=Date.now()+1800000)attribution=saved;}catch{}
+  // Explicit campaign / recognized external entry wins. Internal pages and OAuth returns preserve it.
+  if(current.utm_source||current.utm_medium||current.utm_campaign||external){attribution={...current,referrer_host:external,expires_at:Date.now()+1800000};try{window.sessionStorage.setItem(UTM_KEY,JSON.stringify(attribution));}catch{}}
+  referrerHost=attribution.referrer_host||external||null;
 
   function track(eventName,metadata={},authToken=null){
     const headers={'content-type':'application/json'};
