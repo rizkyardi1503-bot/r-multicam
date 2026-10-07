@@ -27,8 +27,10 @@ jobs:
       - name: Check website JavaScript
         run: find site -name '*.js' -exec node --check {} \;
       - name: Check account, checkout and download regressions
-        run: node scripts/test-site.cjs
+        run: |
+          node scripts/test-site.cjs
           node scripts/test-plugin-google-relay.cjs
+          node scripts/test-pricing.cjs
       - name: Deploy existing Cloudflare Pages project
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
         with:

@@ -13,7 +13,7 @@ document.querySelector('#close-notice').onclick = () => notice.close();
 document.querySelector('#notice-done').onclick = () => notice.close();
 document.querySelectorAll('[data-buy]').forEach(button => button.onclick = () => {
  const url = safeUrl(config.paymentUrl);
- message(url ? 'Continue to secure checkout' : 'Checkout is not open yet', url ? 'The license is US$200. Review the final billing amount, currency and purchase terms on Midtrans before paying. Use the email address linked to your plugin account.' : 'Online purchases are not available yet. Please check back when checkout opens. No payment or license activation has taken place.', url, 'Continue to Midtrans');
+ message(url ? 'Continue to secure checkout' : 'Checkout is not open yet', url ? 'The displayed license price is '+(window.RPPrice?.label()||'Rp3.575.000')+'. Review the final billing amount, currency and purchase terms on Midtrans before paying. Use the email address linked to your plugin account.' : 'Online purchases are not available yet. Please check back when checkout opens. No payment or license activation has taken place.', url, 'Continue to Midtrans');
 });
 document.querySelectorAll('[data-account]').forEach(button => button.onclick = () => message('Your Multicam AI license', 'You can check your current license by signing in to the Multicam AI panel inside Premiere. '+(safeUrl(config.customerPortalUrl) ? 'Open the customer portal to manage your account.' : 'The website customer portal is not available yet.'), config.customerPortalUrl, 'Open customer portal'));
 document.querySelectorAll('[data-download]').forEach(button => button.onclick = () => {
