@@ -37,7 +37,7 @@ assert.equal(visit().events[0].metadata.reporting_exclude,false);
 assert(read('site/portal.js').includes("track('checkout_opened'"));
 assert(read('site/index.html').includes('home_quickstart'));
 assert(read('site/id/index.html').includes('id="kompatibilitas"'));
-assert(read('site/guides/install-multicam-ai/index.html').includes('macOS · v2.3.11.1'));
+assert(read('site/guides/install-multicam-ai/index.html').includes('macOS · v2.3.11.2'));
 assert(read('docs/conversion-funnel.sql').includes('public.plugin_payment_orders'));
 assert(read('docs/conversion-funnel.sql').includes('first_activated_at'));
 console.log('PASS conversion: SEO/schema, quick start, compatibility limits, campaign content, QA exclusion, OAuth continuity and server-record report');
