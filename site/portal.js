@@ -17,7 +17,8 @@
  const LATEST_VERSIONS=Object.freeze({windows:'2.3.11.2',macos:'2.3.11.2'});
  const newerVersion=(installed,latest)=>{const a=String(installed).split('.').map(Number),b=latest.split('.').map(Number);if(a.length!==b.length||a.some(n=>!Number.isFinite(n)))return false;for(let i=0;i<b.length;i++){if(b[i]!==a[i])return b[i]>a[i];}return false;};
  let session=null, user=null, profile=null, busy=false, generation=0, refreshFlight=null, authMode="signin", purchaseIntent=false, downloadIntent=null;
- let affiliateIntent=window.location.pathname==='/affiliate/', affiliateUI=null;
+ let affiliateIntent=window.location.pathname==='/affiliate/', affiliateUI=null,ownerDashboard=null,ownerScript=null;
+ async function ensureOwnerDashboard(){if(ownerDashboard)return ownerDashboard;if(!ownerScript)ownerScript=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='/owner-dashboard.js';script.onload=resolve;script.onerror=()=>{ownerScript=null;script.remove();reject(Error('Owner dashboard could not load. Refresh and try again.'));};document.head.appendChild(script);});await ownerScript;return ownerDashboard||(ownerDashboard=window.RP_OwnerDashboard.create(el('account-details'),authed));}
  const promoFromLink=new URLSearchParams(window.location.search).get('ref')||'';
  const portal=document.createElement('dialog'); portal.id='customer-portal';portal.setAttribute('aria-labelledby','customer-portal-title');
  portal.innerHTML=`<div class="dialog-top"><span class="eyebrow">CUSTOMER ACCOUNT</span><button data-close aria-label="Close account">✕</button></div>
@@ -89,9 +90,10 @@
   el('device-details').textContent=profile?.plugin_version?String(profile.device_platform||'Plugin')+' · v'+profile.plugin_version+' · Last seen '+(profile.last_active_at?new Date(profile.last_active_at).toLocaleString():'not available')+'. One plugin device can be active at a time. Sign in on the new device to switch.':'No plugin installation connected yet. Download the installer and sign in inside Premiere. Your 7-day trial begins on first plugin activation.';
  }
  async function loadAccount(){const epoch=generation,account=user?.id;if(!account)return;const [rows,orders]=await Promise.all([
- authed('/rest/v1/plugin_profiles?select=license_status,trial_started_at,trial_expires_at,lifetime_activated_at,device_platform,plugin_version,last_active_at&user_id=eq.'+encodeURIComponent(account)),
+ authed('/rest/v1/plugin_profiles?select=account_role,license_status,trial_started_at,trial_expires_at,lifetime_activated_at,device_platform,plugin_version,last_active_at&user_id=eq.'+encodeURIComponent(account)),
  authed('/rest/v1/plugin_payment_orders?select=order_id,status,charge_currency,gross_amount_idr,created_at&user_id=eq.'+encodeURIComponent(account)+'&order=created_at.desc&limit=5')]);
  if(epoch!==generation||user?.id!==account)return;profile=rows[0]||null;render();
+ if(profile?.account_role==='owner'){try{const dashboard=await ensureOwnerDashboard();if(epoch===generation&&user?.id===account)await dashboard.refresh();}catch{say('Account loaded. Owner metrics are temporarily unavailable.',true);}}else ownerDashboard?.clear();
   el('orders-list').replaceChildren();if(!orders.length)el('orders-list').textContent='No orders yet.';
   for(const order of orders){const row=document.createElement('p');row.className='order-row';row.textContent=order.status+' · '+order.charge_currency+' '+Number(order.gross_amount_idr).toLocaleString()+' · '+new Date(order.created_at).toLocaleDateString();el('orders-list').appendChild(row);}
   if(affiliateIntent&&affiliateUI)await affiliateUI.refresh();
@@ -169,7 +171,7 @@
    await acceptSession(next);
    return true;
   }catch(error){
-   if(error.status===400||error.status===401||error.status===403)clearStoredSession();generation++;session=null;user=null;profile=null;render();
+   if(error.status===400||error.status===401||error.status===403)clearStoredSession();ownerDashboard?.clear();generation++;session=null;user=null;profile=null;render();
    return false;
   }
  }
@@ -177,7 +179,7 @@
  async function sendAccountEmail(kind){const email=el('account-email').value.trim();if(!email||!el('account-email').checkValidity())throw Error('Enter a valid email address first.');const wait=emailCooldowns[kind]-Date.now();if(wait>0)throw Error('Please wait '+Math.ceil(wait/1000)+' seconds before requesting another email.');const redirect=encodeURIComponent('https://r-multicam.pages.dev/auth/confirmed/');await request('/auth/v1/'+(kind==='recovery'?'recover':'resend')+'?redirect_to='+redirect,{method:'POST',body:kind==='recovery'?{email}:{email,type:'signup'}});emailCooldowns[kind]=Date.now()+65000;say(kind==='recovery'?'If an account exists for this email, check your inbox and spam folder for the password reset link.':'If this account still needs confirmation, check your inbox and spam folder. Already confirmed? Sign in.');}
  el('resend-confirmation').onclick=()=>run(()=>sendAccountEmail('confirmation'));
  el('forgot-password').onclick=()=>run(()=>sendAccountEmail('recovery'));
- el('account-signout').onclick=()=>run(async()=>{const access=session?.access_token;try{if(access)await request('/auth/v1/logout',{method:'POST',token:access});}catch{}affiliateUI?.clear();clearStoredSession();generation++;session=null;user=null;profile=null;downloadIntent=null;purchaseIntent=false;el('orders-list').replaceChildren();el('checkout-confirm').hidden=true;el('checkout-link').removeAttribute('href');render();say('Signed out of this website.');});
+ el('account-signout').onclick=()=>run(async()=>{const access=session?.access_token;try{if(access)await request('/auth/v1/logout',{method:'POST',token:access});}catch{}ownerDashboard?.clear();affiliateUI?.clear();clearStoredSession();generation++;session=null;user=null;profile=null;downloadIntent=null;purchaseIntent=false;el('orders-list').replaceChildren();el('checkout-confirm').hidden=true;el('checkout-link').removeAttribute('href');render();say('Signed out of this website.');});
   el('account-purchase').onclick=()=>run(purchase);
   el('checkout-link').onclick=()=>window.RP_ANALYTICS?.track('checkout_opened',{},session?.access_token||null);
  el('download-windows').onclick=()=>run(()=>downloadRelease('windows'));
@@ -211,7 +213,6 @@
    else{setMode('signin');say('Sign in with the email and password you used when creating your account.');}
   }
  }
- window.addEventListener('storage',event=>{if(event.key===SESSION_KEY&&!event.newValue){generation++;session=null;user=null;profile=null;purchaseIntent=false;downloadIntent=null;el('checkout-confirm').hidden=true;el('checkout-link').removeAttribute('href');render();say('Signed out in another tab. Sign in again to continue.');}});
+ window.addEventListener('storage',event=>{if(event.key===SESSION_KEY&&!event.newValue){ownerDashboard?.clear();generation++;session=null;user=null;profile=null;purchaseIntent=false;downloadIntent=null;el('checkout-confirm').hidden=true;el('checkout-link').removeAttribute('href');render();say('Signed out in another tab. Sign in again to continue.');}});
  bootstrap().catch(error=>say(friendly(error),true));
 })();
-

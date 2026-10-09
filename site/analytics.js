@@ -1,7 +1,8 @@
 'use strict';
 (() => {
   const ENDPOINT='https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/website-analytics';
-  const VISITOR_KEY='rp_analytics_visitor_v1';
+ const VISITOR_KEY='rp_analytics_visitor_v1';
+ const INTERNAL_KEY='rp_analytics_internal_v1';
   const SESSION_KEY='rp_analytics_session_v1';
   const UTM_KEY='rp_analytics_attribution_v2';
 
@@ -43,13 +44,15 @@
         event_name:eventName,visitor_id:visitorId,session_id:sessionId,path:location.pathname,
         referrer_host:referrerHost,utm_source:attribution.utm_source||null,
         utm_medium:attribution.utm_medium||null,utm_campaign:attribution.utm_campaign||null,
-        metadata:{...metadata,content_id:attribution.content_id||null,reporting_exclude:attribution.reporting_exclude===true}
+        metadata:{...metadata,content_id:attribution.content_id||null,reporting_exclude:internal()||attribution.reporting_exclude===true}
       }),
       keepalive:true
     }).catch(()=>{});
   }
 
-  window.RP_ANALYTICS=Object.freeze({track,visitorId,sessionId});
+ function internal(){try{return localStorage.getItem(INTERNAL_KEY)==='1';}catch{return false;}}
+ function setInternal(value){try{if(value)localStorage.setItem(INTERNAL_KEY,'1');else localStorage.removeItem(INTERNAL_KEY);}catch{return false;}return internal()===!!value;}
+ window.RP_ANALYTICS=Object.freeze({track,visitorId,sessionId,internal,setInternal});
   track('page_view',{title:document.title});
   document.querySelectorAll('[data-track="guide_opened"]').forEach(link=>{
     link.addEventListener('click',()=>track('guide_opened',{entry_point:(link.dataset.content||'guide_link').slice(0,100)}));
