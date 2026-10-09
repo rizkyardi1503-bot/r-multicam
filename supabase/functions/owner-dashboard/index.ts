@@ -53,7 +53,7 @@ Deno.serve(async (req: Request) => {
   const clean=events.filter(x=>!isExcluded(x));
   const visitors=(name:string)=>new Set(clean.filter(x=>x.event_name===name&&x.visitor_id).map(x=>x.visitor_id)).size;
   const views=clean.filter(x=>x.event_name==='page_view');
-  const groups:Record<string,Set<string>>={},daily:Record<string,{views:number,visitors:Set<string>}>= {};
+  const groups:Record<string,Set<string>>=Object.create(null),daily:Record<string,{views:number,visitors:Set<string>}>=Object.create(null);
   for(const e of views){const source=e.utm_source||e.referrer_host||'direct';(groups[source]??=new Set()).add(e.visitor_id||'');const day=new Date(Date.parse(e.occurred_at)+8*3600000).toISOString().slice(0,10);const d=daily[day]??={views:0,visitors:new Set()};d.views++;if(e.visitor_id)d.visitors.add(e.visitor_id);}
   const customers=paid.filter(x=>!ownerIds.has(x.user_id));
   return json({generated_at:end,start,end,timezone:'Asia/Makassar',excluded_events:excluded.length,
