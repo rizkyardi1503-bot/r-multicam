@@ -54,7 +54,8 @@ Deno.serve(async (req: Request) => {
   const visitors=(name:string)=>new Set(clean.filter(x=>x.event_name===name&&x.visitor_id).map(x=>x.visitor_id)).size;
   const views=clean.filter(x=>x.event_name==='page_view');
   const groups:Record<string,Set<string>>=Object.create(null),daily:Record<string,{views:number,visitors:Set<string>}>=Object.create(null);
-  for(const e of views){const source=e.utm_source||e.referrer_host||'direct';(groups[source]??=new Set()).add(e.visitor_id||'');const day=new Date(Date.parse(e.occurred_at)+8*3600000).toISOString().slice(0,10);const d=daily[day]??={views:0,visitors:new Set()};d.views++;if(e.visitor_id)d.visitors.add(e.visitor_id);}
+  function sourceFor(e:Record<string,any>){const campaign=String(e.utm_source||'').trim().toLowerCase();if(campaign)return ['ig','insta'].includes(campaign)?'instagram':campaign==='thread'?'threads':campaign;const host=String(e.referrer_host||'').toLowerCase();if(!host||host==='r-multicam.pages.dev'||host==='accounts.google.com'||host.endsWith('.supabase.co'))return 'direct / unattributed';if(/(^|\.)instagram\.com$/.test(host))return 'instagram';if(/(^|\.)threads\.(net|com)$/.test(host))return 'threads';return host;}
+  for(const e of views){const source=sourceFor(e);(groups[source]??=new Set()).add(e.visitor_id||'');const day=new Date(Date.parse(e.occurred_at)+8*3600000).toISOString().slice(0,10);const d=daily[day]??={views:0,visitors:new Set()};d.views++;if(e.visitor_id)d.visitors.add(e.visitor_id);}
   const customers=paid.filter(x=>!ownerIds.has(x.user_id));
   return json({generated_at:end,start,end,timezone:'Asia/Makassar',excluded_events:excluded.length,
    metrics:{visitors:visitors('page_view'),page_views:views.length,pricing_visitors:visitors('pricing_view'),trial_click_visitors:visitors('trial_cta_clicked'),signup_submissions:visitors('signup_submitted'),download_visitors:visitors('download_started'),plugin_activations:activations.length,trial_activations:activations.filter(x=>x.trial_started_at).length,checkout_visitors:visitors('checkout_created'),paid_orders:customers.length,paid_customers:new Set(customers.map(x=>x.user_id)).size,revenue_idr:customers.reduce((a,x)=>a+Number(x.gross_amount_idr||0),0)},
@@ -63,3 +64,4 @@ Deno.serve(async (req: Request) => {
    notes:['Counts are independent stage totals, not a matched-person conversion cohort.','Browser events can be blocked or forged; activation and payment totals use server records.','Known owner and marked test events excluded. Anonymous historical owner visits cannot be identified retroactively.','Trial activations shown here belong to first plugin activations in this period.']});
  } catch {return json({error:'Dashboard could not load completely. Try a shorter period or refresh.'},503);}
 });
+
