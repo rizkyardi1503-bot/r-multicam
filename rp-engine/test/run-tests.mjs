@@ -129,6 +129,7 @@ await test("FCPXML mirrors the plan", async () => {
 
 await test("published schema matches the engine schema", async () => {
   const site = path.resolve(ROOT, "../site/schema/rp-multicam-plan-1.json");
+  if (!fs.existsSync(site)) return console.log("   (skipped: not inside the repo)");
   assert.equal(fs.readFileSync(site, "utf8"), fs.readFileSync(path.join(ROOT, "schema/rp-multicam-plan-1.json"), "utf8"));
 });
 
