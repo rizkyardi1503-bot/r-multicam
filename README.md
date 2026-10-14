@@ -35,3 +35,14 @@ Every page exists in English (`site/...`) and Indonesian (`site/id/...`).
 - Visitors from Indonesia (or with an Indonesian browser) are sent from English pages to the Indonesian version; a choice made with the EN/ID switch is remembered. Crawlers, login callbacks and download links are never redirected (`src/i18n/lang-router.js`).
 - Text rendered by scripts (account, checkout, demo) is translated on `/id/` pages from `src/i18n/id.json`. Add new UI strings there.
 - Prices follow location, not language: Indonesia shows IDR, everywhere else USD (`site/pricing.js`).
+
+## Plugin releases
+
+Plugin package sources live in `plugin/windows` and `plugin/macos`. To release:
+
+1. Edit the sources and bump the version everywhere the installers check it (`CSXS/manifest.xml`, `jsx/host.jsx`, `panel.js`, `update-manager.js`, installer version variable).
+2. `python3 scripts/build-plugin-release.py` builds deterministic ZIPs in `site/downloads/` and the checksum inventories (CI runs `--check`).
+3. Commit, then point `supabase/functions/website-download` and `plugin-update-download` at that commit's raw files and deploy them.
+4. Only change `plugin-update-manifest` when every existing user must update: the database (`plugin_entitlement`) blocks any plugin older than the manifest version.
+
+FFmpeg is pinned (9.0.2) with SHA-256 checks in both installers. To move to a newer FFmpeg, update the URL(s) and hashes in `Install-Windows.ps1` / `Install-macOS.command` and in `scripts/test-public-23113.py`.
