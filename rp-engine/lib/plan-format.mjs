@@ -47,7 +47,7 @@ export function buildPlan({ engine, analysis, cameras, points, snapshot, directo
   const beat = Number(result.beatInterval) || 0.5;
   const clipOut = (c) => ({
     file: c.file, offset: r6(c.offset), offset_frames: toFrame(c.offset), duration: r6(c.duration),
-    has_audio: c.hasAudio, width: c.width, height: c.height, fps: c.fps, timecode: c.timecode,
+    has_audio: c.hasAudio, width: c.width, height: c.height, rotation: c.rotation || 0, display_width: c.displayWidth || c.width, display_height: c.displayHeight || c.height, fps: c.fps, timecode: c.timecode,
     audio_rate: c.audioRate, audio_channels: c.audioChannels, created: c.created ? new Date(c.created * 1000).toISOString() : null, sync: c.sync
   });
   const camOut = cameras.map((c, i) => ({
@@ -81,7 +81,7 @@ export function buildPlan({ engine, analysis, cameras, points, snapshot, directo
     format: PLAN_FORMAT,
     version: PLAN_VERSION,
     generator: { name: "R Project Multicam AI Engine", model: director.model || "R Project Auto Music Map V14", plugin_version: engine.version, created_at: new Date().toISOString() },
-    timeline: { fps: { num: fps.num, den: fps.den }, frame_duration: `${fps.den}/${fps.num}`, duration: r6(duration), duration_frames: durationFrames, width: (cameras.flatMap((c) => c.clips).find((c) => c.width) || {}).width || 1920, height: (cameras.flatMap((c) => c.clips).find((c) => c.height) || {}).height || 1080 },
+    timeline: { fps: { num: fps.num, den: fps.den }, frame_duration: `${fps.den}/${fps.num}`, duration: r6(duration), duration_frames: durationFrames, width: (cameras.flatMap((c) => c.clips).find((c) => c.displayWidth) || {}).displayWidth || 1920, height: (cameras.flatMap((c) => c.clips).find((c) => c.displayHeight) || {}).displayHeight || 1080 },
     music,
     cameras: camOut,
     edit_points: points.map(r6),

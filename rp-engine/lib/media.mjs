@@ -8,7 +8,7 @@ export function probe(ffmpeg, file) {
   const r = spawnSync(ffmpeg, ["-hide_banner", "-nostdin", "-i", file], { encoding: "utf8", windowsHide: true });
   const text = String(r.stderr || "");
   if (/No such file|Invalid data found|does not exist/i.test(text)) throw new Error(`Cannot read media: ${file}`);
-  const out = { file, duration: null, start: 0, hasVideo: false, hasAudio: false, width: null, height: null, fps: null, timecode: null, created: null, audioRate: null, audioChannels: null };
+  const out = { file, duration: null, start: 0, hasVideo: false, hasAudio: false, width: null, height: null, fps: null, timecode: null, created: null, rotation: 0, audioRate: null, audioChannels: null };
   const d = text.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
   if (d) out.duration = Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]);
   const s = text.match(/start:\s*(-?\d+(?:\.\d+)?)/);
@@ -22,6 +22,8 @@ export function probe(ffmpeg, file) {
     out.hasVideo = true;
     const size = video.match(/,\s*(\d{2,5})x(\d{2,5})/);
     if (size) { out.width = Number(size[1]); out.height = Number(size[2]); }
+    const rot = text.match(/displaymatrix: rotation of (-?\d+(?:\.\d+)?) degrees/) || text.match(/rotate\s*:\s*(-?\d+)/);
+    if (rot) out.rotation = ((Math.round(Number(rot[1]) / 90) * 90) % 360 + 360) % 360;
     const fps = video.match(/,\s*(\d+(?:\.\d+)?)\s*fps/) || video.match(/,\s*(\d+(?:\.\d+)?)\s*tbr/);
     if (fps) out.fps = Number(fps[1]);
   }
@@ -33,6 +35,10 @@ export function probe(ffmpeg, file) {
     out.audioChannels = /mono/.test(audio) ? 1 : /5\.1/.test(audio) ? 6 : 2;
   }
   if (!out.duration) throw new Error(`Could not read the duration of ${file}`);
+  // Size as shown to the viewer (portrait phones/cameras store landscape pixels + rotation).
+  const turned = out.rotation === 90 || out.rotation === 270;
+  out.displayWidth = turned ? out.height : out.width;
+  out.displayHeight = turned ? out.width : out.height;
   return out;
 }
 

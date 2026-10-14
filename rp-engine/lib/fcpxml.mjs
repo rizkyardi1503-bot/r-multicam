@@ -85,8 +85,9 @@ export function planToFcpxml(plan, options = {}) {
     cam,
     clips: cam.clips.map((clip) => {
       const id = `r${nextId++}`;
+      // Asset format = the media's stored size; Final Cut applies the file's rotation itself.
       const clipFormat = formatId(clip.width || width, clip.height || height, frameRate(clip.fps || fps.num / fps.den));
-      const start = timecodeStart(clip.timecode, clip.fps);
+      const start = options.assetStart === "timecode" ? timecodeStart(clip.timecode, clip.fps) : rat(0, 1);
       const name = String(clip.file).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
       const audio = clip.has_audio ? ` hasAudio="1" audioSources="1" audioChannels="${clip.audio_channels || 2}" audioRate="${clip.audio_rate || 48000}"` : "";
       res.push(`    <asset id="${id}" name="${esc(name)}" start="${ts(start)}" duration="${t(floorFrames(clip.duration))}" hasVideo="1" format="${clipFormat}" videoSources="1"${audio}>`,
