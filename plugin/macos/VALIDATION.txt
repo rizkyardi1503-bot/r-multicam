@@ -1,3 +1,9 @@
+v2.3.11.3 PUBLIC validation — 2026-10-14
+- FFmpeg 9.0.2 checksums confirmed from two independent sources (Windows: GitHub release digest and gyan.dev .sha256; macOS: martin-riedl.de .sha256 and a full download hash for arm64 and amd64).
+- Package checksum inventories regenerated and verified; installer version handshakes updated (manifest, host.jsx, panel.js).
+- Installer scripts: PowerShell parse check, bash -n syntax check, simulated download with matching and mismatching checksum.
+- Not verified natively: Premiere Pro panel load and a real FFmpeg download on Windows/macOS hardware.
+
 macOS-only PUBLIC v2.3.11.2 — 2026-10-08
 Automated memory/profile/decoder tests, synthetic BPM/drop regression tests,
 Google/manual authentication checks, ZIP checksum/executable mode and Bash

@@ -2,7 +2,7 @@
 set -euo pipefail
 BASE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$BASE/Plugin"
-VERSION="2.3.11.2"
+VERSION="2.3.11.3"
 [ -d "$SRC" ] || { printf "%s\n" "ERROR: Plugin payload folder is missing."; exit 1; }
 say_line(){ printf '%s\n' "$*"; }
 fail(){ say_line "ERROR: $*"; exit 1; }
@@ -50,11 +50,18 @@ if [ ! -x "$FF" ]; then
 fi
 if [ ! -x "$FF" ]; then
   ARCH="$(uname -m)"
-  case "$ARCH" in arm64) FFARCH="arm64" ;; x86_64) FFARCH="amd64" ;; *) fail "Unsupported Mac architecture: $ARCH" ;; esac
-  say_line "Installing FFmpeg release for macOS $ARCH..."
+  # FFmpeg is pinned to one exact release build per architecture and verified before it is executed.
+  case "$ARCH" in
+    arm64) FFARCH="arm64"; FFBUILD="1789931890_9.0.2"; FFSHA="c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924" ;;
+    x86_64) FFARCH="amd64"; FFBUILD="1789931006_9.0.2"; FFSHA="7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4" ;;
+    *) fail "Unsupported Mac architecture: $ARCH" ;;
+  esac
+  say_line "Installing FFmpeg 9.0.2 for macOS $ARCH..."
   TMP="$(mktemp -d -t rproject-ffmpeg.XXXXXX)"; trap 'rm -rf "$TMP"' EXIT
-  URL="https://ffmpeg.martin-riedl.de/redirect/latest/macos/$FFARCH/release/ffmpeg.zip"
-  curl -fL --retry 3 --connect-timeout 20 "$URL" -o "$TMP/ffmpeg.zip"
+  URL="https://ffmpeg.martin-riedl.de/download/macos/$FFARCH/$FFBUILD/ffmpeg.zip"
+  curl -fL --proto '=https' --retry 3 --connect-timeout 20 "$URL" -o "$TMP/ffmpeg.zip" || fail "Could not download FFmpeg. Check your internet connection and run this installer again."
+  FFACTUAL="$(shasum -a 256 "$TMP/ffmpeg.zip" | awk '{print $1}')"
+  [ "$FFACTUAL" = "$FFSHA" ] || fail "Downloaded FFmpeg failed its integrity check. Run this installer again, or install FFmpeg yourself (for example with Homebrew) and retry."
   ditto -x -k "$TMP/ffmpeg.zip" "$TMP/unpacked"
   CANDIDATE="$(find "$TMP/unpacked" -type f -name ffmpeg | head -n 1 || true)"
   [ -n "$CANDIDATE" ] || fail "Downloaded FFmpeg package did not contain ffmpeg."

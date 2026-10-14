@@ -1,13 +1,15 @@
 {
   "product_id": "rproject.multicam.ai",
   "product_name": "R Project Multicam AI",
-  "version": "2.3.11.2",
+  "version": "2.3.11.3",
   "trial_days": 7,
   "seller_name": "R Project",
-  "purchase_label": "Buy Lifetime — US$200",
-  "purchase_url": "https://wa.me/6282233161680?text=Hi%20R%20Project%2C%0A%0AI%20want%20to%20purchase%20%2F%20confirm%20payment%20for%20R%20Project%20Multicam%20AI%20Lifetime%20License.%0A%0ARegistered%20email%3A%0APayment%20method%3A%20PayPal%20%2F%20Direct%20Bank%20Transfer%0AAmount%3A%20US%24200%0APayment%20date%3A%0A%0AI%20will%20attach%20my%20payment%20receipt%20here.%0A%0APlease%20verify%20my%20payment%20and%20activate%20my%20Lifetime%20License.",
   "release_channel": "public",
   "account_auth_required": true,
-  "lifetime_price_usd": 200,
-  "purchase_mode": "whatsapp-manual"
+  "purchase_mode": "midtrans-checkout",
+  "purchase_url": "https://r-multicam.pages.dev/#pricing",
+  "lifetime_price_idr": 3575000,
+  "lifetime_price_usd_display": 200,
+  "price_note": "Indonesia is shown IDR; other countries are shown USD. Midtrans charges the verified IDR amount.",
+  "support_url": "https://wa.me/6282233161680"
 }

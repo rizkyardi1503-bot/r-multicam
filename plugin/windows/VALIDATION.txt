@@ -1,3 +1,9 @@
+v2.3.11.3 PUBLIC validation — 2026-10-14
+- FFmpeg 9.0.2 checksums confirmed from two independent sources (Windows: GitHub release digest and gyan.dev .sha256; macOS: martin-riedl.de .sha256 and a full download hash for arm64 and amd64).
+- Package checksum inventories regenerated and verified; installer version handshakes updated (manifest, host.jsx, panel.js).
+- Installer scripts: PowerShell parse check, bash -n syntax check, simulated download with matching and mismatching checksum.
+- Not verified natively: Premiere Pro panel load and a real FFmpeg download on Windows/macOS hardware.
+
 v2.3.11.2 PUBLIC — Google login is now included in the Premiere panel.
 Continue with Google opens the official website/system browser, receives a one-use code on localhost, exchanges it using a memory-only PKCE verifier, verifies the account, and applies existing license/device rules. Google passwords are never collected. Email/password remains available. Existing accounts, trial dates and paid licenses are retained. Engine V18 algorithms and PUBLIC cache format are unchanged.
 Windows installer fresh/upgrade/backup/rollback tested in isolated folders. macOS installer/updater syntax and mocked tests pass; native macOS/Premiere and final user Google consent remain unverified.

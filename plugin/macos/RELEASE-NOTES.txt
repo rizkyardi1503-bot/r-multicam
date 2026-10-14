@@ -1,3 +1,12 @@
+v2.3.11.3 PUBLIC — Safer installer (Windows and macOS)
+- FFmpeg is now pinned to version 9.0.2 and its SHA-256 checksum is verified before it is ever run.
+  Windows downloads from the official GitHub release with gyan.dev as a backup source; both serve the identical file.
+- Faster first install on Windows (download progress bar no longer slows the FFmpeg download).
+- Customer packages no longer include internal training tools.
+- Package configuration now matches the real purchase flow (secure checkout in the panel/website).
+- Editing engine, Music Engine V18, Google/email login, trial dates and licenses are unchanged.
+  If FFmpeg is already installed, existing users see no difference.
+
 R Project Multicam AI v2.3.11.2 PUBLIC — macOS ONLY
 Automatic Low Memory mode on macOS with 12 GiB RAM or less, including
 M1 8 GB and Rosetta: CPU-only FFmpeg visual frame sampling, one decoding

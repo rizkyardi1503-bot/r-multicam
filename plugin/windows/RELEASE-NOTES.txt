@@ -1,3 +1,12 @@
+v2.3.11.3 PUBLIC — Safer installer (Windows and macOS)
+- FFmpeg is now pinned to version 9.0.2 and its SHA-256 checksum is verified before it is ever run.
+  Windows downloads from the official GitHub release with gyan.dev as a backup source; both serve the identical file.
+- Faster first install on Windows (download progress bar no longer slows the FFmpeg download).
+- Customer packages no longer include internal training tools.
+- Package configuration now matches the real purchase flow (secure checkout in the panel/website).
+- Editing engine, Music Engine V18, Google/email login, trial dates and licenses are unchanged.
+  If FFmpeg is already installed, existing users see no difference.
+
 v2.3.11.2 PUBLIC — Google login is now included in the Premiere panel.
 Continue with Google opens the official website/system browser, receives a one-use code on localhost, exchanges it using a memory-only PKCE verifier, verifies the account, and applies existing license/device rules. Google passwords are never collected. Email/password remains available. Existing accounts, trial dates and paid licenses are retained. Engine V18 algorithms and PUBLIC cache format are unchanged.
 Windows installer fresh/upgrade/backup/rollback tested in isolated folders. macOS installer/updater syntax and mocked tests pass; native macOS/Premiere and final user Google consent remain unverified.

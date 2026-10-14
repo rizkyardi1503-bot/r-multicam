@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
 $base = $PSScriptRoot
 $src = Join-Path $base 'Plugin'
-$version = '2.3.11.2'
+$version = '2.3.11.3'
 if (-not (Test-Path -LiteralPath $src -PathType Container)) { throw 'Plugin payload folder is missing.' }
 
 # Manual recovery guard: stop only stale R Project one-click updater processes from an older build.
@@ -115,8 +115,34 @@ if (-not $TestRoot) {
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ('rproject-ffmpeg-' + [Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $tmp -Force | Out-Null
         try {
-            $zip = Join-Path $tmp 'ffmpeg-release-essentials.zip'
-            Invoke-WebRequest -Uri 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' -OutFile $zip -UseBasicParsing
+            # FFmpeg is pinned to one exact build and verified before it is ever executed.
+            # Two independent, versioned sources publish the same file (same SHA-256).
+            $ffmpegVersion = '9.0.2'
+            $ffmpegSha256 = '60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba'
+            $ffmpegSources = @(
+                'https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip',
+                'https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip'
+            )
+            $zip = Join-Path $tmp ('ffmpeg-' + $ffmpegVersion + '-essentials_build.zip')
+            $verified = $false
+            # Windows PowerShell's progress bar slows large downloads dramatically.
+            $previousProgress = $ProgressPreference
+            $ProgressPreference = 'SilentlyContinue'
+            foreach ($ffmpegUrl in $ffmpegSources) {
+                try {
+                    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+                    Invoke-WebRequest -Uri $ffmpegUrl -OutFile $zip -UseBasicParsing
+                    if ((Get-SafeSha256 $zip) -eq $ffmpegSha256) { $verified = $true; break }
+                    Write-Host ('FFmpeg download from ' + $ffmpegUrl + ' failed its integrity check; trying the next source.')
+                } catch {
+                    Write-Host ('FFmpeg download from ' + $ffmpegUrl + ' failed: ' + $_.Exception.Message)
+                }
+            }
+            $ProgressPreference = $previousProgress
+            if (-not $verified) {
+                Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+                throw ('Could not download a verified copy of FFmpeg ' + $ffmpegVersion + '. Check your internet connection and run the installer again, or install FFmpeg yourself so ffmpeg.exe is on PATH.')
+            }
             Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $tmp 'unpacked') -Force
             $candidate = Get-ChildItem -LiteralPath (Join-Path $tmp 'unpacked') -Filter 'ffmpeg.exe' -Recurse -File | Select-Object -First 1
             if (-not $candidate) { throw 'FFmpeg package did not contain ffmpeg.exe.' }
