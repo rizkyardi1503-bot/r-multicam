@@ -3,14 +3,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.3",
-    download: base + "?platform=windows&version=2.3.11.3",
-    sha256: "11e14e36c273738fdc7648c811dbd8088ad5fdec8dcf5d28fef368f4605696df"
+    version: "2.3.11.4",
+    download: base + "?platform=windows&version=2.3.11.4",
+    sha256: "c5f042e38d79ca8d1cfa1a076f81d27f60a42f89c187c8715bfeec92d1fa2d17"
   },
   macos: {
-    version: "2.3.11.3",
-    download: base + "?platform=macos&version=2.3.11.3",
-    sha256: "ff5e3a1c38263e9273b2515d854313f399350f2d4be1bdacea434fa25498be2f"
+    version: "2.3.11.4",
+    download: base + "?platform=macos&version=2.3.11.4",
+    sha256: "c75ead269f50a44dd789d0201e4b0b8e62e4800df9e71783771724e7c3e95b8e"
   }
 };
 
@@ -39,7 +39,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), selected.version),
     minimum_version: selected.version,
     grace_period_days: 0,
-    release_notes: "v2.3.11.3 PUBLIC Windows and macOS: safer installer. FFmpeg is pinned to 9.0.2 and its SHA-256 is verified before use (Windows: GitHub release with gyan.dev backup; macOS: martin-riedl.de Apple Silicon/Intel builds); installation stops before changing the plugin if verification fails. Auto pacing is now named Auto Music Map. Internal training tools removed from packages. Editing engine, Music V18, Google/manual login, trial dates and licenses unchanged; existing FFmpeg installs are kept. Save and close Premiere before installing. Native Premiere testing remains recommended on a duplicate project.",
+    release_notes: "v2.3.11.4 PUBLIC Windows and macOS: Camera Roles now steer the cut. The panel reads shot size and direction from each role, so the same kind of angle (for example wide after wide) never follows itself. 4-beat cuts are kept at 25/30 fps and music analysis of long sets is much faster. Save and close Premiere before installing, then generate a fresh plan.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
