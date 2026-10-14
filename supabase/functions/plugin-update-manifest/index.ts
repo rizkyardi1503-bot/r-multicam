@@ -3,14 +3,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.2",
-    download: base + "?platform=windows&version=2.3.11.2",
-    sha256: "4de23a845ef06be4bcf7295c38c6fdb85fac48339d12532110c62e819253f553"
+    version: "2.3.11.3",
+    download: base + "?platform=windows&version=2.3.11.3",
+    sha256: "11e14e36c273738fdc7648c811dbd8088ad5fdec8dcf5d28fef368f4605696df"
   },
   macos: {
-    version: "2.3.11.2",
-    download: base + "?platform=macos&version=2.3.11.2",
-    sha256: "b50d796071cb91683afa902aa30e30e0578f1e983a27afe4cee3b4c291831c55"
+    version: "2.3.11.3",
+    download: base + "?platform=macos&version=2.3.11.3",
+    sha256: "ff5e3a1c38263e9273b2515d854313f399350f2d4be1bdacea434fa25498be2f"
   }
 };
 
@@ -39,7 +39,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), selected.version),
     minimum_version: selected.version,
     grace_period_days: 0,
-    release_notes: "v2.3.11.2 PUBLIC Windows and macOS: Minimum physical camera shot is four beats; optional flash cuts are merged without shifting exact drops. Coverage or close locked-drop conflicts block Apply before timeline changes. Generate a new plan after updating; existing timelines are unchanged and old resume jobs must be regenerated. Mac <=12 GiB Low Memory mode retained: one CPU decoder, up to 24 optional vision samples, smaller batches and memory preflight. Music V18 and Google/manual login retained. Native Premiere/M1 testing remains required. Save and close Premiere before installing. Zero grace period below 2.3.11.2.",
+    release_notes: "v2.3.11.3 PUBLIC Windows and macOS: safer installer. FFmpeg is pinned to 9.0.2 and its SHA-256 is verified before use (Windows: GitHub release with gyan.dev backup; macOS: martin-riedl.de Apple Silicon/Intel builds); installation stops before changing the plugin if verification fails. Auto pacing is now named Auto Music Map. Internal training tools removed from packages. Editing engine, Music V18, Google/manual login, trial dates and licenses unchanged; existing FFmpeg installs are kept. Save and close Premiere before installing. Native Premiere testing remains recommended on a duplicate project.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

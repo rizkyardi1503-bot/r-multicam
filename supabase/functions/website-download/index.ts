@@ -5,7 +5,7 @@ const filenames: Record<string, string> = {
   windows: "R-Project-Multicam-AI-Windows-v2.3.11.3-PUBLIC.zip",
   macos: "R-Project-Multicam-AI-macOS-v2.3.11.3-PUBLIC.zip"
 };
-const fallbackBase = "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/17a413e4b1a7ef8dc8c016c63d7579e1a71b4720/site/downloads/";
+const fallbackBase = "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/f1f41a080fdc6425e191b8c7e6055c65ac4cd113/site/downloads/";
 const fallbackUrls: Record<string, string> = {
   windows: fallbackBase + filenames.windows,
   macos: fallbackBase + filenames.macos

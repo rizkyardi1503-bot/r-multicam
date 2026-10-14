@@ -1,11 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const latest: Record<string, string> = { windows: "2.3.11.2", macos: "2.3.11.2" };
+const latest: Record<string, string> = { windows: "2.3.11.3", macos: "2.3.11.3" };
 const rawBase = "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/2d21a5f088155034ff1868b41b3690e13b18460d/site/downloads/";
 const releases: Record<string, { windows?: string; macos?: string }> = {
   "2.3.11.3": {
-    windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/17a413e4b1a7ef8dc8c016c63d7579e1a71b4720/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.3-PUBLIC.zip",
-    macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/17a413e4b1a7ef8dc8c016c63d7579e1a71b4720/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.3-PUBLIC.zip"
+    windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/f1f41a080fdc6425e191b8c7e6055c65ac4cd113/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.3-PUBLIC.zip",
+    macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/f1f41a080fdc6425e191b8c7e6055c65ac4cd113/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.3-PUBLIC.zip"
   },
   "2.3.11.2": {
     windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/58a692fada04e3ba3c17b28aa5ddc028679e7c97/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.2-PUBLIC.zip",
