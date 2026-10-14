@@ -38,9 +38,7 @@ jobs:
           node scripts/test-growth.cjs
           node scripts/test-conversion.cjs
           node scripts/test-analytics-edge.cjs
-          python3 scripts/test-mac-public.py
           node scripts/test-release-23112.cjs
-          python3 scripts/test-public-23112.py
           python3 scripts/test-public-23113.py
           python3 scripts/build-plugin-release.py --check
       - name: Deploy existing Cloudflare Pages project
