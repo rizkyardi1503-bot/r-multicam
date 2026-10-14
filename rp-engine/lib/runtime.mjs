@@ -52,7 +52,7 @@ export function pluginVersion(dir) {
 }
 
 /** Create a fresh engine instance (one per job, so no state leaks between calls). */
-export function loadEngine(pluginDir) {
+export function loadEngine(pluginDir, seed) {
   const dir = resolvePluginDir(pluginDir);
   const memory = new Map();
   const sandbox = {
@@ -71,6 +71,9 @@ export function loadEngine(pluginDir) {
   };
   sandbox.globalThis = sandbox;
   const context = vm.createContext(sandbox, { name: "rp-engine" });
+  // The director's anti-repeat step uses Math.random. Seed it so the same inputs always
+  // give the same plan (set RP_ENGINE_SEED to get a different, still reproducible, variation).
+  vm.runInContext(`(function(seed){var a=seed>>>0;Math.random=function(){a=(a+0x6D2B79F5)>>>0;var t=a;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};})(${Number(seed ?? process.env.RP_ENGINE_SEED ?? 1503) >>> 0})`, context);
   for (const file of ENGINE_FILES) {
     const code = fs.readFileSync(path.join(dir, file), "utf8");
     vm.runInContext(code, context, { filename: path.join(dir, file) });

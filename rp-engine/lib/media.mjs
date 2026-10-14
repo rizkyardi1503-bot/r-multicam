@@ -1,17 +1,20 @@
 // Media helpers that only need the FFmpeg binary the plugin installer already ships
 // (ffprobe is not required): probing, and audio-based camera synchronisation.
 import { spawn, spawnSync } from "node:child_process";
+import { fileKey, cacheGet, cachePut } from "./cache.mjs";
 
 /** Probe a media file using `ffmpeg -i` (works with the plugin's bundled FFmpeg). */
 export function probe(ffmpeg, file) {
   const r = spawnSync(ffmpeg, ["-hide_banner", "-nostdin", "-i", file], { encoding: "utf8", windowsHide: true });
   const text = String(r.stderr || "");
   if (/No such file|Invalid data found|does not exist/i.test(text)) throw new Error(`Cannot read media: ${file}`);
-  const out = { file, duration: null, start: 0, hasVideo: false, hasAudio: false, width: null, height: null, fps: null, timecode: null, audioRate: null, audioChannels: null };
+  const out = { file, duration: null, start: 0, hasVideo: false, hasAudio: false, width: null, height: null, fps: null, timecode: null, created: null, audioRate: null, audioChannels: null };
   const d = text.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
   if (d) out.duration = Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]);
   const s = text.match(/start:\s*(-?\d+(?:\.\d+)?)/);
   if (s) out.start = Number(s[1]);
+  const created = text.match(/creation_time\s*:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/);
+  if (created) { const ms = Date.parse(created[1].endsWith("Z") ? created[1] : created[1] + "Z"); if (Number.isFinite(ms)) out.created = ms / 1000; }
   const tc = text.match(/timecode\s*:\s*(\d{2}:\d{2}:\d{2}[:;]\d{2})/);
   if (tc) out.timecode = tc[1];
   const video = text.split("\n").find((l) => /Stream #.*Video:/.test(l) && !/attached pic/.test(l));
@@ -50,7 +53,7 @@ function onsetEnvelope(ffmpeg, file, start, length) {
     args.push("-map", "0:a:0", "-vn", "-ac", "1", "-ar", "8000", "-af", "highpass=f=30,lowpass=f=3500", "-f", "f32le", "pipe:1");
     const proc = spawn(ffmpeg, args, { windowsHide: true });
     const hop = 8000 / ENV_RATE;
-    const env = [];
+    const env = [], levels = [];
     let carry = Buffer.alloc(0), acc = 0, n = 0, prev = 0, err = "";
     proc.stdout.on("data", (chunk) => {
       const b = carry.length ? Buffer.concat([carry, chunk]) : chunk;
@@ -61,6 +64,7 @@ function onsetEnvelope(ffmpeg, file, start, length) {
         if (++n === hop) {
           const level = Math.log10(1e-6 + Math.sqrt(acc / hop));
           env.push(Math.max(0, level - prev));
+          levels.push(Math.max(-4, level));
           prev = level; acc = 0; n = 0;
         }
       }
@@ -68,7 +72,7 @@ function onsetEnvelope(ffmpeg, file, start, length) {
     });
     proc.stderr.on("data", (d) => { err = (err + d).slice(-1000); });
     proc.on("error", reject);
-    proc.on("close", (code) => (code === 0 ? resolve(Float64Array.from(env)) : reject(new Error(`FFmpeg could not read audio from ${file}: ${err}`))));
+    proc.on("close", (code) => (code === 0 ? resolve({ onset: Float64Array.from(env), level: Float64Array.from(levels) }) : reject(new Error(`FFmpeg could not read audio from ${file}: ${err}`))));
   });
 }
 
@@ -104,52 +108,92 @@ function zeroMean(a) {
 }
 
 /**
- * Find where a camera sits on the music timeline from its own scratch audio.
+ * Find where a camera clip sits on the music timeline from its own scratch audio.
  * Returns { offset, confidence }: timeline time = camera time + offset
- * (offset 12.5 means the camera's first frame lands at 12.5 s on the music timeline).
+ * (offset 12.5 means the clip's first frame lands at 12.5 s on the music timeline).
+ * Pass the same `cache` object for every clip of one music file: the music envelope and
+ * its spectrum are then computed once.
  */
 export async function syncByAudio(ffmpeg, musicFile, cameraFile, opts = {}) {
   const excerptStart = Number(opts.excerptStart) || 0;
   const excerpt = Number(opts.excerptSeconds) || 120;
-  const [music, cam] = await Promise.all([
-    opts.musicEnvelope ? Promise.resolve(opts.musicEnvelope) : onsetEnvelope(ffmpeg, musicFile, 0, 0),
-    onsetEnvelope(ffmpeg, cameraFile, excerptStart, excerpt)
-  ]);
-  if (cam.length < ENV_RATE * 3) throw new Error(`Camera audio too short to sync: ${cameraFile}`);
-  const a = zeroMean(music), b = zeroMean(cam);
-  let size = 1; while (size < a.length + b.length) size <<= 1;
-  const ar = new Float64Array(size), ai = new Float64Array(size), br = new Float64Array(size), bi = new Float64Array(size);
-  ar.set(a); br.set(b);
-  fft(ar, ai, false); fft(br, bi, false);
-  for (let i = 0; i < size; i++) { // conj(B) * A
-    const r = ar[i] * br[i] + ai[i] * bi[i], im = ai[i] * br[i] - ar[i] * bi[i];
-    ar[i] = r; ai[i] = im;
+  const cache = opts.cache || {};
+  if (!cache.music) {
+    const name = `envelope-${fileKey(musicFile, ENV_RATE)}.v8`;
+    let m = cacheGet(opts.cacheDir, name);
+    if (!m) { m = await onsetEnvelope(ffmpeg, musicFile, 0, 0); cachePut(opts.cacheDir, name, m); }
+    cache.music = { onset: zeroMean(m.onset), level: zeroMean(m.level) };
+    cache.spectra = new Map();
   }
-  fft(ar, ai, true);
-  let best = -Infinity, bestLag = 0;
+  const cam = await onsetEnvelope(ffmpeg, cameraFile, excerptStart, excerpt);
+  if (cam.onset.length < ENV_RATE * 3) throw new Error(`Camera audio too short to sync: ${cameraFile}`);
+  const na = cache.music.onset.length, nb = cam.onset.length;
+  let size = 1; while (size < na + nb) size <<= 1;
+  if (!cache.spectra.has(size)) {
+    const spec = {};
+    for (const key of ["onset", "level"]) {
+      const re = new Float64Array(size), im = new Float64Array(size); re.set(cache.music[key]); fft(re, im, false);
+      spec[key] = { re, im };
+    }
+    cache.spectra.set(size, spec);
+  }
+  const A = cache.spectra.get(size);
+  // Prefix sums of the music cues' energy, for normalised cross-correlation: each lag is
+  // scored against the music segment it overlaps, so scores do not shrink with set length.
+  if (!cache.energy) {
+    cache.energy = {};
+    for (const key of ["onset", "level"]) {
+      const m = cache.music[key], e = new Float64Array(m.length + 1);
+      for (let i = 0; i < m.length; i++) e[i + 1] = e[i] + m[i] * m[i];
+      cache.energy[key] = e;
+    }
+  }
+  const minOverlap = Math.max(ENV_RATE * 3, Math.floor(nb * 0.5));
+  const lagOf = (i) => (i < size - nb ? i : i - size); // circular index -> signed lag
+  const overlapOf = (lag) => Math.min(na, lag + nb) - Math.max(0, lag);
+  // Optional search window (seconds of clip offset) when the camera clock predicts where the clip is.
+  const hasWindow = Number.isFinite(opts.expectedOffset) && Number.isFinite(opts.searchRadius);
+  const inWindow = (lag) => !hasWindow || Math.abs(lag / ENV_RATE - excerptStart - opts.expectedOffset) <= opts.searchRadius;
+  const valid = (lag) => lag <= na - 1 && lag >= -(nb - 1) && overlapOf(lag) >= minOverlap && inWindow(lag);
+  // Two cues, averaged: the onset envelope (beat-sharp, but repeats every beat) and the
+  // loudness contour (breakdowns, drops, crowd — places the clip in the right region).
+  const sumCorr = new Float64Array(size);
+  for (const key of ["onset", "level"]) {
+    const ar = new Float64Array(size), ai = new Float64Array(size), br = new Float64Array(size), bi = new Float64Array(size);
+    const bz = zeroMean(cam[key]); br.set(bz); fft(br, bi, false);
+    for (let i = 0; i < size; i++) { // conj(B) * A
+      ar[i] = A[key].re[i] * br[i] + A[key].im[i] * bi[i]; ai[i] = A[key].im[i] * br[i] - A[key].re[i] * bi[i];
+    }
+    fft(ar, ai, true);
+    const e = cache.energy[key];
+    const bPrefix = new Float64Array(nb + 1); for (let i = 0; i < nb; i++) bPrefix[i + 1] = bPrefix[i] + bz[i] * bz[i];
+    for (let i = 0; i < size; i++) {
+      const lag = lagOf(i); if (!valid(lag)) continue;
+      const s0 = Math.max(0, lag), s1 = Math.min(na, lag + nb);
+      const musicNorm = Math.sqrt(Math.max(1e-12, e[s1] - e[s0]));
+      const camNorm = Math.sqrt(Math.max(1e-12, bPrefix[s1 - lag] - bPrefix[s0 - lag]));
+      sumCorr[i] += ar[i] / (musicNorm * camNorm) / 2;
+    }
+  }
+  let best = -Infinity, bestLag = 0, sum = 0, sq = 0, count = 0;
   for (let i = 0; i < size; i++) {
-    const lag = i < size - b.length ? i : i - size; // circular index -> signed lag
-    if (lag > a.length - 1 || lag < -(b.length - 1)) continue;
-    if (ar[i] > best) { best = ar[i]; bestLag = lag; }
+    const lag = lagOf(i); if (!valid(lag)) continue;
+    const v = sumCorr[i]; sum += v; sq += v * v; count++;
+    if (v > best) { best = v; bestLag = lag; }
   }
   let second = -Infinity;
   for (let i = 0; i < size; i++) {
-    const lag = i < size - b.length ? i : i - size;
-    if (Math.abs(lag - bestLag) < ENV_RATE / 2 || lag > a.length - 1 || lag < -(b.length - 1)) continue;
-    if (ar[i] > second) second = ar[i];
+    const lag = lagOf(i);
+    if (!valid(lag) || Math.abs(lag - bestLag) < ENV_RATE / 2) continue;
+    if (sumCorr[i] > second) second = sumCorr[i];
   }
-  // Peak prominence over all candidate lags (z-score) plus margin over the best rival
-  // lag more than 0.5 s away. Very repetitive music gives small margins (rival peaks one
-  // beat apart), so both numbers are reported and the confidence uses both.
-  let sum = 0, sq = 0, count = 0;
-  for (let i = 0; i < size; i++) {
-    const lag = i < size - b.length ? i : i - size;
-    if (lag > a.length - 1 || lag < -(b.length - 1)) continue;
-    sum += ar[i]; sq += ar[i] * ar[i]; count++;
-  }
+  // score = mean cosine similarity of both cues; prominence = z-score of the peak over all
+  // lags; peakRatio = margin over the best rival lag more than 0.5 s away.
   const mean = sum / Math.max(1, count), sd = Math.sqrt(Math.max(1e-12, sq / Math.max(1, count) - mean * mean));
   const z = (best - mean) / sd;
   const ratio = second > 0 ? best / second : 10;
-  const confidence = z >= 12 && ratio >= 1.05 ? "high" : z >= 7 ? "medium" : "low";
-  return { offset: Math.round((bestLag / ENV_RATE - excerptStart) * 1000) / 1000, confidence, score: Math.round(best * 1000) / 1000, prominence: Math.round(z * 10) / 10, peakRatio: Math.round(ratio * 100) / 100, musicEnvelope: music };
+  const confidence = hasWindow
+    ? (best >= 0.35 && ratio >= 1.03 ? "high" : best >= 0.2 && ratio >= 1.01 ? "medium" : "low")
+    : (best >= 0.4 && ratio >= 1.05 && z >= 4 ? "high" : best >= 0.25 && ratio >= 1.03 && z >= 4 ? "medium" : "low");
+  return { offset: Math.round((bestLag / ENV_RATE - excerptStart) * 1000) / 1000, confidence, score: Math.round(best * 1000) / 1000, prominence: Math.round(z * 10) / 10, peakRatio: Math.round(ratio * 100) / 100 };
 }

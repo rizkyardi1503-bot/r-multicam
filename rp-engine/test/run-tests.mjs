@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { TOOLS } from "../lib/tools.mjs";
 import { validatePlan } from "../lib/plan-format.mjs";
 import { planToFcpxml } from "../lib/fcpxml.mjs";
+import { sessionAnchors } from "../lib/session.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FFMPEG = process.env.RP_FFMPEG || "ffmpeg";
@@ -45,19 +46,31 @@ function ff(args) { const r = spawnSync(FFMPEG, ["-v", "error", "-y", ...args], 
 
 const music = path.join(dir, "song.wav");
 fs.writeFileSync(music, song());
-// offset = timeline position of the camera's first frame.
-const CAMS = [{ name: "wide", offset: 0, color: "red" }, { name: "dj", offset: 6, color: "green" }, { name: "crowd", offset: -3, color: "blue" }];
+// offset = timeline position of the clip's first frame. The DJ camera has two clips plus a
+// stray clip of room noise that is not part of the set (it must be left out).
+const CAMS = [
+  { name: "wide", color: "red", clips: [{ offset: 0, len: DUR }] },
+  { name: "dj", color: "green", clips: [{ offset: 6, len: 30 }, { offset: 50, len: DUR - 50 }, { stray: true, len: 20 }] },
+  { name: "crowd", color: "blue", clips: [{ offset: -3, len: DUR + 3 }] }
+];
 for (const c of CAMS) {
-  const file = path.join(dir, `${c.name}.mp4`), len = DUR - Math.max(0, c.offset);
-  const audio = c.offset >= 0
-    ? ["-ss", String(c.offset), "-i", music]
-    : ["-f", "lavfi", "-i", `anoisesrc=d=${-c.offset}:c=pink:a=0.02:r=${SR}`, "-i", music];
-  const filter = c.offset >= 0
-    ? `[1:a]volume=0.6,aecho=0.6:0.3:40:0.2[a]`
-    : `[1:a]volume=0.02[n];[2:a]volume=0.6,aecho=0.6:0.3:40:0.2[m];[n][m]concat=n=2:v=0:a=1[a]`;
-  ff(["-f", "lavfi", "-i", `color=c=${c.color}:size=320x180:rate=25`, ...audio, "-filter_complex", filter, "-map", "0:v", "-map", "[a]", "-t", String(len), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", file]);
-  c.file = file;
+  c.files = c.clips.map((k, j) => {
+    const file = path.join(dir, `${c.name}_${j + 1}.mp4`);
+    let audio, filter;
+    if (k.stray) { audio = ["-f", "lavfi", "-i", `anoisesrc=d=${k.len}:c=brown:a=0.3:r=${SR}`]; filter = "[1:a]volume=1[a]"; }
+    else if (k.offset >= 0) { audio = ["-ss", String(k.offset), "-i", music]; filter = "[1:a]volume=0.6,aecho=0.6:0.3:40:0.2[a]"; }
+    else {
+      audio = ["-f", "lavfi", "-i", `anoisesrc=d=${-k.offset}:c=pink:a=0.02:r=${SR}`, "-i", music];
+      filter = "[1:a]volume=0.02[n];[2:a]volume=0.6,aecho=0.6:0.3:40:0.2[m];[n][m]concat=n=2:v=0:a=1[a]";
+    }
+    // Camera clock: the DJ camera's clock runs 1 h 7 s off, but consistently (stray clip too).
+    const created = c.name === "dj" ? new Date(Date.UTC(2026, 9, 10, 13, 0, 7) + (k.stray ? 30 : k.offset) * 1000).toISOString() : null;
+    ff(["-f", "lavfi", "-i", `color=c=${c.color}:size=320x180:rate=25`, ...audio, "-filter_complex", filter, "-map", "0:v", "-map", "[a]", ...(created ? ["-metadata", `creation_time=${created}`] : []), "-t", String(Math.min(k.len, DUR - Math.max(0, k.offset || 0))), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", file]);
+    return file;
+  });
 }
+const seconds = (v) => { if (v === "0s") return 0; const m = v.match(/^(\d+)(?:\/(\d+))?s$/); return Number(m[1]) / Number(m[2] || 1); };
+const frames25 = (v) => Math.round(seconds(v) * 25);
 
 // ---------- tests ----------
 await test("analyze_music finds tempo and both drops", async () => {
@@ -72,12 +85,18 @@ await test("analyze_music finds tempo and both drops", async () => {
 const planPath = path.join(dir, "set.rpplan.json"), fcpPath = path.join(dir, "set.fcpxml");
 let digest;
 await test("plan_multicam syncs cameras and writes a valid plan + FCPXML", async () => {
-  digest = await tool("plan_multicam").run({ music, cameras: CAMS.map((c, i) => ({ file: c.file, role: ["Master Wide", "DJ Close-Up", "Crowd Reaction"][i] })), output: planPath, fcpxml: fcpPath });
+  digest = await tool("plan_multicam").run({ music, cameras: CAMS.map((c, i) => ({ files: c.files, role: ["Master Wide", "DJ Close-Up", "Crowd Reaction"][i] })), output: planPath, fcpxml: fcpPath });
+  const saved = JSON.parse(fs.readFileSync(planPath, "utf8"));
   CAMS.forEach((c, i) => {
-    const got = digest.cameras[i];
-    assert.ok(Math.abs(got.offset - c.offset) <= 0.04 + 1e-9, `${c.name} offset ${got.offset} != ${c.offset}`);
-    assert.equal(got.sync.method, "audio");
+    const expected = c.clips.filter((k) => !k.stray).map((k) => k.offset);
+    const got = saved.cameras[i].clips.map((k) => k.offset);
+    assert.equal(got.length, expected.length, `${c.name}: ${got.length} clips placed, expected ${expected.length}`);
+    got.forEach((o, j) => assert.ok(Math.abs(o - expected[j]) <= 0.04 + 1e-9, `${c.name} clip ${j + 1} offset ${o} != ${expected[j]}`));
+    saved.cameras[i].clips.forEach((k) => assert.equal(k.sync.method, c.name === "dj" ? "audio+clock" : "audio"));
   });
+  assert.equal(saved.cameras[1].excluded_clips.length, 1, "stray clip should be excluded");
+  assert.match(saved.cameras[1].excluded_clips[0].file, /dj_3\.mp4$/);
+  assert.ok(saved.cameras[1].clock, "DJ camera clock anchor should be found");
   assert.equal(digest.fps, "25/1");
   assert.ok(digest.cut_count >= 10, `cuts ${digest.cut_count}`);
 });
@@ -87,8 +106,8 @@ await test("plan is contiguous, frame exact and uses footage only where it exist
   assert.deepEqual(validatePlan(plan), []);
   assert.equal(plan.cuts[0].start_frame, 0);
   assert.equal(plan.cuts.at(-1).end_frame, plan.timeline.duration_frames);
-  // Camera "dj" starts at 6 s: it must not be used before then.
-  assert.ok(plan.cuts.filter((c) => c.camera === 1).every((c) => c.start >= 6 - 1e-6));
+  // Camera "dj" has footage only at 6-36 s and 50 s-end.
+  assert.ok(plan.cuts.filter((c) => c.camera === 1).every((c) => (c.start >= 6 - 1e-6 && c.end <= 36 + 1e-6) || c.start >= 50 - 1e-6));
 });
 
 await test("drops land on a cut with a camera change", async () => {
@@ -111,20 +130,38 @@ await test("FCPXML mirrors the plan", async () => {
   const xml = fs.readFileSync(fcpPath, "utf8");
   assert.match(xml, /<fcpxml version="1\.10">/);
   assert.equal((xml.match(/<mc-angle /g) || []).length, CAMS.length + 1);
-  const frames = (v) => (v === "0s" ? 0 : Number(v.match(/^(\d+)\/25s$/)[1]));
-  const clips = [...xml.matchAll(/<mc-clip [^>]*offset="([^"]+)"[^>]*duration="([^"]+)"/g)].map((m) => [frames(m[1]), frames(m[2])]);
+  const clips = [...xml.matchAll(/<mc-clip [^>]*offset="([^"]+)"[^>]*duration="([^"]+)"/g)].map((m) => [frames25(m[1]), frames25(m[2])]);
   const used = plan.cuts.filter((c) => c.camera >= 0);
   assert.equal(clips.length, used.length);
   clips.forEach(([off, dur], i) => { assert.equal(off, used[i].start_frame); assert.equal(dur, used[i].end_frame - used[i].start_frame); });
   // Crowd camera started 3 s before the music: its clip is trimmed by 75 frames, no gap.
-  assert.match(xml, /angleID="cam3">\s*<asset-clip [^>]*offset="0s" start="75\/25s"/);
-  // DJ camera starts 6 s in: 150-frame gap first.
-  assert.match(xml, /angleID="cam2">\s*<gap [^>]*duration="150\/25s"/);
+  assert.match(xml, /angleID="cam3">\s*<asset-clip [^>]*offset="0s" start="3s"/);
+  // DJ camera: 6 s gap, clip 1, gap until 50 s, clip 2.
+  assert.match(xml, /angleID="cam2">\s*<gap [^>]*duration="6s"\/>\s*<asset-clip [^>]*offset="6s"[^>]*duration="30s"[^>]*\/>\s*<gap [^>]*offset="36s"[^>]*duration="14s"\/>\s*<asset-clip [^>]*offset="50s"/);
   assert.equal((xml.match(/<marker /g) || []).length, plan.music.drops.length);
   // Well-formed: balanced tags.
   const open = (xml.match(/<(?!\/|\?|!)[a-z-]+[^>]*[^/]>/g) || []).length, close = (xml.match(/<\/[a-z-]+>/g) || []).length;
   assert.equal(open, close);
-  assert.match(planToFcpxml(plan, { mediaDir: "/Volumes/Footage" }), /src="file:\/\/\/Volumes\/Footage\/wide\.mp4"/);
+  assert.match(planToFcpxml(plan, { mediaDir: "/Volumes/Footage" }), /src="file:\/\/\/Volumes\/Footage\/wide_1\.mp4"/);
+});
+
+await test("session clock links cameras across music parts", async () => {
+  // Part 2 starts 15600 s after part 1 (by every camera's clock). Camera A is well synced
+  // in part 1 only, camera B in part 2 only, and both have one weak match in the other part.
+  const k = (created, offset, confidence) => ({ created, offset, sync: { method: "audio", confidence } });
+  const passes = [
+    { cameras: [[k(1000, 100, "high"), k(2000, 1100, "high")], [k(50000, 300, "medium")]] },
+    { cameras: [[k(16600, 100 + 15600 - 15600, "medium")], [k(70000, 4000, "high"), k(70500, 4500, "high")]] }
+  ];
+  // Camera A part 1 anchor = 900; camera B part 2 anchor = 66000, part 1 weak anchor = 49700.
+  passes[1].cameras[0][0].offset = 16600 - (900 + 15600);           // = 100, consistent
+  passes[0].cameras[1][0].offset = 50000 - (66000 - 15600);         // = -400, consistent
+  const s = sessionAnchors(passes);
+  assert.equal(Math.round(s.shift[1]), 15600);
+  assert.equal(s.anchors[0][0].source, "this part");
+  assert.equal(Math.round(s.anchors[1][0].anchor), 900 + 15600);
+  assert.match(s.anchors[1][0].source, /part 1 via session clock/);
+  assert.equal(Math.round(s.anchors[0][1].anchor), 66000 - 15600);
 });
 
 await test("published schema matches the engine schema", async () => {

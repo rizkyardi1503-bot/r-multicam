@@ -45,11 +45,15 @@ export function buildPlan({ engine, analysis, cameras, points, snapshot, directo
   const durationFrames = toFrame(duration);
   const music = musicSummary(result, duration, musicFile, cadences, analysis.info);
   const beat = Number(result.beatInterval) || 0.5;
+  const clipOut = (c) => ({
+    file: c.file, offset: r6(c.offset), offset_frames: toFrame(c.offset), duration: r6(c.duration),
+    has_audio: c.hasAudio, width: c.width, height: c.height, fps: c.fps, timecode: c.timecode,
+    audio_rate: c.audioRate, audio_channels: c.audioChannels, created: c.created ? new Date(c.created * 1000).toISOString() : null, sync: c.sync
+  });
   const camOut = cameras.map((c, i) => ({
-    index: i, angle_id: `cam${i + 1}`, name: c.name, role: c.role, file: c.file,
-    offset: r6(c.offset), offset_frames: toFrame(c.offset), duration: r6(c.duration),
-    has_video: c.hasVideo, has_audio: c.hasAudio, width: c.width, height: c.height, fps: c.fps,
-    timecode: c.timecode, audio_rate: c.audioRate, audio_channels: c.audioChannels, sync: c.sync
+    index: i, angle_id: `cam${i + 1}`, name: c.name, role: c.role, clock: c.clock || null,
+    clips: c.clips.map(clipOut),
+    excluded_clips: (c.excluded || []).map((x) => ({ file: x.file, reason: x.reason, ...(x.offset != null ? { offset: r6(x.offset) } : {}), ...(x.sync ? { sync: x.sync } : {}) }))
   }));
 
   const decisions = director.choices.map((ch) => {
@@ -77,7 +81,7 @@ export function buildPlan({ engine, analysis, cameras, points, snapshot, directo
     format: PLAN_FORMAT,
     version: PLAN_VERSION,
     generator: { name: "R Project Multicam AI Engine", model: director.model || "R Project Auto Music Map V14", plugin_version: engine.version, created_at: new Date().toISOString() },
-    timeline: { fps: { num: fps.num, den: fps.den }, frame_duration: `${fps.den}/${fps.num}`, duration: r6(duration), duration_frames: durationFrames, width: (cameras.find((c) => c.width) || {}).width || 1920, height: (cameras.find((c) => c.height) || {}).height || 1080 },
+    timeline: { fps: { num: fps.num, den: fps.den }, frame_duration: `${fps.den}/${fps.num}`, duration: r6(duration), duration_frames: durationFrames, width: (cameras.flatMap((c) => c.clips).find((c) => c.width) || {}).width || 1920, height: (cameras.flatMap((c) => c.clips).find((c) => c.height) || {}).height || 1080 },
     music,
     cameras: camOut,
     edit_points: points.map(r6),
@@ -85,6 +89,14 @@ export function buildPlan({ engine, analysis, cameras, points, snapshot, directo
     cuts: cuts.map(({ index, start, end, duration: d, start_frame, end_frame, camera, angle_id, drop, reason, confidence, structure_lock }) => ({ index, start, end, duration: d, start_frame, end_frame, camera, angle_id, drop, reason, confidence, structure_lock })),
     summary: director.summaries || []
   };
+}
+
+/** True when [start, end] is fully inside the union of the clips' timeline ranges. */
+function covered(clips, start, end, tol) {
+  const ranges = clips.map((k) => [k.offset, k.offset + k.duration]).sort((a, b) => a[0] - b[0]);
+  let reach = start;
+  for (const [s, e] of ranges) { if (s > reach + tol) break; if (e > reach) reach = e; if (reach >= end - tol) return true; }
+  return reach >= end - tol;
 }
 
 /** Structural validation shared by every exporter. Returns a list of problems (empty = valid). */
@@ -103,8 +115,11 @@ export function validatePlan(plan) {
   const frame = tl.fps.den / tl.fps.num;
   plan.cameras.forEach((c, i) => {
     need(c.index === i, `cameras[${i}].index must be ${i}`);
-    need(typeof c.file === "string" && c.file.length > 0, `cameras[${i}].file is required`);
-    need(Number.isFinite(c.offset) && Number.isFinite(c.duration) && c.duration > 0, `cameras[${i}] needs numeric offset and positive duration`);
+    need(Array.isArray(c.clips), `cameras[${i}].clips must be an array`);
+    (c.clips || []).forEach((k, j) => {
+      need(typeof k.file === "string" && k.file.length > 0, `cameras[${i}].clips[${j}].file is required`);
+      need(Number.isFinite(k.offset) && Number.isFinite(k.duration) && k.duration > 0, `cameras[${i}].clips[${j}] needs numeric offset and positive duration`);
+    });
   });
   let cursor = 0;
   plan.cuts.forEach((c, i) => {
@@ -113,8 +128,8 @@ export function validatePlan(plan) {
     cursor = c.end_frame;
     need(c.camera === -1 || (Number.isInteger(c.camera) && c.camera >= 0 && c.camera < plan.cameras.length), `cuts[${i}].camera ${c.camera} is not a camera index`);
     if (c.camera >= 0 && plan.cameras[c.camera]) {
-      const cam = plan.cameras[c.camera], s = c.start_frame * frame, e = c.end_frame * frame, tol = frame / 2 + 1e-6;
-      need(s >= cam.offset - tol && e <= cam.offset + cam.duration + tol, `cuts[${i}] uses ${cam.angle_id || "camera " + c.camera} outside its recorded range`);
+      const cam = plan.cameras[c.camera], tol = frame / 2 + 1e-6;
+      need(covered(cam.clips || [], c.start_frame * frame, c.end_frame * frame, tol), `cuts[${i}] uses ${cam.angle_id || "camera " + c.camera} outside its recorded range`);
     }
     if (i > 0) need(plan.cuts[i - 1].camera !== c.camera, `cuts[${i}] repeats the previous camera (merge it)`);
   });

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeMusic, planMulticam } from "./engine.mjs";
+import { planSession } from "./session.mjs";
 import { buildPlan, validatePlan } from "./plan-format.mjs";
 import { planToFcpxml } from "./fcpxml.mjs";
 
@@ -33,7 +34,7 @@ function planDigest(plan, extra = {}) {
     bpm: plan.music.bpm,
     bpm_confidence: plan.music.bpm_confidence,
     drops: plan.music.drops.map((d) => ({ time: d.time, build_start: d.build_start, confidence: d.confidence })),
-    cameras: plan.cameras.map((c) => ({ angle: c.angle_id, role: c.role, offset: c.offset, sync: c.sync })),
+    cameras: plan.cameras.map((c) => ({ angle: c.angle_id, role: c.role, clips_used: c.clips.length, clips_excluded: (c.excluded_clips || []).length, offsets: c.clips.slice(0, 6).map((k) => k.offset), sync: c.clips.map((k) => k.sync.confidence) })),
     cut_count: plan.cuts.length,
     longest_shot_seconds: Math.max(...plan.cuts.map((c) => c.duration)),
     screen_time_seconds: Object.fromEntries(Object.entries(used).map(([k, v]) => [k, Math.round(v * 100) / 100])),
@@ -44,9 +45,9 @@ function planDigest(plan, extra = {}) {
 
 const cameraSchema = {
   type: "object",
-  required: ["file"],
   properties: {
-    file: { type: "string", description: "Absolute path to the camera video file." },
+    file: { type: "string", description: "Absolute path to the camera video file (single-clip camera)." },
+    files: { type: "array", items: { type: "string" }, description: "All clips recorded by this camera (each one is synced by audio)." },
     role: { type: "string", description: "Camera role, e.g. 'Master Wide', 'DJ Close-Up', 'Crowd Reaction'." },
     name: { type: "string" },
     offset: { type: "number", description: "Seconds on the music timeline where this camera's first frame lands. Omit to sync automatically from the camera's own audio." },
@@ -87,7 +88,10 @@ export const TOOLS = [
       type: "object",
       required: ["music", "cameras", "output"],
       properties: {
-        music: { type: "string", description: "Absolute path to the master music / DJ-set audio." },
+        music: {
+          description: "Absolute path to the master music / DJ-set audio, or an array of paths when the night was recorded in several parts (each part gets its own plan; camera clocks link the parts).",
+          anyOf: [{ type: "string" }, { type: "array", items: { type: "string" }, minItems: 1 }]
+        },
         cameras: { type: "array", minItems: 1, items: cameraSchema },
         output: { type: "string", description: "Where to save the plan JSON (e.g. /Users/me/Edits/set.rpplan.json)." },
         fcpxml: { type: "string", description: "Optional: also write a Final Cut Pro .fcpxml here." },
@@ -95,20 +99,28 @@ export const TOOLS = [
         drop_camera: { type: "integer", description: "0-based camera index to use on every drop (default automatic)." },
         sensitivity: { type: "string", enum: ["conservative", "balanced", "aggressive"] },
         vision: { type: "boolean", description: "Sample video frames to avoid dark/blurry angles (slower)." },
-        fps: { type: "number", description: "Override timeline frame rate (default: first camera's rate)." }
+        fps: { type: "number", description: "Override timeline frame rate (default: first camera's rate)." },
+        cache_dir: { type: "string", description: "Folder for resumable caches (music analysis and clip sync are reused on the next run)." },
+        min_sync_confidence: { type: "string", enum: ["high", "medium", "low"], description: "Leave out clips synced below this confidence (default medium)." }
       }
     },
     async run(args, progress) {
-      const plan = await planMulticam({
-        music: args.music, cameras: args.cameras, cadences: args.cadences, dropCamera: args.drop_camera,
-        sensitivity: args.sensitivity, vision: !!args.vision, fps: args.fps, progress
+      const common = {
+        cameras: args.cameras, cadences: args.cadences, dropCamera: args.drop_camera,
+        sensitivity: args.sensitivity, vision: !!args.vision, fps: args.fps, minSyncConfidence: args.min_sync_confidence, cacheDir: args.cache_dir, progress
+      };
+      const parts = Array.isArray(args.music) ? args.music : [args.music];
+      const plans = parts.length > 1 ? (await planSession({ ...common, parts })).plans : [await planMulticam({ ...common, music: parts[0] })];
+      const suffix = (file, i) => (plans.length > 1 ? file.replace(/(\.rpplan)?(\.[^.\/]+)?$/, (m) => ` - Part ${i + 1}${m}`) : file);
+      const out = plans.map((plan, i) => {
+        const errors = validatePlan(plan);
+        if (errors.length) throw new Error("Engine produced an invalid plan: " + errors.join("; "));
+        const extra = { plan: writeFile(suffix(args.output, i), JSON.stringify(plan, null, 2)) };
+        if (args.fcpxml) extra.fcpxml = writeFile(suffix(args.fcpxml, i), planToFcpxml(plan, plans.length > 1 ? { projectName: `RP Multicam - Part ${i + 1}` } : {}));
+        if (plan.session) extra.session = plan.session;
+        return planDigest(plan, extra);
       });
-      const errors = validatePlan(plan);
-      if (errors.length) throw new Error("Engine produced an invalid plan: " + errors.join("; "));
-      const saved = writeFile(args.output, JSON.stringify(plan, null, 2));
-      const extra = { plan: saved };
-      if (args.fcpxml) extra.fcpxml = writeFile(args.fcpxml, planToFcpxml(plan));
-      return planDigest(plan, extra);
+      return out.length === 1 ? out[0] : { parts: out };
     }
   },
   {
@@ -121,13 +133,15 @@ export const TOOLS = [
         plan: { type: "string", description: "Path to the plan JSON." },
         output: { type: "string", description: "Path for the .fcpxml file." },
         media_dir: { type: "string", description: "Relink all media to this folder (use when the plan was made on another computer)." },
+        path_from: { type: "string", description: "Path prefix in the plan to replace (with path_to), e.g. a mount point on another machine." },
+        path_to: { type: "string", description: "Replacement prefix, e.g. /Volumes/My SSD." },
         project_name: { type: "string" },
         event_name: { type: "string" }
       }
     },
     async run(args) {
       const plan = readPlan(args.plan);
-      const xml = planToFcpxml(plan, { mediaDir: args.media_dir, projectName: args.project_name, eventName: args.event_name });
+      const xml = planToFcpxml(plan, { mediaDir: args.media_dir, pathMap: args.path_from ? { from: args.path_from, to: args.path_to || "" } : null, projectName: args.project_name, eventName: args.event_name });
       return { fcpxml: writeFile(args.output, xml), cuts: plan.cuts.length, angles: plan.cameras.map((c) => c.angle_id) };
     }
   },

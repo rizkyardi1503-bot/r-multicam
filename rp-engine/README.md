@@ -34,6 +34,22 @@ music + camera files ──► rp-engine (the plugin's own engine code)
 - **Camera sync.** If a camera has no `offset`, it is synced from its own scratch audio
   (onset-envelope cross-correlation at 10 ms). The plan records the sync method and
   confidence. Cameras that start before the music (negative offset) are supported.
+- **Real shoots.**
+  - Each camera can have many clips (`files: [...]`). Every clip is synced on its own.
+  - Matches are checked against the camera's own clock (file `creation_time`): one camera
+    has one clock, so creation time minus timeline offset must be the same for all its
+    clips. Each clip is then searched only near where its clock places it.
+  - A clip that overlaps another clip of the same camera, or that the clock places outside
+    the music, is left out and listed in `excluded_clips`.
+- **Multi-part nights.** Pass `music` as an array, e.g. a recorder stopped between sets.
+  - The time between part starts is voted by all camera clocks.
+  - A camera that is well synced in one part guides its clips in the other parts
+    (`lib/session.mjs`).
+  - Each part gets its own plan and `.fcpxml`.
+- **Resumable.** `cache_dir` stores the music analysis, the music envelope and every clip
+  sync, so a long set can be processed in steps.
+- **Reproducible.** The director's random anti-repeat step is seeded, so the same inputs
+  give the same plan.
 - **Local only.** Media never leaves the computer. FFmpeg is found the same way the plugin
   finds it (Settings path, installer `tools` folder, then PATH). `ffprobe` is not needed.
 
