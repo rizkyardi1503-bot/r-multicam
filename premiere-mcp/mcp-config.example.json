@@ -12,6 +12,15 @@
         "RPROJECT_MCP_HOST": "127.0.0.1",
         "RPROJECT_MCP_PORT": "47821"
       }
+    },
+    "r-project-engine": {
+      "command": "node",
+      "args": [
+        "C:/RProject/rp-engine/bin/rp-engine-mcp.mjs"
+      ],
+      "env": {
+        "RP_FFMPEG": "C:/Users/you/AppData/Local/RProjectMulticam/tools/ffmpeg.exe"
+      }
     }
   }
 }

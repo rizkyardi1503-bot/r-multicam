@@ -46,3 +46,17 @@ Plugin package sources live in `plugin/windows` and `plugin/macos`. To release:
 4. Only change `plugin-update-manifest` when every existing user must update: the database (`plugin_entitlement`) blocks any plugin older than the manifest version.
 
 FFmpeg is pinned (9.0.2) with SHA-256 checks in both installers. To move to a newer FFmpeg, update the URL(s) and hashes in `Install-Windows.ps1` / `Install-macOS.command` and in `scripts/test-public-23113.py`.
+
+## Engine, Final Cut Pro and MCP (`rp-engine/`)
+
+`rp-engine/` runs the plugin's own engine headless in Node. It turns music and camera
+files into a host-neutral plan, `rp-multicam-plan/1`, with the schema in
+`site/schema/rp-multicam-plan-1.json`.
+
+From that plan it can:
+- export Final Cut Pro FCPXML,
+- expose everything as a local MCP server.
+
+See `rp-engine/README.md`. Tests are in `rp-engine/test/run-tests.mjs` and run in
+`.github/workflows/engine.yml`. The published schema must stay identical to
+`rp-engine/schema/`.
