@@ -1,0 +1,11 @@
+THIRD-PARTY FFMPEG NOTICE
+
+R Project Multicam AI does not claim ownership of FFmpeg.
+The public installers automatically download and configure FFmpeg from third-party build providers:
+
+Windows: https://www.gyan.dev/ffmpeg/builds/
+macOS: https://ffmpeg.martin-riedl.de/
+FFmpeg project: https://ffmpeg.org/
+License information: https://ffmpeg.org/legal.html
+
+The FFmpeg executable is stored in the user's RProjectMulticam tools directory and used locally for audio decoding/analysis and optional frame decoding. User media is not uploaded by this local decoder.

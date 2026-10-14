@@ -1,0 +1,92 @@
+R PROJECT MULTICAM AI — macOS INSTALLATION GUIDE
+Version: v2.3.11.2 PUBLIC
+
+IMPORTANT FOR MAC USERS
+-----------------------
+Because R Project Multicam AI is installed outside the Mac App Store, macOS may block the installer the first time you open it.
+
+For the first launch, DO NOT simply double-click the installer.
+Use Right-click / Control-click > Open.
+
+STEP 1 — DOWNLOAD AND EXTRACT
+-----------------------------
+1. Download the official R Project Multicam AI macOS PUBLIC ZIP.
+2. Open the ZIP and extract all files completely.
+3. Keep all extracted files together in the same folder.
+
+STEP 2 — RIGHT-CLICK THE INSTALLER
+----------------------------------
+1. Locate: Install-macOS.command
+2. Right-click it (or Control-click).
+3. Choose: Open
+4. If macOS shows an Open button, click Open.
+
+STEP 3 — IF macOS BLOCKS THE INSTALLER
+---------------------------------------
+If you see a warning such as:
+- “Apple could not verify…”
+- “Cannot be opened because the developer cannot be verified.”
+
+Close the warning or click Done, then continue with Step 4.
+
+STEP 4 — ALLOW IT IN PRIVACY & SECURITY
+----------------------------------------
+1. Open Apple menu 
+2. Open System Settings
+3. Select Privacy & Security
+4. Scroll down to the Security section
+5. Find the message saying the R Project installer was blocked
+6. Click: Open Anyway
+
+STEP 5 — CONFIRM
+----------------
+1. macOS may show another confirmation window.
+2. Click Open.
+3. Enter your Mac password or use Touch ID if requested.
+4. The installer should now run.
+
+STEP 6 — INSTALL
+----------------
+1. Close Adobe Premiere Pro before installation.
+2. Let Install-macOS.command finish completely.
+3. Do not close Terminal while the installer is working.
+4. Re-open Adobe Premiere Pro after installation finishes.
+
+STEP 7 — OPEN THE PLUGIN
+------------------------
+In Premiere Pro open:
+Window > Extensions (Legacy) > R Project Multicam AI
+
+Confirm the panel shows:
+v2.3.11.2
+
+TRIAL & PRICE
+-------------
+- 7-Day Full Trial for new users.
+- Trial starts from the first activation registered by the server.
+- New-user Lifetime License: US$200 one-time.
+- Existing activated Lifetime licenses are unchanged.
+
+IF “OPEN ANYWAY” DOES NOT APPEAR
+--------------------------------
+1. Try Right-click / Control-click > Open on Install-macOS.command again.
+2. Return immediately to:
+   System Settings > Privacy & Security
+3. Scroll down and check the Security section again.
+
+SECURITY NOTE
+-------------
+Only approve the official R Project Multicam AI installer downloaded from the official R Project source.
+Do not approve modified installers from unknown third parties.
+
+SUPPORT
+-------
+Instagram: @r.project__
+
+When requesting support, please send:
+- macOS version
+- Adobe Premiere Pro version
+- Screenshot of the error
+- R Project Multicam AI version
+
+Buy Lifetime opens authenticated Midtrans checkout. Use Check Payment afterward. Support: WhatsApp +62 822-3316-1680.

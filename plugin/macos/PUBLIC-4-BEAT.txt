@@ -1,0 +1,3 @@
+v2.3.11.2: minimum physical camera shot 4 beats. Exact drop times unchanged. Coverage conflicts block Apply. Generate a new plan; old resume jobs must be regenerated. Existing timelines are not automatically repaired.
+macOS retains low-memory mode for <=12 GiB: one worker, CPU frame decoding, small batches, vision cap and memory preflight.
+Local verification passed; native Premiere/macOS installer and memory behavior still require on-device testing. Public release: save your project, close Premiere, install and generate a fresh plan. Test on a duplicate project.

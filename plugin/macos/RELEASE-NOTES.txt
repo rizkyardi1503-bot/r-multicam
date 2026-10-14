@@ -1,0 +1,17 @@
+R Project Multicam AI v2.3.11.2 PUBLIC — macOS ONLY
+Automatic Low Memory mode on macOS with 12 GiB RAM or less, including
+M1 8 GB and Rosetta: CPU-only FFmpeg visual frame sampling, one decoding
+thread, at most 24 optional visual samples, existing small timeline batches
+and a 250 ms batch delay. Higher-memory Macs keep normal decoding policy.
+macOS memory sampling estimates reclaimable VM pages instead of applying
+Windows commit thresholds. Analyses preflight memory and check long audio
+decoding periodically. Last-clip feature references are released early.
+Beat/BPM/drop algorithms and timing resolution are unchanged. Google/manual
+login, account identity, trial dates, paid licenses, camera coverage and
+protected timeline cleanup remain intact. Native Mac performance unverified.
+Save your project, quit Premiere completely, extract the ZIP, then run
+Install-macOS.command. First test on a duplicate project. Keep the old
+installer/installation backup for recovery. Proxies may still be needed.
+Local diagnostic file: ~/Library/Application Support/RProjectMulticamAI/memory-diagnostics.json
+Windows remains v2.3.11.2. Online minimum follows each OS public release,
+with the existing zero-grace-period rule on the next entitlement check.

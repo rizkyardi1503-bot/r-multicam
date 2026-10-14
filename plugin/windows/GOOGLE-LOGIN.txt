@@ -1,0 +1,4 @@
+PUBLIC 2.3.11.2 — GOOGLE LOGIN
+Open Continue with Google in the Premiere panel, continue in your system browser, then return to Premiere. Keep the panel open. No Google password is collected by the plugin. Email/password login remains available.
+The plugin retains its PKCE verifier in memory, receives a one-use authorization code on 127.0.0.1, validates the account with Supabase, and checks the existing account license/device rules. Cancellation and a five-minute timeout close the listener. Trial dates and paid licenses are not reset.
+Engine V18 is unchanged. Native macOS and a real user Google-consent login require final on-device validation.

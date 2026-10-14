@@ -1,0 +1,7 @@
+macOS-only PUBLIC v2.3.11.2 — 2026-10-08
+Automated memory/profile/decoder tests, synthetic BPM/drop regression tests,
+Google/manual authentication checks, ZIP checksum/executable mode and Bash
+installer syntax checks pass. Native M1/Premiere performance is not yet
+measured. Release approved by the owner without native Mac confirmation.
+Windows remains PUBLIC v2.3.11.2; no Windows package or minimum changed.
+Memory checks are heuristic and cannot guarantee avoiding every memory error.
