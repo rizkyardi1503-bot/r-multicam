@@ -4,8 +4,10 @@ v2.3.11.3 PUBLIC — Safer installer (Windows and macOS)
 - Faster first install on Windows (download progress bar no longer slows the FFmpeg download).
 - Customer packages no longer include internal training tools.
 - Package configuration now matches the real purchase flow (secure checkout in the panel/website).
+- Auto pacing is now called "Auto Music Map" everywhere (panel labels, module and file names); behaviour is unchanged.
 - Editing engine, Music Engine V18, Google/email login, trial dates and licenses are unchanged.
   If FFmpeg is already installed, existing users see no difference.
+- Delivered through Check Update: v2.3.11.2 users are asked to update. Save and close Premiere before installing.
 
 R Project Multicam AI v2.3.11.2 PUBLIC — macOS ONLY
 Automatic Low Memory mode on macOS with 12 GiB RAM or less, including

@@ -1,5 +1,5 @@
 /* R Project Music Intelligence V12 — Drop Selection + Full Live Set orchestration map.
-   Independent implementation. DropFinder-observed workflow concepts reimplemented without copying proprietary source:
+   Independent implementation of a music-driven drop selection workflow:
    compute candidates once -> confidence threshold -> best-spaced main-drop selection -> shared drop map for Multicam/Best Drops. */
 (function(root){
 'use strict';

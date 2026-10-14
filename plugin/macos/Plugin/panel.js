@@ -545,7 +545,7 @@ el('aiPlan').onclick=async function(){
  setActiveTool('multi');
  if(busy||pending||!ready||!suggestion||!suggestion.beats||!suggestion.beats.length)return;if(!requireEntitlement())return;
  var previous=aiPlan;aiPlan=null;busy=true;stopRequested=false;job=null;started=Date.now();analysisState={cancelled:false,process:null,request:null};controls();
- state('DropFinder-style Auto is building camera decision timing from the music map…');el('aiResult').textContent='No timeline changes yet.';
+ state('Auto Music Map is building camera decision timing from the music map…');el('aiResult').textContent='No timeline changes yet.';
  try{
   await makeAIPlan(previous,0,1);if(analysisState.cancelled)throw Error('Agent AI Director stopped.');
   state('Agent AI plan ready. Review pacing and camera choices, then apply.',false,'success');log('Agent AI Director finished: '+aiPlan.choices.length+' intervals from Auto Music Map pacing; '+aiPlan.images+' images.');
@@ -569,7 +569,7 @@ el('directorRun').onclick=async function(){
   if(!result.beats||!result.beats.length)throw Error('No clear A1 beats detected. Use clearer music.');
   result.snapshot=a1;suggestion=result;showMusic(result);saveSetup();
   if(analysisState.cancelled)throw Error('Agent AI Director stopped.');
-  state('DropFinder-style Auto: translating the music structure into camera decisions…');
+  state('Auto Music Map: translating the music structure into camera decisions…');
   await makeAIPlan(null,.35,.25);
   el('preview').textContent=suggestion.points.length+' AI-paced internal edit points'+(result.tempo?' · '+result.tempo+' BPM · '+result.tempoConfidence+' confidence':'')+(result.beatCount?' · '+result.beatCount+' beats detected':'')+(result.structure&&result.structure.drop_count?' · '+result.structure.build_up_count+' build-ups · '+result.structure.drop_count+' drops':'')+'.\nAgent AI analyzed A1 within the active processing range. Pacing is derived automatically from beat/BPM, energy, breakdowns, build-ups, spectral change and validated drop impacts. Main drops are selected from precomputed candidates using confidence, structural evidence, minimum spacing and conservative long-gap fill. Validated drops switch angle and restart the selected beat count. Camera choice is automatic, role-aware and limited to enabled Camera Selection tracks. The final pre-drop and exact drop are forced to different covered cameras when possible. Selected 2/4/6/8 values determine camera decision intervals. Physical razor cuts are created only when the winning camera changes; same-camera decisions stay continuous. Max Hold Guard still prefers an alternate covered camera when available. No sequence markers were created.';
   // v2.3.11.2: destructive cleanup is forbidden if a long set produced an implausibly sparse plan.

@@ -1,6 +1,7 @@
 v2.3.11.3 PUBLIC validation — 2026-10-14
 - FFmpeg 9.0.2 checksums confirmed from two independent sources (Windows: GitHub release digest and gyan.dev .sha256; macOS: martin-riedl.de .sha256 and a full download hash for arm64 and amd64).
 - Package checksum inventories regenerated and verified; installer version handshakes updated (manifest, host.jsx, panel.js).
+- Auto pacing renamed (labels, module file, plan-export key); engine files identical apart from those strings.
 - Installer scripts: PowerShell parse check, bash -n syntax check, simulated download with matching and mismatching checksum.
 - Not verified natively: Premiere Pro panel load and a real FFmpeg download on Windows/macOS hardware.
 
@@ -12,7 +13,7 @@ Use Check Update or the manual ZIP installer, save your project, close Premiere,
 PREVIOUS RELEASE VALIDATION / MUSIC ENGINE NOTES
 R Project Multicam AI v2.3.11.2 PUBLIC — Music Engine V18
 
-Independent local multi-signal BPM/beat tracking using broad onset, bass attack and rhythmic transient/flux; tempo ambiguity/weak-signal continuity handling; attack-ramp timing backtracking; all-beat structural drop candidates. No proprietary Dropfinder code or trained model bundled. Local training/benchmark tools are optional; default is rules-only.
+Independent local multi-signal BPM/beat tracking using broad onset, bass attack and rhythmic transient/flux; tempo ambiguity/weak-signal continuity handling; attack-ramp timing backtracking; all-beat structural drop candidates. No third-party proprietary code or trained models bundled. Local training/benchmark tools are optional; default is rules-only.
 
 Balanced UI default drop spacing is 64 beats (.136 UI was 96). Saved settings are preserved. Camera-cut cadence and editing core are unchanged. New PUBLIC cache identity requires Analyze Music again. Do not resume plans from an older or TEST build.
 

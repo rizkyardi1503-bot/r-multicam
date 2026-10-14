@@ -1,6 +1,6 @@
 R Project Multicam AI v2.3.11.3 PUBLIC — Music Engine V18
 
-Independent local multi-signal BPM/beat tracking using broad onset, bass attack and rhythmic transient/flux; tempo ambiguity/weak-signal continuity handling; attack-ramp timing backtracking; all-beat structural drop candidates. No proprietary Dropfinder code or trained model bundled. Local training/benchmark tools are optional; default is rules-only.
+Independent local multi-signal BPM/beat tracking using broad onset, bass attack and rhythmic transient/flux; tempo ambiguity/weak-signal continuity handling; attack-ramp timing backtracking; all-beat structural drop candidates. No third-party proprietary code or trained models bundled. Local training/benchmark tools are optional; default is rules-only.
 
 Balanced UI default drop spacing is 64 beats (.136 UI was 96). Saved settings are preserved. Camera-cut cadence and editing core are unchanged. New PUBLIC cache identity requires Analyze Music again. Do not resume plans from an older or TEST build.
 

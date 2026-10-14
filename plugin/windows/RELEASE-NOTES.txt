@@ -4,8 +4,10 @@ v2.3.11.3 PUBLIC — Safer installer (Windows and macOS)
 - Faster first install on Windows (download progress bar no longer slows the FFmpeg download).
 - Customer packages no longer include internal training tools.
 - Package configuration now matches the real purchase flow (secure checkout in the panel/website).
+- Auto pacing is now called "Auto Music Map" everywhere (panel labels, module and file names); behaviour is unchanged.
 - Editing engine, Music Engine V18, Google/email login, trial dates and licenses are unchanged.
   If FFmpeg is already installed, existing users see no difference.
+- Delivered through Check Update: v2.3.11.2 users are asked to update. Save and close Premiere before installing.
 
 v2.3.11.2 PUBLIC — Google login is now included in the Premiere panel.
 Continue with Google opens the official website/system browser, receives a one-use code on localhost, exchanges it using a memory-only PKCE verifier, verifies the account, and applies existing license/device rules. Google passwords are never collected. Email/password remains available. Existing accounts, trial dates and paid licenses are retained. Engine V18 algorithms and PUBLIC cache format are unchanged.
@@ -15,7 +17,7 @@ Use Check Update or the manual ZIP installer, save your project, close Premiere,
 PREVIOUS RELEASE VALIDATION / MUSIC ENGINE NOTES
 R Project Multicam AI v2.3.11.2 PUBLIC — Music Engine V18
 
-Independent local multi-signal BPM/beat tracking using broad onset, bass attack and rhythmic transient/flux; tempo ambiguity/weak-signal continuity handling; attack-ramp timing backtracking; all-beat structural drop candidates. No proprietary Dropfinder code or trained model bundled. Local training/benchmark tools are optional; default is rules-only.
+Independent local multi-signal BPM/beat tracking using broad onset, bass attack and rhythmic transient/flux; tempo ambiguity/weak-signal continuity handling; attack-ramp timing backtracking; all-beat structural drop candidates. No third-party proprietary code or trained models bundled. Local training/benchmark tools are optional; default is rules-only.
 
 Balanced UI default drop spacing is 64 beats (.136 UI was 96). Saved settings are preserved. Camera-cut cadence and editing core are unchanged. New PUBLIC cache identity requires Analyze Music again. Do not resume plans from an older or TEST build.
 
