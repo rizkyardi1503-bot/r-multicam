@@ -25,3 +25,13 @@ This bundles and minifies the CSS (`home.css` for the homepage, `site.css` for a
 Reference: https://developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration/
 
 Media files are restored from the original immutable Cloudflare deployment with pinned SHA256 checks before publishing. Keep that deployment available until media is moved to repository storage.
+
+## Languages (English / Indonesian)
+
+Every page exists in English (`site/...`) and Indonesian (`site/id/...`).
+
+- Edit the English page first, then update the matching `site/id/...` page. `python3 scripts/check-translation.py` fails if the Indonesian markup drifts from the English page (ids, classes, links, scripts must match; only text may differ). CI runs it.
+- The build adds hreflang alternates, the EN/ID switch, Indonesian links, and a bilingual sitemap.
+- Visitors from Indonesia (or with an Indonesian browser) are sent from English pages to the Indonesian version; a choice made with the EN/ID switch is remembered. Crawlers, login callbacks and download links are never redirected (`src/i18n/lang-router.js`).
+- Text rendered by scripts (account, checkout, demo) is translated on `/id/` pages from `src/i18n/id.json`. Add new UI strings there.
+- Prices follow location, not language: Indonesia shows IDR, everywhere else USD (`site/pricing.js`).

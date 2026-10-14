@@ -17,7 +17,7 @@
  const LATEST_VERSIONS=Object.freeze({windows:'2.3.11.2',macos:'2.3.11.2'});
  const newerVersion=(installed,latest)=>{const a=String(installed).split('.').map(Number),b=latest.split('.').map(Number);if(a.length!==b.length||a.some(n=>!Number.isFinite(n)))return false;for(let i=0;i<b.length;i++){if(b[i]!==a[i])return b[i]>a[i];}return false;};
  let session=null, user=null, profile=null, busy=false, generation=0, refreshFlight=null, authMode="signin", purchaseIntent=false, downloadIntent=null;
- let affiliateIntent=window.location.pathname==='/affiliate/', affiliateUI=null,ownerDashboard=null,ownerScript=null;
+ let affiliateIntent=/^\/(id\/)?affiliate\/$/.test(window.location.pathname), affiliateUI=null,ownerDashboard=null,ownerScript=null;
  async function ensureOwnerDashboard(){if(ownerDashboard)return ownerDashboard;if(!ownerScript)ownerScript=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='/owner-dashboard.js';script.onload=resolve;script.onerror=()=>{ownerScript=null;script.remove();reject(Error('Owner dashboard could not load. Refresh and try again.'));};document.head.appendChild(script);});await ownerScript;return ownerDashboard||(ownerDashboard=window.RP_OwnerDashboard.create(el('account-details'),authed));}
  const promoFromLink=new URLSearchParams(window.location.search).get('ref')||'';
  const portal=document.createElement('dialog'); portal.id='customer-portal';portal.setAttribute('aria-labelledby','customer-portal-title');

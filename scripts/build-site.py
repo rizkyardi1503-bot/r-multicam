@@ -35,7 +35,10 @@ FONTS = ['/fonts/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2', '/fonts/rP2Yp2ywxg089Uri
 MOTION = '/motion3d.mjs'
 
 # Pages that keep their own header/footer (custom layouts or account flows).
-KEEP_LAYOUT = {'index.html', 'start/index.html', 'auth/confirmed/index.html'}
+KEEP_LAYOUT = {'index.html', 'start/index.html', 'auth/confirmed/index.html', 'id/index.html', 'id/start/index.html'}
+# Never language-routed or translated (Supabase email links land here with tokens).
+NO_LANG = {'auth/confirmed/index.html', '404.html'}
+I18N_SRC = ROOT / 'src' / 'i18n'
 
 NAV_EN = [
     ('/#features', 'Product'),
@@ -45,11 +48,11 @@ NAV_EN = [
     ('/help/', 'Help'),
 ]
 NAV_ID = [
-    ('/#features', 'Fitur'),
-    ('/id/#mulai-cepat', 'Mulai cepat'),
-    ('/#pricing', 'Harga'),
-    ('/help/', 'Bantuan'),
-    ('/', 'English'),
+    ('/id/#features', 'Fitur'),
+    ('/id/dj-multicam-editing/', 'Editing DJ'),
+    ('/id/guides/music-driven-multicam-editing/', 'Panduan'),
+    ('/id/#pricing', 'Harga'),
+    ('/id/help/', 'Bantuan'),
 ]
 FOOTER_EN = [
     ('Product', [
@@ -78,22 +81,27 @@ FOOTER_EN = [
 ]
 FOOTER_ID = [
     ('Produk', [
-        ('/ai-multicam-editor-premiere-pro/', 'AI multicam editor'),
-        ('/dj-multicam-editing/', 'Editing multicam DJ'),
-        ('/#pricing', 'Harga'),
-        ('/releases/', 'Catatan rilis'),
+        ('/id/ai-multicam-editor-premiere-pro/', 'AI multicam editor'),
+        ('/id/dj-multicam-editing/', 'Editing multicam DJ'),
+        ('/id/podcast-ai-editing/', 'Editing podcast AI'),
+        ('/id/#pricing', 'Harga'),
+        ('/id/releases/', 'Catatan rilis'),
     ]),
-    ('Panduan', [
-        ('/id/#mulai-cepat', 'Mulai cepat'),
-        ('/guides/install-multicam-ai/', 'Panduan instalasi'),
-        ('/compatibility/', 'Kompatibilitas'),
-        ('/help/', 'Pusat bantuan'),
+    ('Belajar', [
+        ('/id/guides/music-driven-multicam-editing/', 'Panduan editing mengikuti musik'),
+        ('/id/guides/install-multicam-ai/', 'Panduan instalasi'),
+        ('/id/quick-start/', 'Mulai cepat'),
+        ('/id/compatibility/', 'Kompatibilitas'),
+        ('/id/help/', 'Pusat bantuan'),
+        ('/', 'English version'),
     ]),
     ('Perusahaan', [
-        ('/affiliate/', 'Program afiliasi'),
-        ('/refund-policy/', 'Kebijakan refund'),
-        ('/terms/', 'Syarat'),
-        ('/privacy/', 'Privasi'),
+        ('/id/affiliate/', 'Program afiliasi'),
+        ('/id/digital-delivery/', 'Pengiriman digital'),
+        ('/id/refund-policy/', 'Kebijakan refund'),
+        ('/id/terms/', 'Syarat & ketentuan'),
+        ('/id/privacy/', 'Privasi'),
+        ('/id/license/', 'Lisensi software'),
     ]),
 ]
 CONTACT = [
@@ -190,11 +198,31 @@ def header_html(path: str, lang: str, existing: str) -> str:
         actions = m.group(0)
     else:
         cta = 'Coba gratis' if lang == 'id' else 'Free trial'
-        actions = f'<div class="header-account-actions"><a class="button small" href="/#pricing">{cta} <span>↗</span></a></div>'
+        pricing = '/id/#pricing' if lang == 'id' else '/#pricing'
+        actions = f'<div class="header-account-actions"><a class="button small" href="{pricing}">{cta} <span>↗</span></a></div>'
     label = 'Navigasi utama' if lang == 'id' else 'Main navigation'
-    return (f'<header class="rp-header"><a class="brand" href="/"><span class="mark">R</span>'
+    home = '/id/' if lang == 'id' else '/'
+    return (f'<header class="rp-header"><a class="brand" href="{home}"><span class="mark">R</span>'
             f'<span>R Project <small>Multicam AI</small></span></a>'
-            f'<nav aria-label="{label}">{"".join(links)}</nav>{actions}</header>')
+            f'<nav aria-label="{label}">{"".join(links)}</nav>{lang_switch(path, lang)}{actions}</header>')
+
+
+def alt_path(path: str, lang: str) -> str:
+    """Counterpart URL path in the other language."""
+    if lang == 'id':
+        return path[3:] if path.startswith('/id/') else '/'
+    return '/id' + path
+
+
+def lang_switch(path: str, lang: str) -> str:
+    other = alt_path(path, lang)
+    en_href, id_href = (other, path) if lang == 'id' else (path, other)
+    label = 'Pilih bahasa' if lang == 'id' else 'Choose language'
+    def item(code, href, text, hl):
+        cur = ' aria-current="true"' if code == lang else ''
+        return f'<a href="{href}" hreflang="{hl}" lang="{hl}" data-lang-switch="{code}"{cur}>{text}</a>'
+    return (f'<div class="rp-lang" role="group" aria-label="{label}">'
+            f'{item("en", en_href, "EN", "en")}{item("id", id_href, "ID", "id")}</div>')
 
 
 def footer_html(lang: str) -> str:
@@ -213,7 +241,7 @@ def footer_html(lang: str) -> str:
     cols.append(f'<div><h2>{contact_title}</h2><ul>{contact}</ul></div>')
     legal = 'Adobe dan Premiere Pro adalah merek dagang Adobe.' if lang == 'id' else 'Adobe and Premiere Pro are trademarks of Adobe.'
     return (f'<footer class="rp-footer"><div class="rp-footer-inner"><div class="rp-footer-brand">'
-            f'<a class="brand" href="/"><span class="mark">R</span><span>R Project <small>Multicam AI</small></span></a>'
+            f'<a class="brand" href="{"/id/" if lang == "id" else "/"}"><span class="mark">R</span><span>R Project <small>Multicam AI</small></span></a>'
             f'<p>{esc(blurb)}</p></div><nav class="rp-footer-links" aria-label="Footer">{"".join(cols)}</nav></div>'
             f'<p class="rp-legal">© 2026 R Project · {esc(legal)}</p></footer>')
 
@@ -281,10 +309,69 @@ def breadcrumb_ld(html: str, path: str) -> str:
     return html.replace('</head>', block + '</head>', 1)
 
 
+def page_paths():
+    """URL paths of all English pages (used to rewrite links on Indonesian pages)."""
+    out = set()
+    for f in SITE.rglob('*.html'):
+        rel = f.relative_to(SITE).as_posix()
+        if not rel.startswith('id/') and rel.endswith('index.html'):
+            out.add(page_path(rel))
+    return out
+
+
+def localize_links(html: str) -> str:
+    """On Indonesian pages point internal page links, canonical and structured-data URLs to /id/."""
+    known = page_paths()
+
+    def fix(url: str) -> str:
+        base = url.split('#')[0].split('?')[0]
+        if base.startswith('/id/') or base == '/id':
+            return url
+        if base in known or (base == '/' and url != '/' ) or url == '/':
+            return '/id' + url
+        return url
+
+    def href(m):
+        return f'{m.group(1)}="{fix(m.group(2))}"'
+    # Leave hreflang alternates and the language switch alone.
+    parts = re.split(r'(<!--rp:(?:lang|langswitch)-->.*?<!--/rp:(?:lang|langswitch)-->|<div class="rp-lang".*?</div>)', html, flags=re.S)
+    for i in range(0, len(parts), 2):
+        seg = re.sub(r'\b(href)="(/[^"]*)"', href, parts[i])
+        seg = re.sub(r'(<link rel="canonical" href=")' + re.escape(ORIGIN) + r'(/[^"]*)"', lambda m: m.group(1) + ORIGIN + fix(m.group(2)) + '"', seg)
+        seg = re.sub(r'(<meta property="og:url" content=")' + re.escape(ORIGIN) + r'(/[^"]*)"', lambda m: m.group(1) + ORIGIN + fix(m.group(2)) + '"', seg)
+        seg = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)',
+                     lambda m: m.group(1) + re.sub(r'"' + re.escape(ORIGIN) + r'(/[^"]*)"', lambda u: '"' + ORIGIN + fix(u.group(1)) + '"', m.group(2)) + m.group(3), seg, flags=re.S)
+        parts[i] = seg
+    return ''.join(parts)
+
+
+def lang_block(rel: str, path: str, lang: str, router: str) -> str:
+    """hreflang alternates + inline router, or '' when the page has no counterpart."""
+    if rel in NO_LANG:
+        return ''
+    en_rel = rel[3:] if rel.startswith('id/') else rel
+    id_rel = 'id/' + en_rel
+    if not ((SITE / en_rel).exists() and (SITE / id_rel).exists()):
+        return ''
+    en_url, id_url = ORIGIN + page_path(en_rel), ORIGIN + page_path(id_rel)
+    return (f'<link rel="alternate" hreflang="en" href="{en_url}">'
+            f'<link rel="alternate" hreflang="id" href="{id_url}">'
+            f'<link rel="alternate" hreflang="x-default" href="{en_url}">'
+            f'<script>{router}</script>')
+
+
 def process_page(rel: str, html: str, versions: dict) -> str:
     path = page_path(rel)
     lang = (re.search(r'<html[^>]*\blang="([^"]+)"', html) or [None, 'en'])[1]
-    bundle = 'home.css' if rel == 'index.html' else 'site.css'
+    bundle = 'home.css' if rel in ('index.html', 'id/index.html') else 'site.css'
+
+    # 0. Absolute script URLs (pages also live under /id/), language alternates + router.
+    html = re.sub(r'<script src="([a-z0-9-]+\.js)"', r'<script src="/\1"', html)
+    html = re.sub(r'<link rel="alternate" hreflang="[^"]*" href="[^"]*">', '', html)
+    html = re.sub(r'<!--rp:lang-->.*?<!--/rp:lang-->', '', html, flags=re.S)
+    block = lang_block(rel, path, lang, versions['router'])
+    if block:
+        html = re.sub(r'(<meta charset="[^"]*">)', lambda m: m.group(1) + f'<!--rp:lang-->{block}<!--/rp:lang-->', html, count=1)
 
     # 1. Stylesheets -> one bundle at the position of the first old link.
     link_re = re.compile(r'<link rel="stylesheet" href="/?([a-z0-9-]+\.css)(\?[^"]*)?">')
@@ -306,16 +393,40 @@ def process_page(rel: str, html: str, versions: dict) -> str:
     preloads = ''.join(f'<link rel="preload" href="{f}" as="font" type="font/woff2" crossorigin>' for f in FONTS)
     html = html.replace(tag, preloads + tag, 1)
 
-    # 3. Motion layer.
+    # 3. Motion layer (+ Indonesian UI translator on /id/ pages).
     html = re.sub(r'<script type="module" src="/motion3d\.mjs(\?[^"]*)?"></script>', '', html)
-    html = html.replace('</head>', f'<script type="module" src="{MOTION}?v={versions["motion3d.mjs"]}"></script></head>', 1)
+    html = re.sub(r'<script src="/i18n-id\.js(\?[^"]*)?" defer></script>', '', html)
+    extra = f'<script src="/i18n-id.js?v={versions["i18n-id.js"]}" defer></script>' if rel.startswith('id/') else ''
+    html = html.replace('</head>', f'{extra}<script type="module" src="{MOTION}?v={versions["motion3d.mjs"]}"></script></head>', 1)
+
+    if rel.startswith('id/'):
+        html = localize_links(html)
 
     if rel in KEEP_LAYOUT:
+        # Language switch inside the page's own header navigation.
+        html = re.sub(r'<!--rp:langswitch-->.*?<!--/rp:langswitch-->', '', html, flags=re.S)
+        if block and '<header' in html:
+            html = re.sub(r'(<header\b.*?)(</nav>)', lambda m: m.group(1) + m.group(2) + f'<!--rp:langswitch-->{lang_switch(path, lang)}<!--/rp:langswitch-->', html, count=1, flags=re.S)
+        if rel == 'id/index.html':
+            # Keep old deep links (/id/#mulai-cepat, /id/#kompatibilitas) working.
+            html = re.sub(r'<!--rp:anchors-->.*?<!--/rp:anchors-->', '', html, flags=re.S)
+            html = html.replace('<section class="wrap section" id="downloads"', '<!--rp:anchors--><span id="kompatibilitas"></span><!--/rp:anchors--><section class="wrap section" id="downloads"', 1)
+            html = re.sub(r'(<section[^>]*id="start-checklist")', r'<!--rp:anchors--><span id="mulai-cepat"></span><!--/rp:anchors-->\1', html, count=1)
         return html
 
     # 4. Shared header (+ skip link), main landmark id, shared footer.
     existing = re.search(r'<!--rp:header-->(.*?)<!--/rp:header-->|<header\b[^>]*>.*?</header>', html, re.S)
-    hdr = header_html(path, lang, existing.group(0) if existing else '')
+    existing = existing.group(0) if existing else ''
+    if rel.startswith('id/') and 'data-' not in (re.search(r'<div class="header-account-actions">.*?</div>', existing, re.S) or [''])[0]:
+        # Indonesian copies inherit account buttons from the English page, with translated labels.
+        en_html = (SITE / rel[3:]).read_text() if (SITE / rel[3:]).exists() else ''
+        m = re.search(r'<div class="header-account-actions">.*?</div>', en_html, re.S)
+        if m and 'data-' in m.group(0):
+            words = json.loads((I18N_SRC / 'id.json').read_text()).get('text', {})
+            words = {**words, 'Login': 'Masuk', 'Explore the plugin': 'Lihat plugin'}
+            acts = re.sub(r'>([^<>]+)<', lambda t: '>' + words.get(t.group(1).strip(), t.group(1).strip()).join(re.match(r'(\s*).*?(\s*)$', t.group(1), re.S).groups()) + '<', m.group(0))
+            existing = localize_links(acts)
+    hdr = header_html(path, lang, existing)
     html = replace_block(html, 'header', hdr, fallback_pattern=r'<header\b[^>]*>.*?</header>', insert_after=r'<body[^>]*>')
     if not re.search(r'<main\b[^>]*\bid=', html):
         html = re.sub(r'<main\b', '<main id="main"', html, count=1)
@@ -330,14 +441,51 @@ def process_page(rel: str, html: str, versions: dict) -> str:
     return html
 
 
+def build_sitemaps(changed_pages):
+    """Bilingual sitemap: every indexable page in both languages with hreflang alternates."""
+    sm_file = SITE / 'sitemap.xml'
+    old = sm_file.read_text()
+    lastmod = dict(re.findall(r'<loc>([^<]+)</loc>\s*(?:<xhtml:link[^>]*/>\s*)*<lastmod>([^<]+)</lastmod>', old))
+    today = datetime.date.today().isoformat()
+    order = re.findall(r'<loc>' + re.escape(ORIGIN) + r'(/(?!id/)[^<]*)</loc>', old)
+    entries, txt = [], []
+    for p in order:
+        rel_en = 'index.html' if p == '/' else p.lstrip('/') + 'index.html'
+        rel_id = 'id/' + rel_en
+        pair = [(ORIGIN + p, p)]
+        if (SITE / rel_id).exists():
+            pair.append((ORIGIN + '/id' + p, '/id' + p))
+        alts = ''
+        if len(pair) == 2:
+            alts = (f'<xhtml:link rel="alternate" hreflang="en" href="{pair[0][0]}"/>'
+                    f'<xhtml:link rel="alternate" hreflang="id" href="{pair[1][0]}"/>'
+                    f'<xhtml:link rel="alternate" hreflang="x-default" href="{pair[0][0]}"/>')
+        for url, path in pair:
+            mod = today if (path in changed_pages or url not in lastmod) else lastmod[url]
+            entries.append(f'<url><loc>{url}</loc>{alts}<lastmod>{mod}</lastmod></url>')
+            txt.append(url)
+    xml = ("<?xml version='1.0' encoding='utf-8'?>\n"
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n'
+           + '\n'.join(entries) + '\n</urlset>\n')
+    return xml, '\n'.join(txt) + '\n'
+
+
 def build(check=False):
     changed = []
     css = build_bundles()
     motion_src = (SITE / 'motion3d.mjs').read_text()
     versions = {name: version(text) for name, text in css.items()}
     versions['motion3d.mjs'] = version(motion_src)
+    router = (I18N_SRC / 'lang-router.js').read_text()
+    router = re.sub(r'^\s*//.*$', '', router, flags=re.M)
+    router = re.sub(r'\n\s*', '\n', router).strip()
+    versions['router'] = router
+    dictionary = json.loads((I18N_SRC / 'id.json').read_text())
+    i18n_js = (I18N_SRC / 'runtime.js').read_text().replace('__DICT__', json.dumps(dictionary, ensure_ascii=False, separators=(',', ':')))
+    versions['i18n-id.js'] = version(i18n_js)
 
     outputs = {SITE / name: text for name, text in css.items()}
+    outputs[SITE / 'i18n-id.js'] = i18n_js
     changed_pages = []
     for f in sorted(SITE.rglob('*.html')):
         rel = f.relative_to(SITE).as_posix()
@@ -348,12 +496,7 @@ def build(check=False):
         if new != old:
             changed_pages.append(page_path(rel))
 
-    sm_file = SITE / 'sitemap.xml'
-    sm = sm_file.read_text()
-    today = datetime.date.today().isoformat()
-    for p in changed_pages:
-        sm = re.sub(rf'(<loc>{re.escape(ORIGIN + p)}</loc><lastmod>)[^<]+(</lastmod>)', rf'\g<1>{today}\g<2>', sm)
-    outputs[sm_file] = sm
+    outputs[SITE / 'sitemap.xml'], outputs[SITE / 'sitemap.txt'] = build_sitemaps(changed_pages)
 
     for f, text in outputs.items():
         cur = f.read_text() if f.exists() else None

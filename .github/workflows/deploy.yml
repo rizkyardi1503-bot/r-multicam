@@ -25,7 +25,9 @@ jobs:
           test -f site/auth/confirmed/index.html
           test -f site/sitemap.xml
       - name: Check bundled CSS and shared layout are up to date
-        run: python3 scripts/build-site.py --check
+        run: |
+          python3 scripts/build-site.py --check
+          python3 scripts/check-translation.py
       - name: Check website JavaScript
         run: find site -name '*.js' -exec node --check {} \;
       - name: Check account, checkout and download regressions

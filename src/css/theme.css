@@ -534,3 +534,38 @@ body:not(:has(.hero)) main .button.secondary:hover { border-color: #a18bff80; ba
 .rp-footer-links > div { display: block; }
 main nav[aria-label="Breadcrumb"] { border: 0; padding: 0; }
 .rp-footer-links { border: 0; padding-top: 0; margin-top: 0; }
+
+/* ---------------------------------------------------------------- Language switch */
+.rp-lang {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--rp-line-strong);
+  border-radius: 999px;
+  background: #ffffff08;
+  flex: 0 0 auto;
+}
+.rp-lang a {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--rp-muted);
+  text-decoration: none;
+  transition: background .25s, color .25s;
+}
+.rp-lang a:hover { color: #fff; }
+.rp-lang a[aria-current="true"] { background: linear-gradient(135deg, var(--rp-violet), var(--rp-cyan)); color: #0b0b10; }
+header:not(.rp-header) .rp-lang { margin-left: 12px; }
+@media (max-width: 860px) { .rp-header .rp-lang { margin-left: auto; } }
+@media (max-width: 520px) {
+  .rp-header { padding: 10px 10px 10px 12px; gap: 8px; }
+  .rp-header .brand { font-size: 13px; gap: 8px; }
+  .rp-header .brand small { display: none; }
+  .rp-header .mark { width: 30px; height: 30px; font-size: 17px; }
+  .rp-header .rp-lang a { padding: 4px 8px; font-size: 11px; }
+  .rp-header .header-account-actions .button { padding: 8px 10px; font-size: 12px; }
+  .rp-header .header-account-actions .button span { display: none; }
+}
