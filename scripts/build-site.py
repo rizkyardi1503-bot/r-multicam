@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+"""Build step for the static site.
+
+* Bundles the stylesheets in src/css into two minified files:
+    site/home.css  (homepage, keeps its original cascade order)
+    site/site.css  (every other page)
+* Rewrites every HTML page so it loads exactly one bundle (+ page-specific CSS),
+  preloads the two web fonts and loads the motion layer.
+* Gives all content pages the same header, footer, breadcrumb structured data
+  and an "On this page" table of contents for long pages.
+* Updates sitemap.xml <lastmod> for pages whose HTML changed.
+
+Idempotent: generated blocks are wrapped in <!--rp:NAME--> markers and replaced on
+every run. `--check` exits non-zero if the committed output is out of date (used in CI).
+"""
+import datetime
+import hashlib
+import html as htmllib
+import json
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SITE = ROOT / 'site'
+CSS_SRC = ROOT / 'src' / 'css'
+ORIGIN = 'https://r-multicam.pages.dev'
+
+BUNDLES = {
+    'home.css': ['styles.css', 'reference-layout.css', 'practice.css', 'elegance.css', 'conversion.css', 'theme.css', 'motion3d.css'],
+    'site.css': ['styles.css', 'practice.css', 'elegance.css', 'conversion.css', 'theme.css', 'motion3d.css'],
+}
+SOURCE_CSS = {name for files in BUNDLES.values() for name in files} | set(BUNDLES)
+FONTS = ['/fonts/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2', '/fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2']
+MOTION = '/motion3d.mjs'
+
+# Pages that keep their own header/footer (custom layouts or account flows).
+KEEP_LAYOUT = {'index.html', 'start/index.html', 'auth/confirmed/index.html'}
+
+NAV_EN = [
+    ('/#features', 'Product'),
+    ('/dj-multicam-editing/', 'DJ editing'),
+    ('/guides/music-driven-multicam-editing/', 'Guides'),
+    ('/#pricing', 'Pricing'),
+    ('/help/', 'Help'),
+]
+NAV_ID = [
+    ('/#features', 'Fitur'),
+    ('/id/#mulai-cepat', 'Mulai cepat'),
+    ('/#pricing', 'Harga'),
+    ('/help/', 'Bantuan'),
+    ('/', 'English'),
+]
+FOOTER_EN = [
+    ('Product', [
+        ('/ai-multicam-editor-premiere-pro/', 'AI multicam editor'),
+        ('/dj-multicam-editing/', 'DJ multicam editing'),
+        ('/podcast-ai-editing/', 'Podcast AI editing'),
+        ('/#pricing', 'Pricing'),
+        ('/releases/', 'Release notes'),
+    ]),
+    ('Learn', [
+        ('/guides/music-driven-multicam-editing/', 'Music-driven editing guide'),
+        ('/guides/install-multicam-ai/', 'Installation guide'),
+        ('/quick-start/', 'Quick start'),
+        ('/compatibility/', 'Compatibility'),
+        ('/help/', 'Help center'),
+        ('/id/', 'Panduan Bahasa Indonesia'),
+    ]),
+    ('Company', [
+        ('/affiliate/', 'Affiliate program'),
+        ('/digital-delivery/', 'Digital delivery'),
+        ('/refund-policy/', 'Refund policy'),
+        ('/terms/', 'Terms'),
+        ('/privacy/', 'Privacy'),
+        ('/license/', 'Software license'),
+    ]),
+]
+FOOTER_ID = [
+    ('Produk', [
+        ('/ai-multicam-editor-premiere-pro/', 'AI multicam editor'),
+        ('/dj-multicam-editing/', 'Editing multicam DJ'),
+        ('/#pricing', 'Harga'),
+        ('/releases/', 'Catatan rilis'),
+    ]),
+    ('Panduan', [
+        ('/id/#mulai-cepat', 'Mulai cepat'),
+        ('/guides/install-multicam-ai/', 'Panduan instalasi'),
+        ('/compatibility/', 'Kompatibilitas'),
+        ('/help/', 'Pusat bantuan'),
+    ]),
+    ('Perusahaan', [
+        ('/affiliate/', 'Program afiliasi'),
+        ('/refund-policy/', 'Kebijakan refund'),
+        ('/terms/', 'Syarat'),
+        ('/privacy/', 'Privasi'),
+    ]),
+]
+CONTACT = [
+    ('mailto:rizkyardi1503@gmail.com', 'Email support', False),
+    ('https://wa.me/6282233161680', 'WhatsApp support ↗', True),
+    ('https://www.instagram.com/r.project__/', 'Instagram ↗', True),
+]
+
+
+# ---------------------------------------------------------------- CSS
+def minify_css(css: str) -> str:
+    css = re.sub(r'/\*.*?\*/', '', css, flags=re.S)
+    out, i, n = [], 0, len(css)
+    # Collapse whitespace outside of string literals.
+    while i < n:
+        c = css[i]
+        if c in '"\'':
+            j = i + 1
+            while j < n and css[j] != c:
+                j += 2 if css[j] == '\\' else 1
+            out.append(css[i:j + 1])
+            i = j + 1
+            continue
+        if c.isspace():
+            while i < n and css[i].isspace():
+                i += 1
+            out.append(' ')
+            continue
+        out.append(c)
+        i += 1
+    css = ''.join(out)
+    css = re.sub(r'\s*([{};,>])\s*', r'\1', css)
+    css = css.replace(';}', '}')
+    return css.strip() + '\n'
+
+
+def build_bundles():
+    outputs = {}
+    for name, files in BUNDLES.items():
+        parts = []
+        for f in files:
+            parts.append(f'/* {f} */\n' + (CSS_SRC / f).read_text())
+        outputs[name] = minify_css('\n'.join(parts))
+    return outputs
+
+
+def version(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:10]
+
+
+# ---------------------------------------------------------------- HTML helpers
+def esc(s):
+    return htmllib.escape(s, quote=True)
+
+
+def page_path(rel: str) -> str:
+    """'guides/x/index.html' -> '/guides/x/'"""
+    if rel == 'index.html':
+        return '/'
+    if rel.endswith('/index.html'):
+        return '/' + rel[:-len('index.html')]
+    return '/' + rel
+
+
+def replace_block(html: str, name: str, new: str, fallback_pattern=None, insert_after=None):
+    """Replace <!--rp:name-->...<!--/rp:name-->; otherwise replace the first match of
+    fallback_pattern; otherwise insert after the first match of insert_after."""
+    wrapped = f'<!--rp:{name}-->{new}<!--/rp:{name}-->'
+    marker = re.compile(rf'<!--rp:{name}-->.*?<!--/rp:{name}-->', re.S)
+    if marker.search(html):
+        return marker.sub(lambda m: wrapped, html, count=1)
+    if fallback_pattern:
+        m = re.search(fallback_pattern, html, re.S)
+        if m:
+            return html[:m.start()] + wrapped + html[m.end():]
+    if insert_after:
+        m = re.search(insert_after, html, re.S)
+        if m:
+            return html[:m.end()] + wrapped + html[m.end():]
+    return html
+
+
+def header_html(path: str, lang: str, existing: str) -> str:
+    nav = NAV_ID if lang == 'id' else NAV_EN
+    links = []
+    for href, label in nav:
+        here = '#' not in href and href != '/' and path.startswith(href)
+        cur = ' aria-current="page"' if here else ''
+        extra = ' lang="en" hreflang="en"' if (lang == 'id' and href == '/') else ''
+        links.append(f'<a href="{href}"{cur}{extra}>{esc(label)}</a>')
+    # Keep account buttons a page's scripts depend on (e.g. affiliate login).
+    m = re.search(r'<div class="header-account-actions">.*?</div>', existing or '', re.S)
+    if m and 'data-' in m.group(0):
+        actions = m.group(0)
+    else:
+        cta = 'Coba gratis' if lang == 'id' else 'Free trial'
+        actions = f'<div class="header-account-actions"><a class="button small" href="/#pricing">{cta} <span>↗</span></a></div>'
+    label = 'Navigasi utama' if lang == 'id' else 'Main navigation'
+    return (f'<header class="rp-header"><a class="brand" href="/"><span class="mark">R</span>'
+            f'<span>R Project <small>Multicam AI</small></span></a>'
+            f'<nav aria-label="{label}">{"".join(links)}</nav>{actions}</header>')
+
+
+def footer_html(lang: str) -> str:
+    groups = FOOTER_ID if lang == 'id' else FOOTER_EN
+    blurb = ('Software independen untuk Adobe Premiere Pro. Dibuat oleh Rizki Ardiansyah, event filmmaker di Bali.'
+             if lang == 'id' else
+             'Independent software for Adobe Premiere Pro. Created by Rizki Ardiansyah, an event filmmaker based in Bali.')
+    cols = []
+    for title, items in groups:
+        lis = ''.join(f'<li><a href="{h}">{esc(t)}</a></li>' for h, t in items)
+        cols.append(f'<div><h2>{esc(title)}</h2><ul>{lis}</ul></div>')
+    contact_title = 'Kontak' if lang == 'id' else 'Contact'
+    contact = ''.join(
+        f'<li><a href="{h}"' + (' target="_blank" rel="noopener noreferrer"' if ext else '') + f'>{esc(t)}</a></li>'
+        for h, t, ext in CONTACT)
+    cols.append(f'<div><h2>{contact_title}</h2><ul>{contact}</ul></div>')
+    legal = 'Adobe dan Premiere Pro adalah merek dagang Adobe.' if lang == 'id' else 'Adobe and Premiere Pro are trademarks of Adobe.'
+    return (f'<footer class="rp-footer"><div class="rp-footer-inner"><div class="rp-footer-brand">'
+            f'<a class="brand" href="/"><span class="mark">R</span><span>R Project <small>Multicam AI</small></span></a>'
+            f'<p>{esc(blurb)}</p></div><nav class="rp-footer-links" aria-label="Footer">{"".join(cols)}</nav></div>'
+            f'<p class="rp-legal">© 2026 R Project · {esc(legal)}</p></footer>')
+
+
+def slugify(text: str) -> str:
+    text = htmllib.unescape(re.sub(r'<[^>]+>', '', text)).lower()
+    text = re.sub(r'[^a-z0-9\s-]', '', text)
+    return re.sub(r'[\s-]+', '-', text).strip('-')[:60] or 'section'
+
+
+def add_toc(html: str, lang: str) -> str:
+    m = re.search(r'(<main\b[^>]*>)(.*?)(</main>)', html, re.S)
+    if not m:
+        return html
+    body = re.sub(r'<!--rp:toc-->.*?<!--/rp:toc-->', '', m.group(2), flags=re.S)
+    heads = list(re.finditer(r'<h2(\s[^>]*)?>(.*?)</h2>', body, re.S))
+    if len(heads) < 4:
+        return html[:m.start(2)] + body + html[m.end(2):]
+    used, items = set(), []
+
+    def ensure_id(hm):
+        attrs, inner = hm.group(1) or '', hm.group(2)
+        idm = re.search(r'\sid="([^"]+)"', attrs)
+        if idm:
+            hid = idm.group(1)
+        else:
+            base = slugify(inner)
+            hid, k = base, 2
+            while hid in used:
+                hid, k = f'{base}-{k}', k + 1
+            attrs = f' id="{hid}"' + attrs
+        used.add(hid)
+        items.append((hid, htmllib.unescape(re.sub(r'<[^>]+>', '', inner)).strip()))
+        return f'<h2{attrs}>{inner}</h2>'
+
+    # Headings inside a section that already has an id keep that section as anchor target.
+    body = re.sub(r'<h2(\s[^>]*)?>(.*?)</h2>', ensure_id, body, flags=re.S)
+    title = 'Di halaman ini' if lang == 'id' else 'On this page'
+    lis = ''.join(f'<li><a href="#{hid}">{esc(text)}</a></li>' for hid, text in items)
+    toc = f'<!--rp:toc--><nav class="rp-toc" aria-label="{title}"><p>{title}</p><ol>{lis}</ol></nav><!--/rp:toc-->'
+    first = re.search(r'<section\b[^>]*>\s*<h2|<h2[\s>]', body)
+    body = body[:first.start()] + toc + body[first.start():]
+    return html[:m.start(2)] + body + html[m.end(2):]
+
+
+def breadcrumb_ld(html: str, path: str) -> str:
+    html = re.sub(r'<!--rp:crumbs-->.*?<!--/rp:crumbs-->', '', html, flags=re.S)
+    if 'BreadcrumbList' in html:
+        return html
+    nav = re.search(r'<nav aria-label="Breadcrumb">(.*?)</nav>', html, re.S)
+    if not nav:
+        return html
+    items = []
+    for href, text in re.findall(r'<a href="([^"]+)"[^>]*>(.*?)</a>', nav.group(1), re.S):
+        items.append((ORIGIN + href if href.startswith('/') else href, htmllib.unescape(re.sub(r'<[^>]+>', '', text)).strip()))
+    tail = re.sub(r'<a\b.*?</a>', '', nav.group(1), flags=re.S)
+    tail = htmllib.unescape(re.sub(r'<[^>]+>', '', tail)).replace('/', ' ').strip()
+    if tail:
+        items.append((ORIGIN + path, tail))
+    if len(items) < 2:
+        return html
+    data = {'@context': 'https://schema.org', '@type': 'BreadcrumbList', 'itemListElement': [
+        {'@type': 'ListItem', 'position': i + 1, 'name': name, 'item': url} for i, (url, name) in enumerate(items)]}
+    block = f'<!--rp:crumbs--><script type="application/ld+json">{json.dumps(data, ensure_ascii=False, separators=(",", ":"))}</script><!--/rp:crumbs-->'
+    return html.replace('</head>', block + '</head>', 1)
+
+
+def process_page(rel: str, html: str, versions: dict) -> str:
+    path = page_path(rel)
+    lang = (re.search(r'<html[^>]*\blang="([^"]+)"', html) or [None, 'en'])[1]
+    bundle = 'home.css' if rel == 'index.html' else 'site.css'
+
+    # 1. Stylesheets -> one bundle at the position of the first old link.
+    link_re = re.compile(r'<link rel="stylesheet" href="/?([a-z0-9-]+\.css)(\?[^"]*)?">')
+    first = None
+    def strip_link(m):
+        nonlocal first
+        if m.group(1) in SOURCE_CSS:
+            if first is None:
+                first = True
+                return '\x00BUNDLE\x00'
+            return ''
+        return m.group(0)
+    html = link_re.sub(strip_link, html)
+    tag = f'<link rel="stylesheet" href="/{bundle}?v={versions[bundle]}">'
+    html = html.replace('\x00BUNDLE\x00', tag) if first else html.replace('</head>', tag + '</head>', 1)
+
+    # 2. Font preloads (prevents late font swap -> better LCP/CLS).
+    html = re.sub(r'<link rel="preload" href="/fonts/[^"]+" as="font"[^>]*>', '', html)
+    preloads = ''.join(f'<link rel="preload" href="{f}" as="font" type="font/woff2" crossorigin>' for f in FONTS)
+    html = html.replace(tag, preloads + tag, 1)
+
+    # 3. Motion layer.
+    html = re.sub(r'<script type="module" src="/motion3d\.mjs(\?[^"]*)?"></script>', '', html)
+    html = html.replace('</head>', f'<script type="module" src="{MOTION}?v={versions["motion3d.mjs"]}"></script></head>', 1)
+
+    if rel in KEEP_LAYOUT:
+        return html
+
+    # 4. Shared header (+ skip link), main landmark id, shared footer.
+    existing = re.search(r'<!--rp:header-->(.*?)<!--/rp:header-->|<header\b[^>]*>.*?</header>', html, re.S)
+    hdr = header_html(path, lang, existing.group(0) if existing else '')
+    html = replace_block(html, 'header', hdr, fallback_pattern=r'<header\b[^>]*>.*?</header>', insert_after=r'<body[^>]*>')
+    if not re.search(r'<main\b[^>]*\bid=', html):
+        html = re.sub(r'<main\b', '<main id="main"', html, count=1)
+    skip = 'Langsung ke konten' if lang == 'id' else 'Skip to content'
+    if 'class="skip-link"' not in html:
+        html = re.sub(r'(<body[^>]*>)', rf'\1<a class="skip-link" href="#main">{skip}</a>', html, count=1)
+    html = replace_block(html, 'footer', footer_html(lang), fallback_pattern=r'<footer\b[^>]*>.*?</footer>', insert_after=r'</main>')
+
+    # 5. Table of contents + breadcrumb structured data.
+    html = add_toc(html, lang)
+    html = breadcrumb_ld(html, path)
+    return html
+
+
+def build(check=False):
+    changed = []
+    css = build_bundles()
+    motion_src = (SITE / 'motion3d.mjs').read_text()
+    versions = {name: version(text) for name, text in css.items()}
+    versions['motion3d.mjs'] = version(motion_src)
+
+    outputs = {SITE / name: text for name, text in css.items()}
+    changed_pages = []
+    for f in sorted(SITE.rglob('*.html')):
+        rel = f.relative_to(SITE).as_posix()
+        old = f.read_text()
+        new = process_page(rel, old, versions)
+        new = process_page(rel, new, versions)  # second pass must be a no-op
+        outputs[f] = new
+        if new != old:
+            changed_pages.append(page_path(rel))
+
+    sm_file = SITE / 'sitemap.xml'
+    sm = sm_file.read_text()
+    today = datetime.date.today().isoformat()
+    for p in changed_pages:
+        sm = re.sub(rf'(<loc>{re.escape(ORIGIN + p)}</loc><lastmod>)[^<]+(</lastmod>)', rf'\g<1>{today}\g<2>', sm)
+    outputs[sm_file] = sm
+
+    for f, text in outputs.items():
+        cur = f.read_text() if f.exists() else None
+        if cur != text:
+            changed.append(f.relative_to(ROOT).as_posix())
+            if not check:
+                f.write_text(text)
+    return changed
+
+
+if __name__ == '__main__':
+    check = '--check' in sys.argv
+    changed = build(check)
+    if check:
+        # lastmod dates legitimately differ by day; ignore sitemap in check mode.
+        stale = [c for c in changed if c != 'site/sitemap.xml']
+        if stale:
+            print('Site build output is out of date. Run: python3 scripts/build-site.py')
+            print('\n'.join(stale))
+            sys.exit(1)
+        print('Site build output is up to date.')
+    else:
+        print(f'Updated {len(changed)} file(s).')
+        for c in changed:
+            print(' ', c)

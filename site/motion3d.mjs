@@ -20,8 +20,7 @@ function start() {
   }
   const hero = document.querySelector('.hero');
   if (hero) setupHero(hero);
-  // Let the first frame paint with hidden hero items, then animate them in.
-  requestAnimationFrame(() => requestAnimationFrame(() => doc.classList.add('m3d-in')));
+  else setupStage3d();
 }
 
 /* ---------------- Header glass + scroll progress ---------------- */
@@ -45,15 +44,20 @@ function setupProgressAndHeader() {
 /* ---------------- Reveal on scroll ---------------- */
 function setupReveal() {
   const selectors = [
+    // Homepage sections
     '.playground', '.section-head', '.feature-grid article', '.workflow-row',
     '.price-card', '.faq > div', '.faq details', '.closing > *', '.resources > *',
-    '#downloads > *', '#multicam-workflows > *', '#start-checklist > *', '#demo > *', '#podcast-ai > *'
+    '#downloads > *', '#multicam-workflows > *', '#start-checklist > *', '#demo > *', '#podcast-ai > *',
+    // Content pages
+    'main > h2', 'main > h3', 'main > p:not(.eyebrow):not(.subtle)', 'main > ul', 'main > ol', 'main > details',
+    'main > .actions', 'main > section', 'main > table', '.support-grid article', '.conversion-card',
+    '.business-note', '.compatibility-table-wrap', '.rp-toc', '.rp-footer-inner'
   ];
   const seen = new Set();
   const items = [];
   for (const sel of selectors) {
     for (const el of document.querySelectorAll(sel)) {
-      if (seen.has(el) || el.closest('.hero, dialog, header, footer')) continue;
+      if (seen.has(el) || el.closest('.hero, dialog, header, .rp-header, footer:not(.rp-footer)')) continue;
       seen.add(el);
       items.push(el);
     }
@@ -65,16 +69,24 @@ function setupReveal() {
     el.style.setProperty('--m3d-delay', `${Math.min(i, 6) * 0.07}s`);
     el.setAttribute('data-m3d-reveal', '');
   }
-  if (reduceMotion || !('IntersectionObserver' in window)) {
+  // Crawlers, audits and automation always get every section fully visible (same content, no animation).
+  const isBot = navigator.webdriver || /bot|crawl|spider|slurp|lighthouse|pagespeed|headless|google|bing|yandex|duckduck|baidu|facebookexternalhit|embedly|preview/i.test(navigator.userAgent);
+  if (reduceMotion || isBot || !('IntersectionObserver' in window)) {
     items.forEach((el) => el.classList.add('is-in'));
     return;
   }
+  // Content already on screen is never hidden: no flash and no delay for the first paint.
+  const fold = innerHeight * 0.92;
+  for (const el of items) {
+    if (el.getBoundingClientRect().top < fold) { el.style.transition = 'none'; el.classList.add('is-in'); }
+  }
+  requestAnimationFrame(() => items.forEach((el) => { el.style.transition = ''; }));
   const io = new IntersectionObserver((entries) => {
     for (const e of entries) {
       if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); }
     }
   }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
-  items.forEach((el) => io.observe(el));
+  items.forEach((el) => { if (!el.classList.contains('is-in')) io.observe(el); });
   // Anything already above the fold (or jumped to via #hash) shows immediately.
   addEventListener('hashchange', () => items.forEach((el) => {
     if (el.getBoundingClientRect().top < innerHeight) el.classList.add('is-in');
@@ -83,7 +95,7 @@ function setupReveal() {
 
 /* ---------------- 3D tilt cards ---------------- */
 function setupTilt() {
-  const cards = document.querySelectorAll('.feature-grid article, .price-card');
+  const cards = document.querySelectorAll('.feature-grid article, .price-card, .support-grid article, .conversion-card, .downloads article');
   for (const card of cards) {
     card.setAttribute('data-m3d-tilt', '');
     let rx = 0, ry = 0, tx = 0, ty = 0, raf = 0, hovering = false;
@@ -120,6 +132,54 @@ function setupMagnetic() {
     });
     btn.addEventListener('pointerleave', () => { btn.style.transform = ''; });
   }
+}
+
+
+/* ---------------- CSS-3D stage for content pages (no WebGL, very light) ---------------- */
+function setupStage3d() {
+  const main = document.querySelector('main');
+  if (!main || reduceMotion || !main.querySelector(':scope > h1')) return;
+  if (location.pathname.startsWith('/start/') || location.pathname.startsWith('/auth/')) return;
+  const stage = document.createElement('div');
+  stage.className = 'rp-stage3d';
+  stage.setAttribute('aria-hidden', 'true');
+  stage.innerHTML = '<div class="rp-rig"><div class="rp-floor"></div>'
+    + [1, 2, 3, 4].map((n) => `<div class="rp-cam" data-cam="CAM ${n}"></div>`).join('') + '</div>';
+  main.prepend(stage);
+  const cams = stage.querySelectorAll('.rp-cam');
+  let tx = 0, ty = 0, cx = 0, cy = 0, sy = 0, raf = 0, visible = true;
+  if (finePointer) {
+    addEventListener('pointermove', (e) => {
+      tx = ((e.clientX / innerWidth) - 0.5) * 16;
+      ty = ((e.clientY / innerHeight) - 0.5) * -10;
+      if (!raf && visible) raf = requestAnimationFrame(loop);
+    }, { passive: true });
+  }
+  addEventListener('scroll', () => { if (!raf && visible) raf = requestAnimationFrame(loop); }, { passive: true });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      stage.style.animationPlayState = visible ? '' : 'paused';
+      cams.forEach((c) => { c.style.animationPlayState = visible ? '' : 'paused'; });
+      if (visible && !raf) raf = requestAnimationFrame(loop);
+    }).observe(stage);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && visible && !raf) raf = requestAnimationFrame(loop); });
+  const t0 = performance.now();
+  function loop(now) {
+    raf = 0;
+    cx = lerp(cx, tx, 0.08);
+    cy = lerp(cy, ty, 0.08);
+    sy = lerp(sy, Math.min(scrollY, 600) * 0.03, 0.15);
+    stage.style.setProperty('--rp-rx', `${cx.toFixed(2)}deg`);
+    stage.style.setProperty('--rp-ry', `${(cy + sy).toFixed(2)}deg`);
+    // Equalizer bars pulse at 120 BPM.
+    const beat = (((now || performance.now()) - t0) / 500) % 1;
+    const eq = 30 + Math.pow(1 - beat, 3) * 60;
+    cams.forEach((c, i) => c.style.setProperty('--eq', `${(eq * (0.7 + 0.1 * i)).toFixed(0)}%`));
+    if (visible && !document.hidden) raf = requestAnimationFrame(loop);
+  }
+  raf = requestAnimationFrame(loop);
 }
 
 /* ---------------- Hero 3D scene ---------------- */

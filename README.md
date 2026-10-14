@@ -10,7 +10,17 @@ Static website deployed to the existing Cloudflare Pages project `r-multicam` by
 4. In repository Settings → Secrets and variables → Actions, add a repository secret named `CLOUDFLARE_API_TOKEN`. Paste the token directly in GitHub, never into chat or source code. The workflow already includes the non-secret account ID.
 5. Open Actions → Deploy r-multicam website → Run workflow → main. A successful run deploys to https://r-multicam.pages.dev/ .
 
-After setup, pushes changing `site/` on `main` deploy automatically. Updates on other branches do not deploy. Existing direct-upload project and domain are retained.
+After setup, pushes changing `site/` or `src/` on `main` deploy automatically. Branches named `preview/*` deploy to a separate preview URL; other branches do not deploy.
+
+## Styles and shared layout
+
+Edit stylesheets in `src/css/` (never `site/site.css` or `site/home.css` directly), then run:
+
+```
+python3 scripts/build-site.py
+```
+
+This bundles and minifies the CSS (`home.css` for the homepage, `site.css` for all other pages), applies the shared header, footer, table of contents and breadcrumb data to every content page, and updates `sitemap.xml` dates for changed pages. CI fails if the build output is out of date. The 3D/motion layer lives in `site/motion3d.mjs`. Existing direct-upload project and domain are retained.
 
 Reference: https://developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration/
 

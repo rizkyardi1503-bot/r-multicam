@@ -72,21 +72,6 @@
   50%      { background-position: 0% 0; }
 }
 
-/* Hero entrance: staggered rise. */
-.m3d .hero > * {
-  opacity: 0;
-  transform: translateY(26px);
-  filter: blur(6px);
-  transition: opacity 1.1s var(--m3d-ease), transform 1.1s var(--m3d-ease), filter 1.1s var(--m3d-ease);
-}
-.m3d .hero > .m3d-stage { opacity: 1; transform: none; filter: none; }
-.m3d.m3d-in .hero > * { opacity: 1; transform: none; filter: none; }
-.m3d.m3d-in .hero > :nth-child(2) { transition-delay: .08s; }
-.m3d.m3d-in .hero > :nth-child(3) { transition-delay: .18s; }
-.m3d.m3d-in .hero > :nth-child(4) { transition-delay: .3s; }
-.m3d.m3d-in .hero > :nth-child(5) { transition-delay: .42s; }
-.m3d.m3d-in .hero > :nth-child(6) { transition-delay: .54s; }
-
 /* Scroll hint. */
 .m3d-scroll {
   position: absolute;
@@ -184,7 +169,6 @@
 
 /* ---------- Respect user preferences ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .m3d .hero > *,
   .m3d [data-m3d-reveal] { opacity: 1 !important; transform: none !important; filter: none !important; }
   .m3d-stage::before, .m3d .hero h1 em, .m3d-scroll::after { animation: none !important; }
   .m3d-progress { display: none; }

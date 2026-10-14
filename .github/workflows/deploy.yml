@@ -1,13 +1,13 @@
 name: Deploy r-multicam website
 on:
   push:
-    branches: [main]
-    paths: ['site/**', 'scripts/**', '.github/workflows/deploy.yml']
+    branches: [main, 'preview/**']
+    paths: ['site/**', 'src/**', 'scripts/**', '.github/workflows/deploy.yml']
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: r-multicam-production
+  group: r-multicam-${{ github.ref_name }}
   cancel-in-progress: false
 jobs:
   deploy:
@@ -24,6 +24,8 @@ jobs:
           test -f site/config.js
           test -f site/auth/confirmed/index.html
           test -f site/sitemap.xml
+      - name: Check bundled CSS and shared layout are up to date
+        run: python3 scripts/build-site.py --check
       - name: Check website JavaScript
         run: find site -name '*.js' -exec node --check {} \;
       - name: Check account, checkout and download regressions
@@ -42,4 +44,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: '3e561fc2707674ded69117e558d10a9f'
-          command: pages deploy site --project-name=r-multicam --branch=main
+          # main -> production; preview/* branches -> a private preview URL (not indexed by Google)
+          command: pages deploy site --project-name=r-multicam --branch=${{ github.ref_name == 'main' && 'main' || format('preview-{0}', github.run_number) }}
