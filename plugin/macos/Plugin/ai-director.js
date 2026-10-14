@@ -58,7 +58,7 @@ function roleMatchCameras(cands,roleMap,wanted,excludeCamera,excludeSameRole){
  return out;
 }
 function differentAnglePool(cands,last,roleMap){
- var src=(cands||[]).slice(),lastRole=String(roleMap&&roleMap[last]||'').trim().toLowerCase(),strong=src.filter(function(c){var r=String(roleMap&&roleMap[c]||'').trim().toLowerCase();return c!==last&&(!lastRole||!r||r!==lastRole);});if(strong.length)return strong;var different=src.filter(function(c){return c!==last;});return different.length?different:src;
+ var src=(cands||[]).slice(),lastRole=String(roleMap&&roleMap[last]||'').trim().toLowerCase(),strong=src.filter(function(c){var r=String(roleMap&&roleMap[c]||'').trim().toLowerCase();return c!==last&&(!lastRole||!r||r!==lastRole);});if(strong.length)return contrastPool(strong,last,roleMap);var different=src.filter(function(c){return c!==last;});return different.length?contrastPool(different,last,roleMap):src;
 }
 function randomAntiRepeatCamera(cands,history,last){var pool=antiRepeatPool(cands,history,last);if(!pool.length)pool=(cands||[]).slice();if(!pool.length)return -1;return pool[Math.floor(Math.random()*pool.length)];}
 function dropBodyEventAt(musicAnalysis,start,end){
@@ -67,6 +67,72 @@ function dropBodyEventAt(musicAnalysis,start,end){
  return null;
 }
 function roleTags(s){s=String(s||'').toLowerCase();return {wide:/wide|master|establish/.test(s),close:/close|cu|detail/.test(s),crowd:/crowd|audience|penonton/.test(s),dj:/dj|artist|performer/.test(s),behind:/behind|rear|back(?:\s+of)?\s*dj|belakang/.test(s),side:/side|rear|back|stage/.test(s),medium:/medium|mid/.test(s)};}
+function roleProfile(role){
+ var s=' '+String(role||'').toLowerCase().replace(/[^a-z0-9]+/g,' ')+' ',size=null,dir=null;
+ if(/ (medium|mid) wide | mws | medium long /.test(s))size='wide';
+ else if(/ (wide|master|establish|establishing|full|long|lebar|ws|drone|aerial|overview) /.test(s))size='wide';
+ else if(/ (medium|mid|ms|half) /.test(s))size='medium';
+ else if(/ (close|closeup|cu|ecu|tight|detail|insert|deck|decks|mixer|cdj|cdjs|hands?|tangan|face|wajah) /.test(s))size='close';
+ if(/ (behind|rear|back|belakang) /.test(s))dir='behind';
+ else if(/ (left|kiri) /.test(s))dir='left';
+ else if(/ (right|kanan) /.test(s))dir='right';
+ else if(/ (front|depan) /.test(s))dir='front';
+ else if(/ (top|overhead|drone|aerial|atas) /.test(s))dir='top';
+ else if(/ (crowd|audience|penonton) /.test(s))dir='crowd';
+ else if(/ (side|samping|stage) /.test(s))dir='side';
+ return {size:size,dir:dir};
+}
+function roleConflict(a,b){
+ if(!a||!b)return false;
+ if(a.size&&b.size)return a.size===b.size;
+ if(a.dir&&b.dir)return a.dir===b.dir;
+ return false;
+}
+function camerasConflict(roleMap,x,y){return x>=0&&y>=0&&x!==y&&roleConflict(roleProfile(roleMap&&roleMap[x]),roleProfile(roleMap&&roleMap[y]));}
+function contrastPool(cands,last,roleMap){
+ var src=(cands||[]).slice();if(!(last>=0))return src;
+ var out=src.filter(function(c){return c!==last&&!camerasConflict(roleMap,last,c);});
+ return out.length?out:src;
+}
+// Final pass: a physical cut must not join two cameras of the same kind (wide -> wide,
+// close -> close, behind -> behind). Whole shots are swapped, so shot lengths, exact-drop
+// cameras and the 4-beat / max-hold rules stay as they were.
+function enforceRoleContrast(choices,intervals,enabledCameras,roleMap,bpm){
+ var out=choices.map(function(c){return Object.assign({},c);}),repairs=0,warnings=[];
+ function runs(){var r=[];for(var i=0;i<out.length;i++){var cam=Number(out[i].camera),last=r[r.length-1];if(last&&last.camera===cam)last.end=i;else r.push({start:i,end:i,camera:cam});}return r;}
+ function locked(run){for(var j=run.start;j<=run.end;j++)if(/^(drop|drop-force)$/.test(String(out[j].structureLock||'')))return true;return false;}
+ function covering(run){var pool=null;for(var j=run.start;j<=run.end;j++){var c=filterEnabledCameras(intervals[j]&&intervals[j].candidates||[],enabledCameras);pool=pool===null?c:pool.filter(function(x){return c.indexOf(x)>=0;});}return pool||[];}
+ function seconds(cam){var t=0;for(var j=0;j<out.length;j++)if(Number(out[j].camera)===cam)t+=Math.max(0,Number(intervals[j].end)-Number(intervals[j].start));return t;}
+ function replace(run,prev,next){
+  if(locked(run))return false;
+  var opts=covering(run).filter(function(c){return c!==run.camera&&(!prev||c!==prev.camera)&&(!next||c!==next.camera)&&!(prev&&camerasConflict(roleMap,prev.camera,c))&&!(next&&camerasConflict(roleMap,c,next.camera));});
+  if(!opts.length)return false;
+  opts.sort(function(a,b){return seconds(a)-seconds(b)||a-b;});
+  var cam=opts[0],role=roleMap&&roleMap[cam]?' ('+roleMap[cam]+')':'';
+  for(var j=run.start;j<=run.end;j++){out[j].camera=cam;out[j].reason='Camera Role Contrast: Camera '+(cam+1)+role+' replaces a same-type angle so consecutive shots change shot size/direction.';out[j].confidence='high';}
+  repairs++;return true;
+ }
+ // No other angle type available: drop the cut instead (continue the previous shot), as
+ // long as the joined shot stays within 16 beats.
+ var beat=60/Math.max(40,Number(bpm)||120);
+ function span(x,y){return Number(intervals[y.end].end)-Number(intervals[x.start].start);}
+ function merge(from,into,first,last){
+  if(locked(from)||into.camera<0||covering(from).indexOf(into.camera)<0||span(first,last)>16*beat+1e-6)return false;
+  var role=roleMap&&roleMap[into.camera]?' ('+roleMap[into.camera]+')':'';
+  for(var j=from.start;j<=from.end;j++){out[j].camera=into.camera;out[j].reason='Camera Role Contrast: Camera '+(into.camera+1)+role+' continues instead of cutting to another angle of the same type.';out[j].confidence='high';}
+  repairs++;return true;
+ }
+ for(var pass=0;pass<Math.max(1,out.length);pass++){
+  var r=runs(),changed=false;
+  for(var i=1;i<r.length;i++){
+   var a=r[i-1],b=r[i];if(!camerasConflict(roleMap,a.camera,b.camera))continue;
+   if(replace(b,a,r[i+1])||replace(a,r[i-2],b)||merge(b,a,a,b)||merge(a,b,a,b)){changed=true;break;}
+  }
+  if(!changed)break;
+ }
+ var final=runs();for(var k=1;k<final.length;k++)if(camerasConflict(roleMap,final[k-1].camera,final[k].camera))warnings.push(k);
+ return {choices:out,repairs:repairs,warnings:warnings};
+}
 function energyAt(music,t){
  var list=music||[],best=50,d=1e9;for(var i=0;i<list.length;i++){var x=Math.abs(Number(list[i].time)-t);if(x<d){d=x;best=Number(list[i].energy)||0;}}return clamp(best,0,100);
 }
@@ -118,7 +184,7 @@ function selectedCamera(value,cands){var n=Number(value);return isFinite(n)&&n>=
 function recentCameraSet(history,count){var out={},h=Array.isArray(history)?history:[],n=Math.max(1,Number(count)||3);for(var i=Math.max(0,h.length-n);i<h.length;i++)if(Number(h[i])>=0)out[Number(h[i])]=true;return out;}
 function antiRepeatPool(cands,history,last){var src=(cands||[]).slice(),other=src.filter(function(cam){return cam!==last;});return other.length?other:src;}
 function weightedRandomCamera(cands,it,index,options,roleMap,last,lastUsed,metrics,history,usage){
- var e=energyAt(options.music,(it.start+it.end)/2),pool=[],total=0,source=antiRepeatPool(cands,history,last),minUsage=Infinity;usage=usage||{};
+ var e=energyAt(options.music,(it.start+it.end)/2),pool=[],total=0,source=contrastPool(antiRepeatPool(cands,history,last),last,roleMap),minUsage=Infinity;usage=usage||{};
  for(var u=0;u<source.length;u++)minUsage=Math.min(minUsage,Number(usage[source[u]])||0);if(!isFinite(minUsage))minUsage=0;
  for(var i=0;i<source.length;i++){
   var cam=source[i],tags=roleTags(roleMap[cam]),w=1;
@@ -175,7 +241,7 @@ function chooseCamera(it,index,options,roleMap,last,lastUsed,metrics,history,usa
  }
  var pre=preDropEventAt(options.musicAnalysis,it.start,it.end),pool=cands.slice();
  if(pre){
-  var prePool=antiRepeatPool(pool,history,last),forcedFuture=options.dropCamera!==null&&options.dropCamera!==undefined?Number(options.dropCamera):-1;if(isFinite(forcedFuture)&&forcedFuture>=0){var withoutForced=prePool.filter(function(c){return c!==forcedFuture;});if(withoutForced.length)prePool=withoutForced;}var autoPre=structuralCamera(prePool,roleMap,['wide','crowd','medium','dj','close','behind'],last);if(autoPre<0)autoPre=structuralCamera(pool,roleMap,['wide','crowd','medium','dj','close','behind'],last);if(autoPre<0)autoPre=randomAntiRepeatCamera(prePool.length?prePool:pool,history,last);
+  var prePool=contrastPool(antiRepeatPool(pool,history,last),last,roleMap),forcedFuture=options.dropCamera!==null&&options.dropCamera!==undefined?Number(options.dropCamera):-1;if(isFinite(forcedFuture)&&forcedFuture>=0){var withoutForced=prePool.filter(function(c){return c!==forcedFuture;});if(withoutForced.length)prePool=withoutForced;}var autoPre=structuralCamera(prePool,roleMap,['wide','crowd','medium','dj','close','behind'],last);if(autoPre<0)autoPre=structuralCamera(pool,roleMap,['wide','crowd','medium','dj','close','behind'],last);if(autoPre<0)autoPre=randomAntiRepeatCamera(prePool.length?prePool:pool,history,last);
   if(autoPre>=0){var pr=roleMap[autoPre]?' ('+roleMap[autoPre]+')':'';return {camera:autoPre,reason:'Auto Music Map pre-drop: Camera '+(autoPre+1)+pr+' prepares a contrasting angle before the detected impact.',confidence:'high',structureLock:'pre-drop'};}
  }
  var picked=weightedRandomCamera(pool,it,index,options,roleMap,last,lastUsed,metrics,history,usage),role=roleMap[picked]?' ('+roleMap[picked]+')':'';
@@ -246,7 +312,7 @@ function enforceMinimumPhysicalTransitions(choices,intervals,musicAnalysis,enabl
  while(pass++<limit){
   var runs=physicalShotRuns(out,intervals,musicAnalysis),changed=false;
   for(var n=0;n<runs.length;n++){
-   var r=runs[n];if(r.camera<0||r.beats>=4-1e-6)continue;
+   var r=runs[n];if(r.camera<0||r.beats>=4-.25)continue; // frame-snapped 4-beat shots measure slightly under 4 beats
    var prev=n>0?runs[n-1]:null,next=n+1<runs.length?runs[n+1]:null;
    // Every repair removes a physical transition; locked exact-drop cameras cannot be changed.
    if(prev&&prev.camera>=0&&replaceRun(r,prev.camera)){changed=true;break;}
@@ -284,7 +350,7 @@ root.RPDirector={
   check(state);var enabled=Array.isArray(options.enabledCameras)?options.enabledCameras.slice():[];if(!enabled.length)throw Error('Enable at least one camera in Camera Selection.');var uncovered=[];for(var vi=0;vi<snapshot.intervals.length;vi++){var rawC=snapshot.intervals[vi].candidates||[],activeC=filterEnabledCameras(rawC,enabled);if(!activeC.length)uncovered.push(snapshot.intervals[vi]);}var preliminary=enforceMaxHold(snapshot.intervals.map(function(it){return {id:it.id,camera:it.candidates.length?it.candidates[0]:-1};}),snapshot.intervals,options.musicAnalysis||null,enabled);if(preliminary.error)throw Error(preliminary.error);var initial=stamp(snapshot),jobs=options.vision?sampleJobs(snapshot,Math.max(1,Number(options.budget)||60),enabled,options.musicAnalysis||null):[],metrics={},failures=0,ffmpeg=jobs.length?root.RPAudio.executable(options.ffmpeg):null;
   for(var i=0;i<jobs.length;i++){check(state);if(guard&&guard.preflight)await guard.preflight(state,'AI Vision sampling');progress(.42*i/Math.max(1,jobs.length),'AI Vision sample '+(i+1)+' / '+jobs.length);try{metrics[jobs[i].id+'|'+jobs[i].camera]=await readFrameMetrics(jobs[i].clip,ffmpeg,state);}catch(e){check(state);failures++;}jobs[i].clip=null;if(profile.lowMemory||(i+1)%12===0)await new Promise(function(r){setTimeout(r,profile.lowMemory?100:0);});}jobs.length=0;
   var roles=parseRoles(options.roles),choices=[],last=-999,lastUsed={},history=[],usage={},liveHold={last:-999,held:0,forced:0,warnings:[]};for(i=0;i<snapshot.intervals.length;i++){check(state);var it=snapshot.intervals[i],pick=chooseCamera(it,i,options,roles,last,lastUsed,metrics,history,usage);root.RPBeatFirst.guardHold(pick,Object.assign({},it,{candidates:filterEnabledCameras(it.candidates||[],enabled)}),options.musicAnalysis,liveHold);choices.push({id:it.id,camera:pick.camera,reason:pick.reason,confidence:pick.confidence,structureLock:pick.structureLock||''});if(pick.camera>=0){last=pick.camera;lastUsed[pick.camera]=i;usage[pick.camera]=(Number(usage[pick.camera])||0)+Math.max(0,Number(it.end)-Number(it.start));history.push(pick.camera);if(history.length>6)history.shift();}if(i%30===0){progress(.42+.58*i/Math.max(1,snapshot.intervals.length),'Agent AI camera planning '+(i+1)+' / '+snapshot.intervals.length);await new Promise(function(r){setTimeout(r,0);});}}
-  if(stamp(snapshot)!==initial)throw Error('Camera media changed during Agent AI analysis. Generate a new plan.');var hg={choices:choices,forced:0,warnings:[]},bd={choices:choices,repairs:0,validated:0,unresolved:0,forced:0,fallbacks:0},repaired=0;for(var ci=0;ci<choices.length;ci++){var interval=snapshot.intervals[ci]||{},valid=filterEnabledCameras(interval.candidates||[],enabled),chosen=Number(choices[ci].camera);if(chosen>=0&&valid.indexOf(chosen)<0){choices[ci].camera=valid.length?valid[0]:-1;choices[ci].confidence='medium';choices[ci].reason=valid.length?'Coverage resolver fallback: V'+(valid[0]+1)+' is enabled and available for this interval.':'Coverage resolver: no enabled camera covers this interval; leave it untouched.';choices[ci].structureLock='';repaired++;}else if(chosen<0&&valid.length){choices[ci].camera=valid[0];choices[ci].confidence='medium';choices[ci].reason='Coverage resolver fallback: V'+(valid[0]+1)+' is enabled and available for this interval.';choices[ci].structureLock='';repaired++;}}hg=enforceMaxHold(choices,snapshot.intervals,options.musicAnalysis||null,enabled,'');hg.forced+=liveHold.forced;if(hg.error)throw Error(hg.error);choices=hg.choices;bd=enforceBuildDropDifference(choices,snapshot.intervals,options,roles);choices=bd.choices;var physical=enforceMinimumPhysicalTransitions(choices,snapshot.intervals,options.musicAnalysis||null,enabled);choices=physical.choices;validateStructure(choices,policy.allowed);if(root.RPBeatFirst)root.RPBeatFirst.validateHold(choices,snapshot.intervals,options.musicAnalysis);var summaries=['Auto Music Map V14 camera orchestration uses separate drop/background priorities, coverage-first candidates, usage balancing and mandatory angle contrast when an alternate camera is available.','Camera Selection: '+enabled.map(function(c){return 'Camera '+(Number(c)+1);}).join(', ')+' enabled.'];if(uncovered.length)summaries.push('Coverage Guard: '+uncovered.length+' interval'+(uncovered.length===1?'':'s')+' had no enabled camera coverage and will be left untouched instead of aborting the full edit.');var structureCount=options.musicAnalysis&&Number(options.musicAnalysis.structure_drop_count)||0;if(structureCount)summaries.push('Auto Music Map V14: '+structureCount+' build-up → drop transition'+(structureCount===1?'':'s')+' detected; exact-drop camera follows Main Drop Camera when available.');if(options.dropCamera!==null&&options.dropCamera!==undefined)summaries.push('Main Drop Camera: V'+(Number(options.dropCamera)+1)+' requested for every validated drop impact.');if(options.vision)summaries.push('AI Vision analysis: '+Object.keys(metrics).length+' successful, '+failures+' failed.');if(hg.forced)summaries.push('Max Hold Guard corrected '+hg.forced+' long same-camera run'+(hg.forced===1?'':'s')+'.');if(hg.warnings.length)summaries.push('Live Max-Hold Guard: '+hg.warnings.length+' interval(s) continued with a hold warning because no usable alternate or shorter boundary was available.');if(bd.forced)summaries.push('Main Drop Camera enforced on '+bd.forced+' validated drop impact'+(bd.forced===1?'':'s')+'.');if(bd.fallbacks)summaries.push('Main Drop Camera fallback used on '+bd.fallbacks+' drop impact'+(bd.fallbacks===1?'':'s')+' because the selected V-track was unavailable or disabled there.');if(bd.validated)summaries.push('Drop Director V2: '+bd.validated+' build-up → drop transition'+(bd.validated===1?'':'s')+' validated with different cameras.');if(bd.repairs)summaries.push('Drop Director V2 Auto-Repair corrected '+bd.repairs+' structural camera conflict'+(bd.repairs===1?'':'s')+'.');if(bd.unresolved)summaries.push('Drop Director V2: '+bd.unresolved+' transition'+(bd.unresolved===1?'':'s')+' could not change angle because no second usable camera covered the boundary.');if(repaired)summaries.push('Coverage Resolver corrected '+repaired+' camera choice'+(repaired===1?'':'s')+' after final validation.');if(physical.repairs)summaries.push('4-beat Shot Guard merged '+physical.repairs+' interval camera choices.');if(physical.warnings.length)summaries.push('4-beat minimum: '+physical.warnings.length+' unresolved short shot(s); Apply is blocked until camera coverage/plan is corrected.');progress(1,'Auto Music Map V14 camera plan ready');
+  if(stamp(snapshot)!==initial)throw Error('Camera media changed during Agent AI analysis. Generate a new plan.');var hg={choices:choices,forced:0,warnings:[]},bd={choices:choices,repairs:0,validated:0,unresolved:0,forced:0,fallbacks:0},repaired=0;for(var ci=0;ci<choices.length;ci++){var interval=snapshot.intervals[ci]||{},valid=filterEnabledCameras(interval.candidates||[],enabled),chosen=Number(choices[ci].camera);if(chosen>=0&&valid.indexOf(chosen)<0){choices[ci].camera=valid.length?valid[0]:-1;choices[ci].confidence='medium';choices[ci].reason=valid.length?'Coverage resolver fallback: V'+(valid[0]+1)+' is enabled and available for this interval.':'Coverage resolver: no enabled camera covers this interval; leave it untouched.';choices[ci].structureLock='';repaired++;}else if(chosen<0&&valid.length){choices[ci].camera=valid[0];choices[ci].confidence='medium';choices[ci].reason='Coverage resolver fallback: V'+(valid[0]+1)+' is enabled and available for this interval.';choices[ci].structureLock='';repaired++;}}hg=enforceMaxHold(choices,snapshot.intervals,options.musicAnalysis||null,enabled,'');hg.forced+=liveHold.forced;if(hg.error)throw Error(hg.error);choices=hg.choices;bd=enforceBuildDropDifference(choices,snapshot.intervals,options,roles);choices=bd.choices;var physical=enforceMinimumPhysicalTransitions(choices,snapshot.intervals,options.musicAnalysis||null,enabled);choices=physical.choices;var contrast=enforceRoleContrast(choices,snapshot.intervals,enabled,roles,options.musicAnalysis&&options.musicAnalysis.estimated_bpm);choices=contrast.choices;validateStructure(choices,policy.allowed);if(root.RPBeatFirst)root.RPBeatFirst.validateHold(choices,snapshot.intervals,options.musicAnalysis);var summaries=['Auto Music Map V14 camera orchestration uses separate drop/background priorities, coverage-first candidates, usage balancing and mandatory angle contrast when an alternate camera is available.','Camera Selection: '+enabled.map(function(c){return 'Camera '+(Number(c)+1);}).join(', ')+' enabled.'];if(uncovered.length)summaries.push('Coverage Guard: '+uncovered.length+' interval'+(uncovered.length===1?'':'s')+' had no enabled camera coverage and will be left untouched instead of aborting the full edit.');var structureCount=options.musicAnalysis&&Number(options.musicAnalysis.structure_drop_count)||0;if(structureCount)summaries.push('Auto Music Map V14: '+structureCount+' build-up → drop transition'+(structureCount===1?'':'s')+' detected; exact-drop camera follows Main Drop Camera when available.');if(options.dropCamera!==null&&options.dropCamera!==undefined)summaries.push('Main Drop Camera: V'+(Number(options.dropCamera)+1)+' requested for every validated drop impact.');if(contrast.repairs)summaries.push('Camera Role Contrast: '+contrast.repairs+' shot'+(contrast.repairs===1?'':'s')+' swapped so the same type of angle (for example wide after wide) never follows itself.');if(contrast.warnings.length)summaries.push('Camera Role Contrast: '+contrast.warnings.length+' cut'+(contrast.warnings.length===1?'':'s')+' kept the same angle type because no other covered camera was available.');if(options.vision)summaries.push('AI Vision analysis: '+Object.keys(metrics).length+' successful, '+failures+' failed.');if(hg.forced)summaries.push('Max Hold Guard corrected '+hg.forced+' long same-camera run'+(hg.forced===1?'':'s')+'.');if(hg.warnings.length)summaries.push('Live Max-Hold Guard: '+hg.warnings.length+' interval(s) continued with a hold warning because no usable alternate or shorter boundary was available.');if(bd.forced)summaries.push('Main Drop Camera enforced on '+bd.forced+' validated drop impact'+(bd.forced===1?'':'s')+'.');if(bd.fallbacks)summaries.push('Main Drop Camera fallback used on '+bd.fallbacks+' drop impact'+(bd.fallbacks===1?'':'s')+' because the selected V-track was unavailable or disabled there.');if(bd.validated)summaries.push('Drop Director V2: '+bd.validated+' build-up → drop transition'+(bd.validated===1?'':'s')+' validated with different cameras.');if(bd.repairs)summaries.push('Drop Director V2 Auto-Repair corrected '+bd.repairs+' structural camera conflict'+(bd.repairs===1?'':'s')+'.');if(bd.unresolved)summaries.push('Drop Director V2: '+bd.unresolved+' transition'+(bd.unresolved===1?'':'s')+' could not change angle because no second usable camera covered the boundary.');if(repaired)summaries.push('Coverage Resolver corrected '+repaired+' camera choice'+(repaired===1?'':'s')+' after final validation.');if(physical.repairs)summaries.push('4-beat Shot Guard merged '+physical.repairs+' interval camera choices.');if(physical.warnings.length)summaries.push('4-beat minimum: '+physical.warnings.length+' unresolved short shot(s); Apply is blocked until camera coverage/plan is corrected.');progress(1,'Auto Music Map V14 camera plan ready');
   return {structurePolicy:policy.allowed,choices:choices,summaries:summaries,images:Object.keys(metrics).length,failedImages:failures,holdGuardChanges:hg.forced,minimumShotBeats:4,physicalShotRepairs:physical.repairs,physicalShotWarnings:physical.warnings,fingerprint:initial,snapshot:snapshot,model:'R Project Auto Music Map V14',mode:'AUTO_MUSIC_MAP_V11',roles:options.roles,enabledCameras:enabled,musicAnalysis:options.musicAnalysis||null};
  }
 };

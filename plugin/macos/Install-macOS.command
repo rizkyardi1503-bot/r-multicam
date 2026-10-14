@@ -2,7 +2,7 @@
 set -euo pipefail
 BASE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$BASE/Plugin"
-VERSION="2.3.11.3"
+VERSION="2.3.11.4"
 [ -d "$SRC" ] || { printf "%s\n" "ERROR: Plugin payload folder is missing."; exit 1; }
 say_line(){ printf '%s\n' "$*"; }
 fail(){ say_line "ERROR: $*"; exit 1; }

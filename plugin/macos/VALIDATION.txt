@@ -1,3 +1,8 @@
+v2.3.11.4 PUBLIC validation — 2026-10-14
+- Camera Role Contrast: synthetic 4-camera plans (Medium Wide / Wide Crowd / Left Side DJ / Dj Deck) contain no wide-to-wide cuts; exact-drop cameras unchanged.
+- 4-beat guard: 128 BPM at 30 fps keeps 4-beat cadence (40 cuts instead of 17 on the test track).
+- Music analysis: identical structure output; enrich step on an 83-minute set drops from minutes to under a minute.
+
 v2.3.11.3 PUBLIC validation — 2026-10-14
 - FFmpeg 9.0.2 checksums confirmed from two independent sources (Windows: GitHub release digest and gyan.dev .sha256; macOS: martin-riedl.de .sha256 and a full download hash for arm64 and amd64).
 - Package checksum inventories regenerated and verified; installer version handshakes updated (manifest, host.jsx, panel.js).

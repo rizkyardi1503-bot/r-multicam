@@ -1,3 +1,14 @@
+v2.3.11.4 PUBLIC — Camera Role Contrast and faster music analysis
+- Camera Roles now steer the cut: the panel reads each role's shot size (wide / medium wide,
+  medium, close / deck / detail) and direction (behind, left, right, front, top, crowd, side).
+  Two angles of the same kind never follow each other (for example wide after wide). When no
+  other covered camera exists, the shot continues instead of cutting to the same kind of angle.
+- 4-beat cuts are kept at 25/30 fps: frame-rounded 4-beat shots were measured as slightly under
+  4 beats and merged, which made build-ups and drops hold one camera for too long.
+- Music analysis of long sets is much faster (tempo map is no longer rebuilt for every beat).
+  Results are identical.
+- Delivered through Check Update. Save and close Premiere before installing.
+
 v2.3.11.3 PUBLIC — Safer installer (Windows and macOS)
 - FFmpeg is now pinned to version 9.0.2 and its SHA-256 checksum is verified before it is ever run.
   Windows downloads from the official GitHub release with gyan.dev as a backup source; both serve the identical file.

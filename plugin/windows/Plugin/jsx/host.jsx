@@ -1,4 +1,4 @@
-/* ES3 ExtendScript. v2.3.11.3 single-pass low-memory timeline engine. */
+/* ES3 ExtendScript. v2.3.11.4 single-pass low-memory timeline engine. */
 var rp_job=null;
 var RP_LOW_MEMORY=true;
 function rp_gc(){try{rp_stepRanges=null;if(typeof $!=='undefined'&&$.gc)$.gc();}catch(e){}}
@@ -48,11 +48,11 @@ function rp_manual(s){
 }
 function rp_getActiveInfo(){
  try{var s=app.project.activeSequence,marks=s?rp_manual(s):{points:[],ignored:0};
- return rp_encode({ok:true,version:'2.3.11.3',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:''});}
+ return rp_encode({ok:true,version:'2.3.11.4',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:''});}
  catch(e){return rp_encode({ok:false,message:String(e)});}
 }
 function rp_ping(){
- try{return rp_encode({ok:true,version:'2.3.11.3',host:'R Project Multicam',sequence:!!(app&&app.project&&app.project.activeSequence)});}
+ try{return rp_encode({ok:true,version:'2.3.11.4',host:'R Project Multicam',sequence:!!(app&&app.project&&app.project.activeSequence)});}
  catch(e){return rp_encode({ok:false,message:'ExtendScript host is not ready: '+String(e)});}
 }
 function rp_state(){

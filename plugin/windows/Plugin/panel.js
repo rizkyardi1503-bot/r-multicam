@@ -119,7 +119,7 @@ function clearResumeCheckpoint(){clearPersistentResume();try{if(window.localStor
 function stageResumeCheckpoint(kind){
  if(!aiPlan||!aiPlan.snapshot||!aiPlan.snapshot.points)return;
  var snap=aiPlan.snapshot;
- var enabled=(aiPlan.enabledCameras||collectEnabledCameras()).slice(0); writeResumeCheckpoint({minimumShotBeats:4,version:RESUME_SCHEMA,kind:kind||'delete',structurePolicyVersion:1,structurePolicy:aiPlan.structurePolicy,maxHoldBeats:8,tempoMap:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.beat_first&&aiPlan.musicAnalysis.beat_first.tempo_map||[],estimatedBpm:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.estimated_bpm||0,status:'prepared',phase:'cut',projectPath:String(snap.projectPath||''),sequenceID:String(snap.sequenceID||''),sequenceName:lastInfo&&lastInfo.name?lastInfo.name:'Active Sequence',duration:Number(snap.duration)||0,frame:Number(snap.frame)||0,a1Signature:String(snap.a1Signature||''),cameraMediaSignature:cameraMediaSignatureFromSnapshot(snap,enabled),points:snap.points.slice(0),choices:aiPlan.choices.map(function(c){return Number(c.camera);}),enabledTracks:enabled,point:0,track:0,verifyPoint:0,prepScene:0,task:0,cuts:0,removed:0,skipped:0,done:0,total:snap.points.length,liveJobId:'',buildOrigin:'2.3.11.3',checkpointStore:'persistent-file',createdAt:Date.now(),updatedAt:Date.now()});
+ var enabled=(aiPlan.enabledCameras||collectEnabledCameras()).slice(0); writeResumeCheckpoint({minimumShotBeats:4,version:RESUME_SCHEMA,kind:kind||'delete',structurePolicyVersion:1,structurePolicy:aiPlan.structurePolicy,maxHoldBeats:8,tempoMap:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.beat_first&&aiPlan.musicAnalysis.beat_first.tempo_map||[],estimatedBpm:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.estimated_bpm||0,status:'prepared',phase:'cut',projectPath:String(snap.projectPath||''),sequenceID:String(snap.sequenceID||''),sequenceName:lastInfo&&lastInfo.name?lastInfo.name:'Active Sequence',duration:Number(snap.duration)||0,frame:Number(snap.frame)||0,a1Signature:String(snap.a1Signature||''),cameraMediaSignature:cameraMediaSignatureFromSnapshot(snap,enabled),points:snap.points.slice(0),choices:aiPlan.choices.map(function(c){return Number(c.camera);}),enabledTracks:enabled,point:0,track:0,verifyPoint:0,prepScene:0,task:0,cuts:0,removed:0,skipped:0,done:0,total:snap.points.length,liveJobId:'',buildOrigin:'2.3.11.4',checkpointStore:'persistent-file',createdAt:Date.now(),updatedAt:Date.now()});
 }
 var resumeFlushTime=0,resumeFlushPhase='',resumeFlushId='';
 function syncResumeCheckpoint(r){
@@ -330,7 +330,7 @@ function estimate(){
 function refresh(){
  if(busy||pending)return;
  invoke('rp_getActiveInfo()',function(r){
-  ready=r.ok&&r.version==='2.3.11.3';lastInfo=r.ok?r:null;
+  ready=r.ok&&r.version==='2.3.11.4';lastInfo=r.ok?r:null;
   if(ready&&r.pendingID){
    // A Premiere host job can outlive/recover from a panel reload. Resume polling it
    // instead of automatically stopping it and leaving thousands of partial cuts.
@@ -338,7 +338,7 @@ function refresh(){
    invoke('rp_state()',update);return;
   }
   el('timeline').textContent=r.name?r.name+' · '+r.duration.toFixed(2)+' seconds':'Open an active sequence in Premiere.';
-  if(!ready)state(r.message||('Host version mismatch (panel 2.3.11.3 / host '+String(r&&r.version||'unknown')+'). Close Premiere completely, reinstall this build, then reopen Premiere.'),true);
+  if(!ready)state(r.message||('Host version mismatch (panel 2.3.11.4 / host '+String(r&&r.version||'unknown')+'). Close Premiere completely, reinstall this build, then reopen Premiere.'),true);
   else if(el('state').textContent==='Connecting…')state('Ready');
   estimate();controls();
  });
@@ -756,7 +756,7 @@ el('aiApply').onclick=function(){setActiveTool('multi');applyAI('angle');};
 el('aiDelete').onclick=function(){setActiveTool('multi');applyAI('delete');};
 el('aiExport').onclick=function(){
  if(busy||pending||!aiPlan)return;
- var report={version:'2.3.11.3-public-v18',engine:aiPlan.model,instructions:'Automatic music-driven editing; no prompt',selectedPacing:selectedPacingCadences(),dropCamera:selectedDropCamera()==null?'auto':'V'+(selectedDropCamera()+1),cameraRoles:aiPlan.roles,enabledCameras:aiPlan.enabledCameras||collectEnabledCameras(),musicAnalysis:aiPlan.musicAnalysis||musicContext(suggestion),pacing:aiPlan.pacing||suggestion&&suggestion.pacing||null,images:aiPlan.images,summary:aiPlan.summaries,choices:aiPlan.choices.map(function(c){var it=aiPlan.snapshot.intervals[c.id];return {start:it.start,end:it.end,camera:c.camera<0?null:'V'+(c.camera+1),confidence:c.confidence,reason:c.reason};})};
+ var report={version:'2.3.11.4-public-v18',engine:aiPlan.model,instructions:'Automatic music-driven editing; no prompt',selectedPacing:selectedPacingCadences(),dropCamera:selectedDropCamera()==null?'auto':'V'+(selectedDropCamera()+1),cameraRoles:aiPlan.roles,enabledCameras:aiPlan.enabledCameras||collectEnabledCameras(),musicAnalysis:aiPlan.musicAnalysis||musicContext(suggestion),pacing:aiPlan.pacing||suggestion&&suggestion.pacing||null,images:aiPlan.images,summary:aiPlan.summaries,choices:aiPlan.choices.map(function(c){var it=aiPlan.snapshot.intervals[c.id];return {start:it.start,end:it.end,camera:c.camera<0?null:'V'+(c.camera+1),confidence:c.confidence,reason:c.reason};})};
  pending=true;
  try{cs.evalScript("(function(){var f=File.saveDialog('Save Agent AI Director plan as JSON');return f?encodeURIComponent(f.fsName):'';})()",function(raw){
   pending=false;lastReply=Date.now();
