@@ -367,6 +367,9 @@ def process_page(rel: str, html: str, versions: dict) -> str:
 
     # 0. Absolute script URLs (pages also live under /id/), language alternates + router.
     html = re.sub(r'<script src="([a-z0-9-]+\.js)"', r'<script src="/\1"', html)
+    scripts = versions.get('scripts', {})
+    html = re.sub(r'<script src="/([a-z0-9-]+\.js)(\?v=[0-9a-f]+)?"',
+                  lambda m: f'<script src="/{m.group(1)}?v={scripts[m.group(1)]}"' if m.group(1) in scripts and m.group(1) != 'i18n-id.js' else m.group(0), html)
     html = re.sub(r'<link rel="alternate" hreflang="[^"]*" href="[^"]*">', '', html)
     html = re.sub(r'<!--rp:lang-->.*?<!--/rp:lang-->', '', html, flags=re.S)
     block = lang_block(rel, path, lang, versions['router'])
@@ -385,6 +388,11 @@ def process_page(rel: str, html: str, versions: dict) -> str:
             return ''
         return m.group(0)
     html = link_re.sub(strip_link, html)
+    # Page-specific stylesheets (e.g. /start/start.css) get a content hash too.
+    def page_css(m):
+        f = SITE / m.group(1)
+        return f'<link rel="stylesheet" href="/{m.group(1)}?v={version(f.read_text())}">' if f.exists() else m.group(0)
+    html = re.sub(r'<link rel="stylesheet" href="/([a-z0-9-]+/[a-z0-9-]+\.css)(\?v=[0-9a-f]+)?">', page_css, html)
     tag = f'<link rel="stylesheet" href="/{bundle}?v={versions[bundle]}">'
     html = html.replace('\x00BUNDLE\x00', tag) if first else html.replace('</head>', tag + '</head>', 1)
 
@@ -486,6 +494,16 @@ def build(check=False):
 
     outputs = {SITE / name: text for name, text in css.items()}
     outputs[SITE / 'i18n-id.js'] = i18n_js
+    # Content hashes for every first-party script, so HTML always points at the exact
+    # version and the files themselves can be cached for a long time.
+    portal = (SITE / 'portal.js').read_text()
+    owner_v = version((SITE / 'owner-dashboard.js').read_text())
+    portal = re.sub(r"(['\"])/owner-dashboard\.js(\?v=[0-9a-f]+)?\1", lambda m: f"{m.group(1)}/owner-dashboard.js?v={owner_v}{m.group(1)}", portal)
+    outputs[SITE / 'portal.js'] = portal
+    scripts = {}
+    for js in sorted(SITE.glob('*.js')):
+        scripts[js.name] = version(outputs.get(js, None) if js in outputs else js.read_text())
+    versions['scripts'] = scripts
     changed_pages = []
     for f in sorted(SITE.rglob('*.html')):
         rel = f.relative_to(SITE).as_posix()
