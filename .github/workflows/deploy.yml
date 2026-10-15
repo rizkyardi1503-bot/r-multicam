@@ -39,7 +39,7 @@ jobs:
           node scripts/test-conversion.cjs
           node scripts/test-analytics-edge.cjs
           node scripts/test-release-23112.cjs
-          python3 scripts/test-public-23114.py
+          python3 scripts/test-public-23115.py
           python3 scripts/build-plugin-release.py --check
       - name: Deploy existing Cloudflare Pages project
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4

@@ -9,7 +9,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //  - before creating a new order, recent orders are checked with Midtrans; an order that was already paid
 //    activates the license instead of asking the customer to pay again;
 //  - the response includes display_price_usd (the panel reads that field; it showed "US$undefined").
-// Needs the column added in supabase/migrations/20261015_payment_hardening.sql (checkout_url).
+// Needs the column added in supabase/migrations/20261015_payment_and_version_hardening.sql (checkout_url).
 
 const cors = {
   "access-control-allow-origin": "*",

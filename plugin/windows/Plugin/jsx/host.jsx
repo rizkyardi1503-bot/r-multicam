@@ -1,4 +1,4 @@
-/* ES3 ExtendScript. v2.3.11.4 single-pass low-memory timeline engine. */
+/* ES3 ExtendScript. v2.3.11.5 single-pass low-memory timeline engine. */
 var rp_job=null;
 var RP_LOW_MEMORY=true;
 var rp_stepRanges=null;
@@ -49,11 +49,11 @@ function rp_manual(s){
 }
 function rp_getActiveInfo(){
  try{var s=app.project.activeSequence,marks={points:[],ignored:0};if(s){try{marks=rp_manual(s);}catch(me){marks={points:[],ignored:0};}}
- return rp_encode({ok:true,version:'2.3.11.4',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:''});}
+ return rp_encode({ok:true,version:'2.3.11.5',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:''});}
  catch(e){return rp_encode({ok:false,message:String(e)});}
 }
 function rp_ping(){
- try{return rp_encode({ok:true,version:'2.3.11.4',host:'R Project Multicam',sequence:!!(app&&app.project&&app.project.activeSequence)});}
+ try{return rp_encode({ok:true,version:'2.3.11.5',host:'R Project Multicam',sequence:!!(app&&app.project&&app.project.activeSequence)});}
  catch(e){return rp_encode({ok:false,message:'ExtendScript host is not ready: '+String(e)});}
 }
 function rp_state(){
@@ -209,7 +209,7 @@ function rp_startJob(kind,points,sourceSignature,boundaryMode,a1Signature,choice
  if(!points||!points.length)throw Error('No edit points are available.');
  var duration=rp_duration(s),frame=rp_frame(s),tracks=[],v;
  if(!isFinite(duration)||duration<=0)throw Error('Invalid sequence duration.');
- if(kind!=='delete'&&rp_razorFormat(frame)===null)throw Error('Sequence frame rate '+Math.round(100/frame)/100+' fps is not supported yet. Use 23.976, 24, 25, 29.97, 30, 48, 50, 59.94 or 60 fps. No edits were made.');
+ if(rp_razorFormat(frame)===null)throw Error('Sequence frame rate '+Math.round(100/frame)/100+' fps is not supported yet. Use 23.976, 24, 25, 29.97, 30, 48, 50, 59.94 or 60 fps. No edits were made.');
  points=rp_parseInternalPoints(points.join(','),frame,duration);
  var processingRange=boundaryMode==='internal'?rp_processingRange(s):null;
  var wanted={},useOverride=trackOverride&&trackOverride.length,skippedSelected=[],requestedSeen={};
@@ -400,10 +400,11 @@ function rp_aiApply(kind){
   if(String(live.sequenceID)!==String(p.sequenceID)||String(app.project.path)!==String(p.projectPath))throw Error('Project or active sequence changed. Generate a new AI plan.');
   if(Math.abs(rp_duration(live)-Number(p.duration||0))>Math.max(rp_frame(live)*2,.08)||Math.abs(rp_frame(live)-Number(p.frame||0))>.00000001)throw Error('Sequence duration or frame rate changed. Generate a new AI plan.');
   if(String(rp_a1Snapshot().signature)!==String(p.a1Signature))throw Error('A1 changed. Analyze the music again.');
-  try{live.clone();var back=app.project.activeSequence;if(!back||String(back.sequenceID)!==String(p.sequenceID))app.project.openSequence(String(p.sequenceID));}catch(be){}
+  if(rp_razorFormat(rp_frame(live))===null)throw Error('Sequence frame rate '+Math.round(100/rp_frame(live))/100+' fps is not supported yet. Use 23.976, 24, 25, 29.97, 30, 48, 50, 59.94 or 60 fps. No edits were made.');
+  var backupMade=false;try{live.clone();backupMade=true;var back=app.project.activeSequence;if(!back||String(back.sequenceID)!==String(p.sequenceID))app.project.openSequence(String(p.sequenceID));}catch(be){}
   if(!app.project.activeSequence||String(app.project.activeSequence.sequenceID)!==String(p.sequenceID))throw Error('Could not return to the original sequence after backup. No edits were made.');
   var result=rp_startJob(kind,p.points,p.boundaryMode==='markers'?p.points.join('|'):p.signature,p.boundaryMode,p.a1Signature,p.choices,true,p.enabledTracks,false,p.cameraMediaSignature);
-  if(rp_job&&rp_job.status==='running'){rp_job.winners=p.choices;rp_job.message='Applying AI camera plan';result=rp_state();}
+  if(rp_job&&rp_job.status==='running'){rp_job.winners=p.choices;rp_job.message='Applying AI camera plan'+(backupMade?' · backup copy saved in the project':' · backup copy could not be created');result=rp_state();}
   rp_ai_pending=null;return result;
  }catch(e){rp_ai_pending=null;return rp_encode({ok:false,message:String(e)});}
 }

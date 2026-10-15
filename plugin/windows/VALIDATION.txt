@@ -1,7 +1,13 @@
-v2.3.11.4 PUBLIC validation — 2026-10-14
-- Camera Role Contrast: synthetic 4-camera plans (Medium Wide / Wide Crowd / Left Side DJ / Dj Deck) contain no wide-to-wide cuts; exact-drop cameras unchanged.
-- 4-beat guard: 128 BPM at 30 fps keeps 4-beat cadence (40 cuts instead of 17 on the test track).
-- Music analysis: identical structure output; enrich step on an 83-minute set drops from minutes to under a minute.
+v2.3.11.5 PUBLIC validation — 2026-10-15
+- Camera Role Contrast: synthetic 4-camera plans contain no wide-to-wide cuts; exact-drop cameras unchanged.
+- 4-beat guard: 128 BPM at 30 fps keeps 4-beat cadence; music analysis output identical, enrich much faster.
+- Mock Premiere host tests: In/Out apply, Windows resume, manual-marker Begin, user-disabled clips, Keep Clips re-plan,
+  sequence-scoped resume, relative Random Zoom, license change mid-job, A1 messages (fail on v2.3.11.4, pass now).
+- Panel vm tests: pending flag cleared on timeout, merged Resume, disk-only music cache, async preset scan, macOS memory guard.
+- Account vm tests: offline grace 72 h, clock rollback, server denial, refresh-token sharing, bind-before-save, update labels.
+- Installer/update: helper wait loops simulated (Premiere only, timeout, superseded attempt, bad checksum); PowerShell parse
+  and bash -n checks; FFmpeg checksum pinning unchanged.
+- Not verified natively: Premiere Pro panel load on Windows/macOS hardware.
 
 v2.3.11.3 PUBLIC validation — 2026-10-14
 - FFmpeg 9.0.2 checksums confirmed from two independent sources (Windows: GitHub release digest and gyan.dev .sha256; macOS: martin-riedl.de .sha256 and a full download hash for arm64 and amd64).
