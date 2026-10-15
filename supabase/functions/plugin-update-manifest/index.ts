@@ -3,14 +3,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.4",
-    download: base + "?platform=windows&version=2.3.11.4",
-    sha256: "c5f042e38d79ca8d1cfa1a076f81d27f60a42f89c187c8715bfeec92d1fa2d17"
+    version: "2.3.11.5",
+    download: base + "?platform=windows&version=2.3.11.5",
+    sha256: "fbcaa8d3286820b81c53e2b6ee30d9b3eb5a6ce5769356c47031a871e5eb5a2e"
   },
   macos: {
-    version: "2.3.11.4",
-    download: base + "?platform=macos&version=2.3.11.4",
-    sha256: "c75ead269f50a44dd789d0201e4b0b8e62e4800df9e71783771724e7c3e95b8e"
+    version: "2.3.11.5",
+    download: base + "?platform=macos&version=2.3.11.5",
+    sha256: "9be10af82d3cbc3b6a4536f34464ddc0140c1a3ed323004f31e7258d1c1249bb"
   }
 };
 
@@ -39,7 +39,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), selected.version),
     minimum_version: selected.version,
     grace_period_days: 0,
-    release_notes: "v2.3.11.4 PUBLIC Windows and macOS: Camera Roles now steer the cut. The panel reads shot size and direction from each role, so the same kind of angle (for example wide after wide) never follows itself. 4-beat cuts are kept at 25/30 fps and music analysis of long sets is much faster. Save and close Premiere before installing, then generate a fresh plan.",
+    release_notes: "v2.3.11.5 PUBLIC Windows and macOS: Camera Roles now steer the cut (no wide after wide), 4-beat cuts are kept at 25/30 fps and long sets analyze much faster. Also: sequence In/Out respected, backup copy before Apply, Continue after Stop fixed on Windows, Random Zoom relative to each clip, no stuck buttons, offline use up to 72 hours, and updates that wait only for Premiere. Save and close Premiere before installing, then generate a fresh plan.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
