@@ -2,7 +2,7 @@
 <ExtensionManifest Version="7.0" ExtensionBundleId="com.rproject.multicam" ExtensionBundleVersion="2.3.11.4">
   <ExtensionList><Extension Id="com.rproject.multicam.panel" Version="2.3.11.4"/></ExtensionList>
   <ExecutionEnvironment>
-    <HostList><Host Name="PPRO" Version="[22.0,26.99]"/></HostList>
+    <HostList><Host Name="PPRO" Version="[22.0,99.9]"/></HostList>
     <LocaleList><Locale Code="All"/></LocaleList>
     <RequiredRuntimeList><RequiredRuntime Name="CSXS" Version="11.0"/></RequiredRuntimeList>
   </ExecutionEnvironment>

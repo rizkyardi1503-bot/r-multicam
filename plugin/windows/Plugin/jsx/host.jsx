@@ -1,6 +1,7 @@
 /* ES3 ExtendScript. v2.3.11.4 single-pass low-memory timeline engine. */
 var rp_job=null;
 var RP_LOW_MEMORY=true;
+var rp_stepRanges=null;
 function rp_gc(){try{rp_stepRanges=null;if(typeof $!=='undefined'&&$.gc)$.gc();}catch(e){}}
 function rp_encode(v){
  if(v===undefined||v===null)return 'null';
@@ -47,7 +48,7 @@ function rp_manual(s){
  out.sort(function(a,b){return a-b;});return {points:out,ignored:ignored,signature:out.join('|')};
 }
 function rp_getActiveInfo(){
- try{var s=app.project.activeSequence,marks=s?rp_manual(s):{points:[],ignored:0};
+ try{var s=app.project.activeSequence,marks={points:[],ignored:0};if(s){try{marks=rp_manual(s);}catch(me){marks={points:[],ignored:0};}}
  return rp_encode({ok:true,version:'2.3.11.4',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:''});}
  catch(e){return rp_encode({ok:false,message:String(e)});}
 }
@@ -157,6 +158,7 @@ function rp_boundaryHasEdge(track,time,frame){
  return false;
 }
 function rp_boundaryNeedsCut(track,time,frame,trackIndex){return rp_trackCrossesBoundary(track,time,frame,trackIndex);}
+function rp_razorFormat(frame){var fps=1/frame,formats=[[24,100],[25,101],[30000/1001,103],[30,104],[50,105],[60000/1001,107],[60,108],[24000/1001,110],[48,113]],k;for(k=0;k<formats.length;k++)if(Math.abs(fps-formats[k][0])<0.005)return formats[k][1];return null;}
 function rp_razorAt(j,index,time){
  var s=app.project.activeSequence,tr=s.videoTracks[index];
  if((tr.isLocked&&tr.isLocked())||(tr.isMuted&&tr.isMuted()))throw Error('Camera V'+(index+1)+' is locked or muted.');
@@ -207,6 +209,7 @@ function rp_startJob(kind,points,sourceSignature,boundaryMode,a1Signature,choice
  if(!points||!points.length)throw Error('No edit points are available.');
  var duration=rp_duration(s),frame=rp_frame(s),tracks=[],v;
  if(!isFinite(duration)||duration<=0)throw Error('Invalid sequence duration.');
+ if(kind!=='delete'&&rp_razorFormat(frame)===null)throw Error('Sequence frame rate '+Math.round(100/frame)/100+' fps is not supported yet. Use 23.976, 24, 25, 29.97, 30, 48, 50, 59.94 or 60 fps. No edits were made.');
  points=rp_parseInternalPoints(points.join(','),frame,duration);
  var processingRange=boundaryMode==='internal'?rp_processingRange(s):null;
  var wanted={},useOverride=trackOverride&&trackOverride.length,skippedSelected=[],requestedSeen={};
@@ -328,6 +331,8 @@ function rp_aiSnapshot(){
 function rp_aiInternalSnapshot(a1Signature,csv){
  var a1=rp_a1Snapshot();if(a1.signature!==a1Signature)throw Error('A1 or sequence changed. Analyze the music again.');
  var points=rp_parseInternalPoints(csv,a1.frame,a1.duration);
+ var range=rp_processingRange(app.project.activeSequence),pe=a1.frame/4;
+ if(range.selected){var inside=[],pi;for(pi=0;pi<points.length;pi++)if(points[pi]>range.start+pe&&points[pi]<range.end-pe)inside.push(points[pi]);points=inside;if(range.start>pe)points.unshift(range.start);if(range.end<a1.duration-pe)points.push(range.end);if(!points.length)throw Error('No music cuts fall inside the sequence In/Out. Widen In/Out or clear it.');}
  return rp_buildAISnapshot(points,a1.signature,'internal');
 }
 function rp_getAI(){try{var d=rp_aiSnapshot();d.ok=true;return rp_encode(d);}catch(e){return rp_encode({ok:false,message:String(e)});}}
@@ -379,6 +384,8 @@ function rp_aiApply(kind){
   if(String(live.sequenceID)!==String(p.sequenceID)||String(app.project.path)!==String(p.projectPath))throw Error('Project or active sequence changed. Generate a new AI plan.');
   if(Math.abs(rp_duration(live)-Number(p.duration||0))>Math.max(rp_frame(live)*2,.08)||Math.abs(rp_frame(live)-Number(p.frame||0))>.00000001)throw Error('Sequence duration or frame rate changed. Generate a new AI plan.');
   if(String(rp_a1Snapshot().signature)!==String(p.a1Signature))throw Error('A1 changed. Analyze the music again.');
+  try{live.clone();var back=app.project.activeSequence;if(!back||String(back.sequenceID)!==String(p.sequenceID))app.project.openSequence(String(p.sequenceID));}catch(be){}
+  if(!app.project.activeSequence||String(app.project.activeSequence.sequenceID)!==String(p.sequenceID))throw Error('Could not return to the original sequence after backup. No edits were made.');
   var result=rp_startJob(kind,p.points,p.boundaryMode==='markers'?p.points.join('|'):p.signature,p.boundaryMode,p.a1Signature,p.choices,true,p.enabledTracks,false,p.cameraMediaSignature);
   if(rp_job&&rp_job.status==='running'){rp_job.winners=p.choices;rp_job.message='Applying AI camera plan';result=rp_state();}
   rp_ai_pending=null;return result;
@@ -401,7 +408,7 @@ function rp_snapshotCameraMediaSignature(snapshotTracks,enabled){
  var rows=[],wanted={},i,c;for(i=0;i<enabled.length;i++)wanted['v'+Number(enabled[i])]=true;
  for(i=0;i<snapshotTracks.length;i++){
   var tr=snapshotTracks[i],ti=Number(tr.index);if(!wanted['v'+ti])continue;var seen={},files=[];
-  for(c=0;c<tr.clips.length;c++){var f=String(tr.clips[c].file||'');if(f&&!seen[f]){seen[f]=1;files.push(f);}}
+  for(c=0;c<tr.clips.length;c++){var f=String(tr.clips[c].file||'');if(f){f=f.replace(/\\/g,'/');if($.os&&String($.os).toLowerCase().indexOf('windows')>=0)f=f.toLowerCase();}if(f&&!seen[f]){seen[f]=1;files.push(f);}}
   files.sort();rows.push(String(ti)+'='+files.join('|'));
  }
  rows.sort();return 'CAMV1:'+rp_digest(rows.join('||'));
@@ -466,6 +473,7 @@ function rp_prepareTrack(j,trackListIndex){
    keep=visible;last++;
   }
   if(first===last)continue;
+  if(clip.disabled&&j.winners[first]<0)continue;
   var task={identity:rp_clipIdentity(clip),clipIndex:c,track:ti,keep:keep,start:a,end:b,interval:first,lastInterval:last-1,winner:j.winners[first],scopeStart:a,scopeEnd:b};
   j.tasks.push(task);
   var mk=rp_mediaKey(ti,clip);j.mediaCounts[mk]=(j.mediaCounts[mk]||0)+1;
