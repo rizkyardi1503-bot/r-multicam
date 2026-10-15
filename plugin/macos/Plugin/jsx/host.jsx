@@ -287,6 +287,21 @@ function rp_parseInternalPoints(csv,frame,duration){
  if(out.length>100000)throw Error('Maximum 100,000 internal edit points per AI plan. The AI pacing plan is too dense for this sequence.');
  return out;
 }
+/* v2.3.11.5 Keep Clips registry: camera pieces disabled by an Apply · Keep Clips job stay
+   available for re-planning; pieces the user disabled are still treated as unavailable. */
+var rp_pluginDisabled={};
+function rp_pdRecord(seqID,track,clip){
+ var k='s'+String(seqID)+'|v'+Number(track),list=rp_pluginDisabled[k]||(rp_pluginDisabled[k]={rows:[],sorted:true}),f='';if(list.rows.length>=200000)return;
+ try{f=String(clip.projectItem.getMediaPath());}catch(e){}var a=rp_seconds(clip.start),last=list.rows.length?list.rows[list.rows.length-1]:null;
+ if(last&&a<last.a)list.sorted=false;list.rows.push({a:a,b:rp_seconds(clip.end),f:f});
+}
+function rp_pdOwned(seqID,track,a,b,file,tol){
+ var list=rp_pluginDisabled['s'+String(seqID)+'|v'+Number(track)];if(!list||!list.rows.length)return false;var rows=list.rows,lo=0,hi=rows.length,i,n=0;
+ if(!list.sorted){rows.sort(function(x,y){return x.a-y.a;});list.sorted=true;}
+ while(lo<hi){var m=Math.floor((lo+hi)/2);if(rows[m].a<=a+tol)lo=m+1;else hi=m;}
+ for(i=lo-1;i>=0&&n<64;i--,n++)if(rows[i].b>=b-tol&&rows[i].f===String(file||''))return true;
+ return false;
+}
 function rp_mergeCameraCoverage(clips,tol){
  var ranges=[],out=[],i;for(i=0;i<clips.length;i++){var c=clips[i];if(!c.disabled&&isFinite(c.start)&&isFinite(c.end)&&c.end>c.start)ranges.push({start:c.start,end:c.end});}
  ranges.sort(function(a,b){return a.start-b.start||a.end-b.end;});
@@ -302,7 +317,8 @@ function rp_buildAISnapshot(points,a1Signature,boundaryMode){
   for(c=0;c<tr.clips.numItems;c++){
    var item=tr.clips[c],file='',supported=false,pi=item.projectItem;
    try{file=pi.getMediaPath();supported=!!file&&!(pi.isSequence&&pi.isSequence())&&!(pi.isOffline&&pi.isOffline())&&!(item.isSpeedReversed&&item.isSpeedReversed())&&(!item.getSpeed||Math.abs(Number(item.getSpeed())-1)<0.0001);}catch(e){}
-   clips.push({start:rp_seconds(item.start),end:rp_seconds(item.end),input:rp_seconds(item.inPoint),file:file,supported:supported,disabled:!!item.disabled});
+   var cs0=rp_seconds(item.start),ce0=rp_seconds(item.end),pluginOff=!!item.disabled&&rp_pdOwned(s.sequenceID,v,cs0,ce0,file,frame/4);
+   clips.push({start:cs0,end:ce0,input:rp_seconds(item.inPoint),file:file,supported:supported,disabled:!!item.disabled&&!pluginOff,pluginDisabled:pluginOff});
   }
   tracks.push({index:v,clips:clips,coverageRanges:rp_mergeCameraCoverage(clips,frame/4)});
  }
@@ -437,6 +453,9 @@ function rp_resumeSaved(projectPath,sequenceID,a1Signature,pointsCsv,choicesCsv,
   if(rp_job&&rp_job.status==='running')throw Error('Another process is already active.');
   var s=app.project.activeSequence;if(!s)throw Error('Open the sequence you want to continue.');
   if(String(app.project.path)!==String(projectPath))throw Error('This checkpoint belongs to a different Premiere project. Open the saved project first.');
+  // v2.3.11.5: a checkpoint is bound to the sequence it was started in. A backup clone has the same
+  // A1 and camera media, so media identity alone could resume cuts/deletes in the wrong sequence.
+  if(String(sequenceID||'')&&String(s.sequenceID)!==String(sequenceID))throw Error('This saved job belongs to a different sequence. Open the sequence the job was started in, then continue. Nothing was changed.');
   var a1=rp_a1Snapshot();if(String(a1.signature)!==String(a1Signature))throw Error('A1 does not match the saved job. Resume stopped before any timeline change.');
   var duration=rp_seqDuration(s),frame=rp_frame(s),tol=Math.max(frame*2,.08);
   if(savedDuration&&Math.abs(Number(duration)-Number(savedDuration))>tol)throw Error('Sequence duration does not match the saved job. Resume stopped safely.');
@@ -446,7 +465,6 @@ function rp_resumeSaved(projectPath,sequenceID,a1Signature,pointsCsv,choicesCsv,
   var currentCamSig=rp_cameraMediaSignature(s,enabled),savedCamSig=String(cameraMediaSignature||'');
   if(!savedCamSig&&String(s.sequenceID)!==String(sequenceID))throw Error('Legacy checkpoint has no camera identity. Open the original sequence.');
   if(savedCamSig&&currentCamSig!==savedCamSig)throw Error('Camera media does not match the saved job. Resume stopped before any delete operation.');
-  var sameSequence=String(s.sequenceID)===String(sequenceID);
   var restoredKind=String(savedKind||'delete');
   rp_startJob(restoredKind,points,'resume-checkpoint','internal',a1.signature,choices,true,enabled,Number(removed)>0);
   var j=rp_job;j.aiChoices=choices;j.cuts=Math.max(0,Number(cuts)||0);j.removed=Math.max(0,Number(removed)||0);j.skipped=Math.max(0,Number(skipped)||0);
@@ -605,9 +623,21 @@ function rp_zoomIsFootage(clip){
   if(pi.isOffline&&pi.isOffline())return false;
   var path=String(pi.getMediaPath?pi.getMediaPath():'');if(!path)return false;
   if(/\.(mogrt|prproj|aep)$/i.test(path))return false;
+  // Stills and graphics (logos, photos, overlays) are not footage: never zoom them.
+  if(/\.(jpe?g|png|gif|bmp|tiff?|psd|ai|eps|svg|webp|heic|heif|ico|jp2)$/i.test(path))return false;
   return true;
  }catch(e){return false;}
 }
+function rp_zoomBaseScale(scale){
+ // The user's own Scale (for example 50% for 4K in an HD sequence) is the base; zoom is relative to it.
+ var varying=false,keys=null,best=null,k,v;try{varying=!!(scale.isTimeVarying&&scale.isTimeVarying());}catch(e){}
+ if(!varying)return rp_zoomScalarValue(scale);
+ // Already animated (e.g. an earlier Random Zoom run): use the lowest key so re-runs do not compound.
+ try{keys=scale.getKeys();}catch(e2){keys=null;}
+ if(keys&&keys.length)for(k=0;k<keys.length;k++){v=null;try{v=Number(scale.getValueAtKey(keys[k]));}catch(e3){v=null;}if(v!==null&&isFinite(v)&&v>0&&(best===null||v<best))best=v;}
+ return best!==null?best:rp_zoomScalarValue(scale);
+}
+function rp_zoomRelative(base,percent){return Math.round(Math.max(0,Math.min(10000,Number(base)*Number(percent)/100))*100)/100;}
 function rp_zoomValueMatches(scale,seconds,value){
  var got=null,t=new Time();t.seconds=Number(seconds);
  try{got=Number(scale.getValueAtKey(Number(seconds)));}catch(e1){try{got=Number(scale.getValueAtKey(t));}catch(e2){got=null;}}
@@ -631,14 +661,16 @@ function rp_zoomApplyTask(j,task){
  var clip=task.clip||rp_resolveTask(app.project.activeSequence,task,j.frame);if(!clip)throw Error("Zoom footage changed. Start a new Zoom job.");var scale=rp_zoomScaleParam(clip);
  if(!scale)throw Error('Motion > Scale parameter was not found.');
  try{if(scale.areKeyframesSupported&&scale.areKeyframesSupported()!==true)throw Error('Motion > Scale does not support keyframes on this clip.');}catch(keySupportError){if(String(keySupportError).indexOf('does not support')>=0)throw keySupportError;}
+ var base=rp_zoomBaseScale(scale);if(base===null||!isFinite(base)||!(base>0))throw Error('Could not read the current Motion > Scale value.');
+ var zoomLo=rp_zoomRelative(base,j.zoomMin),zoomHi=rp_zoomRelative(base,j.zoomMax);
  var inSec=rp_seconds(clip.inPoint),outSec=rp_seconds(clip.outPoint);if(!(outSec>inSec))throw Error('Invalid clip source In/Out time.');
  var frame=(j.frame>0?j.frame:1/30),visibleEnd=outSec-frame;
  if(!(visibleEnd>inSec))visibleEnd=outSec;
  var removeA=new Time(),removeB=new Time();removeA.seconds=inSec;removeB.seconds=outSec;
  try{if(scale.isTimeVarying&&scale.isTimeVarying())scale.removeKeyRange(removeA,removeB);}catch(removeError){try{scale.removeKeyRange(inSec,outSec);}catch(removeError2){}}
  try{if(!scale.isTimeVarying||!scale.isTimeVarying())scale.setTimeVarying(true);}catch(varyError){throw Error('Could not enable Scale animation. '+String(varyError));}
- if(task.direction>0){rp_zoomSetKey(scale,inSec,j.zoomMin);rp_zoomSetKey(scale,visibleEnd,j.zoomMax);}
- else{rp_zoomSetKey(scale,inSec,j.zoomMax);rp_zoomSetKey(scale,visibleEnd,j.zoomMin);}
+ if(task.direction>0){rp_zoomSetKey(scale,inSec,zoomLo);rp_zoomSetKey(scale,visibleEnd,zoomHi);}
+ else{rp_zoomSetKey(scale,inSec,zoomHi);rp_zoomSetKey(scale,visibleEnd,zoomLo);}
  // Verify that Premiere now exposes at least two keys. Some builds silently ignore failed writes.
  try{var keys=scale.getKeys();if(!keys||keys===0||keys.length<2)throw Error('Premiere did not create the two Scale keyframes.');}catch(verifyError){
   if(String(verifyError).indexOf('two Scale keyframes')>=0)throw verifyError;
@@ -674,7 +706,7 @@ function rp_zoomBegin(minScale,maxScale){
   var frame=Number(s.timebase)/254016000000;if(!(frame>0))frame=1/30;
   rp_job={id:String(new Date().getTime()),status:'running',kind:'zoom',phase:'zoom',seq:s,seqID:String(s.sequenceID),projectPath:String(app.project.path),name:s.name,frame:frame,
    tasks:tasks,task:0,done:0,total:tasks.length,created:0,cuts:0,changed:0,removed:0,skipped:0,zoomIn:0,zoomOut:0,zoomErrors:[],zoomErrorMap:{},warning:false,zoomMin:minScale,zoomMax:maxScale,
-   scanLocked:locked,scanMuted:muted,scanIneligible:ineligible,message:'Applying Random Zoom '+minScale+'% / '+maxScale+'% to '+tasks.length+' footage clips'};
+   scanLocked:locked,scanMuted:muted,scanIneligible:ineligible,message:'Applying Random Zoom '+minScale+'% / '+maxScale+'% of each clip\'s current Scale to '+tasks.length+' footage clips'};
   rp_gc();return rp_state();
  }catch(e){rp_gc();return rp_encode({ok:false,status:'error',message:String(e)});}
 }
@@ -830,7 +862,7 @@ function rp_step(id,light){
     if(task.keep||j.kind==='angle'){
      var currentClip=rp_resolveTask(liveCleanup,task,j.frame);
      if(!currentClip)throw Error('Camera piece changed before switching. Resume to rebuild the map.');
-     if(Boolean(currentClip.disabled)!==!task.keep)currentClip.disabled=!task.keep;
+     if(Boolean(currentClip.disabled)!==!task.keep){currentClip.disabled=!task.keep;if(!task.keep)rp_pdRecord(j.seqID,task.track,currentClip);}
      if(Boolean(currentClip.disabled)!==!task.keep)throw Error('Camera change was not confirmed.');
      j.changed++;
     }else{
@@ -891,7 +923,7 @@ function rp_validateRangePlan(points,bounds,winners,range,frame){
 }
 function rp_a1Snapshot(){
  var s=app.project.activeSequence;if(!s)throw Error('No active sequence.');
- if(!s.audioTracks.numTracks)throw Error('No A1 track.');
+ if(!s.audioTracks.numTracks)throw Error('No audio track A1. Put the music mix on A1 (the first audio track).');
  // Music analysis always scans the complete A1 timeline. Sequence In/Out marks
  // remain export/edit controls and must not silently truncate beat/drop analysis.
  var a1=s.audioTracks[0],clips=[],duration=rp_duration(s),range={start:0,end:0,selected:false},c;range.end=duration;
@@ -912,7 +944,7 @@ function rp_a1Snapshot(){
   clips.push({file:stableFile,start:Math.round(start*1000)/1000,end:Math.round(end*1000)/1000,input:Math.round(input*1000)/1000});
  }
  clips.sort(function(a,b){return a.start-b.start;});
- if(!clips.length)throw Error('A1 is empty or all clips are disabled.');
+ if(!clips.length)throw Error('A1 is empty or all A1 clips are disabled. The plugin reads the music only from A1 (the first audio track): move or enable the music mix on A1.');
  for(c=1;c<clips.length;c++)if(clips[c].start<clips[c-1].end-0.001)throw Error('A1 clips overlap. Render the A1 mix to WAV for accurate analysis.');
  var data={sequenceID:String(s.sequenceID),projectPath:String(app.project.path),duration:duration,frame:Number(s.timebase)/254016000000,range:range,clips:clips};
  // v2.2.7 reliability: A1 identity must survive video-only multicam razor/delete operations.
@@ -1006,7 +1038,11 @@ function rp_a1Step(id){
 }
 
 /* Commercial host gate: public entry points refuse work without a short-lived licensed session. */
-function rp_guardLicensed(fn){return function(){try{rp_requireLicense();return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
+function rp_guardLicensed(fn){return function(){try{rp_requireLicense();var out=fn.apply(this,arguments);if(rp_job&&rp_job.status==='running'){rp_job.licensed=true;rp_job.licensedAt=new Date().getTime();}return out;}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
+/* v2.3.11.5: a job started under a valid session may run to completion (its own step/upload calls only)
+   if the trial/session ends mid-job. Every new job, plan, resume or analysis still needs a live session. */
+function rp_jobContinuation(id){var j=rp_job;return !!(j&&j.licensed&&j.status==='running'&&String(j.id)===String(id)&&new Date().getTime()-Number(j.licensedAt||0)<86400000);}
+function rp_guardJob(fn){return function(id){try{if(!rp_jobContinuation(id))rp_requireLicense();return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
 rp_begin=rp_guardLicensed(rp_begin);
 rp_getAI=rp_guardLicensed(rp_getAI);
 rp_getAIInternal=rp_guardLicensed(rp_getAIInternal);
@@ -1018,13 +1054,13 @@ rp_resumeSaved=rp_guardLicensed(rp_resumeSaved);
 rp_podcastSnapshot=rp_guardLicensed(rp_podcastSnapshot);
 rp_podcastBegin=rp_guardLicensed(rp_podcastBegin);
 rp_zoomBegin=rp_guardLicensed(rp_zoomBegin);
-rp_zoomStep=rp_guardLicensed(rp_zoomStep);
+rp_zoomStep=rp_guardJob(rp_zoomStep);
 rp_best15ResolvePreset=rp_guardLicensed(rp_best15ResolvePreset);
 rp_best15Begin=rp_guardLicensed(rp_best15Begin);
-rp_best15Step=rp_guardLicensed(rp_best15Step);
-rp_step=rp_guardLicensed(rp_step);
+rp_best15Step=rp_guardJob(rp_best15Step);
+rp_step=rp_guardJob(rp_step);
 rp_getA1=rp_guardLicensed(rp_getA1);
 rp_a1Begin=rp_guardLicensed(rp_a1Begin);
-rp_a1Upload=rp_guardLicensed(rp_a1Upload);
+rp_a1Upload=rp_guardJob(rp_a1Upload);
 rp_a1DirectApply=rp_guardLicensed(rp_a1DirectApply);
-rp_a1Step=rp_guardLicensed(rp_a1Step);
+rp_a1Step=rp_guardJob(rp_a1Step);

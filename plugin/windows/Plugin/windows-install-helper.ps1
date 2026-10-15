@@ -2,10 +2,20 @@
 $ErrorActionPreference = 'Stop'
 $cfg = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
 $logPath = [string]$cfg.log
-function Set-UpdateStatus([string]$State,[string]$Message,[int]$Progress) {
-    $status = @{state=$State;message=$Message;progress=$Progress;version=$cfg.version;updated_at=[DateTime]::UtcNow.ToString('o')}
-    [IO.File]::WriteAllText([string]$cfg.status,($status | ConvertTo-Json -Compress),(New-Object Text.UTF8Encoding($false)))
+function Test-CurrentAttempt {
+    try { return ([IO.File]::ReadAllText([string]$cfg.attemptFile).Trim() -eq [string]$cfg.attempt) } catch { return $false }
 }
+function Set-UpdateStatus([string]$State,[string]$Message,[int]$Progress) {
+    if (-not (Test-CurrentAttempt)) { return }
+    $status = @{state=$State;message=$Message;progress=$Progress;version=$cfg.version;attempt=$cfg.attempt;updated_at=[DateTime]::UtcNow.ToString('o')}
+    $target = [string]$cfg.status; $tmp = $target + '.' + $PID + '.tmp'
+    [IO.File]::WriteAllText($tmp,($status | ConvertTo-Json -Compress),(New-Object Text.UTF8Encoding($false)))
+    for ($i = 1; ; $i++) {
+        try { if ([IO.File]::Exists($target)) { [IO.File]::Replace($tmp,$target,[NullString]::Value) } else { [IO.File]::Move($tmp,$target) }; return }
+        catch { if ($i -ge 10) { throw }; Start-Sleep -Milliseconds 200 }
+    }
+}
+function Test-PremiereRunning { return [bool](Get-Process -Name 'Adobe Premiere Pro*' -ErrorAction SilentlyContinue) }
 try {
     Start-Transcript -LiteralPath $logPath -Force | Out-Null
     $root = [IO.Path]::GetFullPath([string]$cfg.work).TrimEnd('\') + '\'
@@ -16,13 +26,15 @@ try {
     Set-UpdateStatus 'waiting' 'Save your project and close Premiere. The update will install after Premiere exits.' 75
     $deadline = [DateTime]::UtcNow.AddHours(12)
     do {
-        if ([DateTime]::UtcNow -gt $deadline) { throw 'Update wait expired. Start the update again.' }
-        while (Get-Process -Name 'Adobe Premiere Pro' -ErrorAction SilentlyContinue) {
-            if ([DateTime]::UtcNow -gt $deadline) { throw 'Update wait expired. Start the update again.' }
+        while (Test-PremiereRunning) {
+            if (-not (Test-CurrentAttempt)) { exit 0 }
+            if ([DateTime]::UtcNow -gt $deadline) { throw 'Timed out waiting for Premiere to close. Click Update again when you are ready.' }
             Start-Sleep -Seconds 2
         }
         Start-Sleep -Seconds 3
-    } while (Get-Process -Name 'Adobe Premiere Pro' -ErrorAction SilentlyContinue)
+    } while (Test-PremiereRunning)
+    # A newer update attempt or a manual install replaced this one: exit without touching the plugin or status.
+    if (-not (Test-CurrentAttempt)) { exit 0 }
     Set-UpdateStatus 'extracting' 'Extracting verified update...' 82
     if (Test-Path -LiteralPath $cfg.package) { throw 'Update extraction directory already exists. Start a fresh update.' }
     Expand-Archive -LiteralPath $cfg.zip -DestinationPath $cfg.package

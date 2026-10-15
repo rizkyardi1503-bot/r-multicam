@@ -3,11 +3,16 @@ set -euo pipefail
 BASE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$BASE/Plugin"
 VERSION="2.3.11.4"
-[ -d "$SRC" ] || { printf "%s\n" "ERROR: Plugin payload folder is missing."; exit 1; }
 say_line(){ printf '%s\n' "$*"; }
 fail(){ say_line "ERROR: $*"; exit 1; }
+# macOS privacy protection (TCC) can block Terminal from reading Downloads/Desktop/Documents. Report that instead of "missing" or "damaged" files.
+blocked(){ fail "macOS did not allow Terminal to read the installer folder ($BASE). Move the extracted R Project folder to your home folder (outside Downloads, Desktop and Documents) and run Install-macOS.command again, or allow Terminal under System Settings > Privacy & Security > Files and Folders."; }
+ls "$BASE" >/dev/null 2>&1 || blocked
+[ -d "$SRC" ] || fail "Plugin payload folder is missing. Extract the whole ZIP first, then run Install-macOS.command from the extracted folder."
 
-if pgrep -x "Adobe Premiere Pro" >/dev/null 2>&1 || pgrep -x "CEPHtmlEngine" >/dev/null 2>&1; then fail "Close Adobe Premiere Pro and Adobe CEP processes, then run this installer again."; fi
+# Match Premiere by its app bundle path (the process name is truncated and includes the year, so pgrep -x never matched it).
+# Other Adobe apps (Photoshop, After Effects) run their own CEPHtmlEngine and must not block installation.
+if pgrep -f '/Adobe Premiere Pro[^/]*\.app/Contents/(MacOS/|.*CEPHtmlEngine)' >/dev/null 2>&1; then fail "Close Adobe Premiere Pro, then run this installer again."; fi
 MANIFEST="$SRC/CSXS/manifest.xml"
 [ -f "$MANIFEST" ] || fail "Plugin manifest is missing."
 grep -q "ExtensionBundleVersion=\"$VERSION\"" "$MANIFEST" || fail "Plugin version mismatch."
@@ -21,7 +26,8 @@ while IFS= read -r line || [ -n "$line" ]; do
   expected="${line%%  *}"; rel="${line#*  }"; rel="${rel%$'\r'}"; rel="${rel#./}"
   case "$rel" in /*|../*|*/../*|*/..) fail "Invalid package path: $rel" ;; esac
   [ -f "$BASE/$rel" ] || fail "Missing package file: $rel"
-  actual="$(shasum -a 256 "$BASE/$rel" | awk '{print $1}')"
+  actual="$(shasum -a 256 "$BASE/$rel" 2>/dev/null | awk '{print $1}')" || true
+  [ -n "$actual" ] || blocked
   [ "$actual" = "$expected" ] || fail "Package damaged: $rel"
 done < "$SUMS"
 
@@ -32,9 +38,12 @@ DEST="$EXTROOT/RProjectMulticamAI"
 SUPPORT="$PROFILE_ROOT/Library/Application Support/RProjectMulticamAI"
 BACKUP="$SUPPORT/backups/$(date +%Y%m%d-%H%M%S)-$$"
 TOOLS="$PROFILE_ROOT/Library/Application Support/RProjectMulticam/tools"
-check_ancestors(){ local cursor="$1"; while [ "$cursor" != / ] && [ -n "$cursor" ]; do [ ! -L "$cursor" ] || fail "Redirected installation path: $cursor"; cursor="$(dirname "$cursor")"; done; }
+# Only folders inside the profile are checked; a symlinked home or /Users is a valid setup.
+check_ancestors(){ local cursor="$1"; while [ "$cursor" != / ] && [ -n "$cursor" ] && [ "$cursor" != "$PROFILE_ROOT" ]; do [ ! -L "$cursor" ] || fail "Redirected installation path: $cursor"; cursor="$(dirname "$cursor")"; done; }
 check_ancestors "$EXTROOT"; check_ancestors "$BACKUP"; check_ancestors "$TOOLS"
 mkdir -p "$EXTROOT" "$BACKUP" "$TOOLS"
+# A manual install supersedes any pending in-panel update: retire its helper and clear its status.
+if [ -z "${RP_AUTO_UPDATE:-}" ] && [ -z "${RP_INSTALL_TEST_ROOT:-}" ]; then rm -f "$SUPPORT/updater/attempt.txt" "$SUPPORT/updater/status.json" 2>/dev/null || true; fi
 
 # Preflight FFmpeg BEFORE changing the installed plugin.
 FF="$TOOLS/ffmpeg"
@@ -59,7 +68,7 @@ if [ ! -x "$FF" ]; then
   say_line "Installing FFmpeg 9.0.2 for macOS $ARCH..."
   TMP="$(mktemp -d -t rproject-ffmpeg.XXXXXX)"; trap 'rm -rf "$TMP"' EXIT
   URL="https://ffmpeg.martin-riedl.de/download/macos/$FFARCH/$FFBUILD/ffmpeg.zip"
-  curl -fL --proto '=https' --retry 3 --connect-timeout 20 "$URL" -o "$TMP/ffmpeg.zip" || fail "Could not download FFmpeg. Check your internet connection and run this installer again."
+  curl -fL --proto '=https' --retry 3 --connect-timeout 20 --speed-limit 1024 --speed-time 60 --max-time 1800 "$URL" -o "$TMP/ffmpeg.zip" || fail "Could not download FFmpeg. Check your internet connection and run this installer again."
   FFACTUAL="$(shasum -a 256 "$TMP/ffmpeg.zip" | awk '{print $1}')"
   [ "$FFACTUAL" = "$FFSHA" ] || fail "Downloaded FFmpeg failed its integrity check. Run this installer again, or install FFmpeg yourself (for example with Homebrew) and retry."
   ditto -x -k "$TMP/ffmpeg.zip" "$TMP/unpacked"
@@ -76,7 +85,6 @@ for v in 9 10 11 12 13 14 15; do defaults write "com.adobe.CSXS.$v" PlayerDebugM
 
 STAGE="$EXTROOT/.rproject-stage-$VERSION-$$"
 [ ! -e "$STAGE" ] && [ ! -L "$STAGE" ] || fail "Staging path already exists. Run installer again."
-cp -R "$SRC" "$STAGE"
 MOVED=""
 INSTALLED=0
 rollback(){
@@ -86,11 +94,13 @@ rollback(){
     if [ -e "$BACKUP/$name" ]; then mv "$BACKUP/$name" "$EXTROOT/$name" 2>/dev/null || true; fi
   done
 }
-trap 'rollback' ERR
+trap 'rollback; say_line "ERROR: Installation failed; previous plugin restored."' ERR
+cp -R "$SRC" "$STAGE"
 for name in RProjectMulticamAI com.rproject.multicam R-Project-Multicam-AI r.project.multicam; do old="$EXTROOT/$name"; [ ! -L "$old" ] || { rollback; fail "Redirected plugin folder: $old"; }; if [ -e "$old" ]; then mv "$old" "$BACKUP/$name"; MOVED="$MOVED $name"; fi; done
 mv "$STAGE" "$DEST"
 INSTALLED=1
 rm -f "$DEST/windows-install-helper.ps1" 2>/dev/null || true
+xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
 if ! grep -q "ExtensionBundleVersion=\"$VERSION\"" "$DEST/CSXS/manifest.xml"; then rollback; fail "Installed plugin verification failed; previous plugin restored."; fi
 if ! grep -Fq "version:'${VERSION}'" "$DEST/jsx/host.jsx"; then rollback; fail "Installed host script version verification failed; previous plugin restored."; fi
 if ! grep -Fq "r.version==='${VERSION}'" "$DEST/panel.js"; then rollback; fail "Installed panel/host handshake verification failed; previous plugin restored."; fi

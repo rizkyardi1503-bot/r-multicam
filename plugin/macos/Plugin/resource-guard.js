@@ -18,8 +18,12 @@ function macAvailable(output){
 function classify(x){
  if(x.platform==='darwin'){
   var mb=Number(x.available),total=Number(x.limit),appBytes=Number(x.premiere);
-  if(x.available===null||x.available===undefined||!isFinite(mb)||mb<0||!(total>0)||!isFinite(appBytes))return {available:false,critical:false,slow:profile().lowMemory,label:'macOS memory reading unavailable'};
-  return {available:true,critical:mb<384,slow:profile().lowMemory||mb<1280,premiere:appBytes,limit:total,freeMB:mb,label:'macOS reclaimable memory ~'+Math.round(mb)+' MiB; Premiere '+(appBytes/1073741824).toFixed(1)+' GiB'+(profile().lowMemory?' · Low Memory mode':'')};
+  // v2.3.11.5: macOS keeps free/inactive pages low on purpose (file cache, compressor), so a low page
+  // count is not a reason to pause. Only the kernel's own memory-pressure level 4 (critical) pauses a job;
+  // warn (2) or low reclaimable pages only reduce batch size.
+  var pressure=Number(x.pressure),hasPressure=pressure===1||pressure===2||pressure===4;
+  if(x.available===null||x.available===undefined||!isFinite(mb)||mb<0||!(total>0)||!isFinite(appBytes))return {available:hasPressure,critical:pressure===4,slow:profile().lowMemory||pressure>=2,pressure:hasPressure?pressure:null,label:hasPressure?'macOS memory pressure '+(pressure===4?'critical':pressure===2?'warning':'normal'):'macOS memory reading unavailable'};
+  return {available:true,critical:pressure===4,slow:profile().lowMemory||pressure>=2||mb<1280,pressure:hasPressure?pressure:null,premiere:appBytes,limit:total,freeMB:mb,label:'macOS memory pressure '+(!hasPressure?'unknown':pressure===4?'critical':pressure===2?'warning':'normal')+' · reclaimable ~'+Math.round(mb)+' MiB; Premiere '+(appBytes/1073741824).toFixed(1)+' GiB'+(profile().lowMemory?' · Low Memory mode':'')};
  }
  if(x.limit===undefined||x.commit===undefined||x.available===undefined||x.premiere===undefined)return {available:false,critical:false,slow:false,label:'Memory reading unavailable'};
  var limit=Number(x.limit),commit=Number(x.commit),available=Number(x.available),premiere=Number(x.premiere),valid=limit>0&&commit>=0&&available>=0&&isFinite(premiere);
@@ -36,7 +40,7 @@ function check(){
  if(proc.platform==='darwin'){
   inflight=new Promise(function(resolve){
    function finish(x){last=classify(x);lastAt=Date.now();try{var el=root.document&&root.document.getElementById('memoryInfo');if(el)el.textContent=last.label+(last.critical?' - stopped before next batch':last.slow?' - reduced batch size':'');}catch(ignore){}rows.push({time:new Date().toISOString(),stage:stage,reading:last});if(rows.length>120)rows.shift();save();resolve(last);}
-   try{var total=Number(os.totalmem()),cp=n.require('child_process');cp.execFile('/usr/bin/vm_stat',[],{encoding:'utf8',timeout:8000,maxBuffer:16384},function(vmErr,vmOut){var available=vmErr?null:macAvailable(vmOut);cp.execFile('/bin/ps',['-axo','rss=,comm='],{encoding:'utf8',timeout:8000,maxBuffer:1024*1024},function(err,out){var premiere=0;if(!err){String(out||'').split(/\r?\n/).forEach(function(line){var m=line.match(/^\s*(\d+)\s+(.+)$/);if(m&&/Adobe Premiere Pro/.test(m[2]))premiere+=Number(m[1])*1024;});}finish({platform:'darwin',limit:total,available:available,premiere:premiere});});});}catch(e){finish({});}
+   try{var total=Number(os.totalmem()),cp=n.require('child_process');cp.execFile('/usr/bin/vm_stat',[],{encoding:'utf8',timeout:8000,maxBuffer:16384},function(vmErr,vmOut){var available=vmErr?null:macAvailable(vmOut);cp.execFile('/usr/sbin/sysctl',['-n','kern.memorystatus_vm_pressure_level'],{encoding:'utf8',timeout:5000,maxBuffer:1024},function(pErr,pOut){var pressure=pErr?null:parseInt(String(pOut||'').trim(),10);cp.execFile('/bin/ps',['-axo','rss=,comm='],{encoding:'utf8',timeout:8000,maxBuffer:1024*1024},function(err,out){var premiere=0;if(!err){String(out||'').split(/\r?\n/).forEach(function(line){var m=line.match(/^\s*(\d+)\s+(.+)$/);if(m&&/Adobe Premiere Pro/.test(m[2]))premiere+=Number(m[1])*1024;});}finish({platform:'darwin',limit:total,available:available,pressure:isFinite(pressure)?pressure:null,premiere:premiere});});});});}catch(e){finish({});}
   }).then(function(x){inflight=null;return x;});return inflight;
  }
  if(proc.platform!=='win32')return Promise.resolve(classify({}));

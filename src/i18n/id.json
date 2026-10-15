@@ -15,7 +15,7 @@
   "IDR · one-time": "IDR · sekali bayar",
   "USD · one-time": "USD · sekali bayar",
   "This plugin runs in Adobe Premiere Pro desktop on Windows or macOS, not on a phone, tablet or Linux. You can browse the website here; use a supported desktop to install.": "Plugin ini berjalan di Adobe Premiere Pro versi desktop di Windows atau macOS, bukan di ponsel, tablet, atau Linux. Kamu bisa menjelajahi website di sini; gunakan komputer desktop yang didukung untuk menginstal.",
-  "Your Premiere version is outside the declared 22.0–26.99 manifest range or is not known. Contact support and check Adobe requirements before installing or buying.": "Versi Premiere kamu berada di luar rentang manifest 22.0–26.99 yang dinyatakan atau tidak diketahui. Hubungi support dan cek persyaratan Adobe sebelum menginstal atau membeli.",
+  "Multicam AI supports Premiere Pro 2022 (v22) and newer. Your Premiere version is older or not known. Contact support and check Adobe requirements before installing or buying.": "Multicam AI mendukung Premiere Pro 2022 (v22) dan yang lebih baru. Versi Premiere kamu lebih lama atau tidak diketahui. Hubungi support dan cek persyaratan Adobe sebelum menginstal atau membeli.",
   "ACCOUNT EMAIL": "EMAIL AKUN",
   "Close confirmation": "Tutup konfirmasi",
   "Sign in": "Masuk",
@@ -82,7 +82,7 @@
   "Buy lifetime ·": "Beli lifetime ·",
   "Check payment": "Cek pembayaran",
   "Refresh license": "Refresh lisensi",
-  "Plugin v2.3.11.2 includes Continue with Google. Email/password remains optional for this same account. Never enter your Google password in the plugin.": "Plugin v2.3.11.2 sudah mendukung Lanjutkan dengan Google. Email/kata sandi tetap opsional untuk akun yang sama. Jangan pernah memasukkan kata sandi Google kamu di plugin.",
+  "Plugin v2.3.11.2 and newer include Continue with Google. Email/password remains optional for this same account. Never enter your Google password in the plugin.": "Plugin v2.3.11.2 dan yang lebih baru sudah mendukung Lanjutkan dengan Google. Email/kata sandi tetap opsional untuk akun yang sama. Jangan pernah memasukkan kata sandi Google kamu di plugin.",
   "Set up plugin password by email": "Atur kata sandi plugin lewat email",
   "Your active plugin": "Plugin aktif kamu",
   "Downloads & help": "Unduhan & bantuan",
@@ -144,7 +144,7 @@
   "Google sign-in expired or belongs to another browser tab. Click Continue with Google again.": "Masuk dengan Google kedaluwarsa atau berasal dari tab browser lain. Klik Lanjutkan dengan Google lagi.",
   "Google did not return a valid session. Try signing in again.": "Google tidak mengembalikan sesi yang valid. Coba masuk lagi.",
   "Signed in with Google. Click Buy lifetime to continue to checkout.": "Berhasil masuk dengan Google. Klik Beli lifetime untuk lanjut ke checkout.",
-  "Signed in with Google. You can download the installer and manage your license. Plugin v2.3.11.2 supports Continue with Google directly.": "Berhasil masuk dengan Google. Kamu bisa mengunduh installer dan mengelola lisensi. Plugin v2.3.11.2 langsung mendukung Lanjutkan dengan Google.",
+  "Signed in with Google. You can download the installer and manage your license. The Premiere plugin (v2.3.11.2 and newer) also supports Continue with Google.": "Berhasil masuk dengan Google. Kamu bisa mengunduh installer dan mengelola lisensi. Plugin Premiere (v2.3.11.2 dan yang lebih baru) juga mendukung Lanjutkan dengan Google.",
   "1. Create account → 2. Confirm email → 3. Sign in and download. Your 7-day trial starts only when you first activate the plugin in Premiere.": "1. Buat akun → 2. Konfirmasi email → 3. Masuk dan unduh. Trial 7 hari kamu baru dimulai saat kamu pertama kali mengaktifkan plugin di Premiere.",
   "Use a password with at least 8 characters.": "Gunakan kata sandi minimal 8 karakter.",
   "Passwords do not match.": "Kata sandi tidak cocok.",
@@ -275,7 +275,9 @@
   "suspended": "ditangguhkan",
   "processing": "diproses",
   "paid": "dibayar",
-  "rejected": "ditolak"
+  "rejected": "ditolak",
+  "Back from Midtrans. If you completed the payment, click Check payment to confirm it and activate your license.": "Kembali dari Midtrans. Jika kamu sudah menyelesaikan pembayaran, klik Cek pembayaran untuk mengonfirmasi dan mengaktifkan lisensi kamu.",
+  "Back from Midtrans. Sign in with the account you used for checkout, then click Check payment to confirm your payment.": "Kembali dari Midtrans. Masuk dengan akun yang kamu pakai saat checkout, lalu klik Cek pembayaran untuk mengonfirmasi pembayaran kamu."
  },
  "patterns": [
   [

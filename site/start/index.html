@@ -9,7 +9,10 @@ if (a && ls) { try { ls.setItem('rp-lang', a.getAttribute('data-lang-switch')); 
 });
 var lang = d.documentElement.lang === 'id' ? 'id' : 'en';
 if (navigator.webdriver || /bot|crawl|spider|slurp|google|bing|yandex|baidu|duckduck|facebookexternalhit|embedly|preview|lighthouse|pagespeed|headless/i.test(navigator.userAgent)) return;
-if (/[?&#](code|oauth|access_token|refresh_token|error|error_description|download|account|token_hash|type)=/.test(location.search + location.hash)) return;
+var AUTH = /(^|[?&#\/])(code|oauth|state|access_token|refresh_token|provider_token|provider_refresh_token|expires_at|expires_in|token_type|error|error_code|error_description|download|account|token_hash|type|plugin-google)=/;
+var authUrl = function () { return AUTH.test(location.search) || AUTH.test(location.hash); };
+if (authUrl() || window.RP_PLUGIN_GOOGLE_ACTIVE) return;
+var here = location.href;
 var alt = d.querySelector('link[rel="alternate"][hreflang="' + (lang === 'id' ? 'en' : 'id') + '"]');
 if (!alt) return;
 var go = function () {
@@ -30,7 +33,7 @@ fetch('/cdn-cgi/trace', { cache: 'no-store', credentials: 'omit' }).then(functio
 var m = /^loc=([A-Z]{2})\s*$/m.exec(t);
 var target = m && m[1] === 'ID' ? 'id' : 'en';
 set('rp-lang-auto', target);
-if (target === 'id' && !get('rp-lang')) go();
+if (target === 'id' && !get('rp-lang') && location.href === here && !authUrl() && !window.RP_PLUGIN_GOOGLE_ACTIVE && !d.querySelector('dialog[open]')) go();
 }).catch(function () {});
 } catch (e) {}
 })();</script><!--/rp:lang--><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070911"><title>Try AI Multicam Editing for Premiere Pro | R Project</title><meta name="description" content="Edit DJ sets, concerts and live events to the music. Try the interactive demo or download R Project Multicam AI for Premiere Pro on Windows and macOS."><meta name="robots" content="noindex,follow"><link rel="canonical" href="https://r-multicam.pages.dev/start/"><meta property="og:type" content="website"><meta property="og:site_name" content="R Project Multicam AI"><meta property="og:title" content="Turn your music into a multicam edit."><meta property="og:description" content="AI beat, BPM and drop analysis for Premiere Pro. Try the demo and start your 7-day trial on Windows or Mac."><meta property="og:url" content="https://r-multicam.pages.dev/start/"><meta property="og:image" content="https://r-multicam.pages.dev/social-preview.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:type" content="image/png"><meta property="og:image:alt" content="R Project Multicam AI for Adobe Premiere Pro"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Turn your music into a multicam edit."><meta name="twitter:description" content="Try music-driven multicam editing for Premiere Pro. Windows and macOS installers available."><meta name="twitter:image" content="https://r-multicam.pages.dev/social-preview.png"><link rel="icon" href="/favicon.png"><link rel="preload" href="/fonts/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/site.css?v=127f2862f9"><link rel="stylesheet" href="/start/start.css"><script src="/config.js" defer></script><script src="/analytics.js" defer></script><script src="/pricing.js" defer></script><script src="/affiliate-ui.js" defer></script><script src="/portal.js" defer></script><script type="module" src="/motion3d.mjs?v=105d3fdfb8"></script></head>

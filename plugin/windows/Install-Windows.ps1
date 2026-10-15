@@ -4,7 +4,7 @@ Set-StrictMode -Version 2
 $base = $PSScriptRoot
 $src = Join-Path $base 'Plugin'
 $version = '2.3.11.4'
-if (-not (Test-Path -LiteralPath $src -PathType Container)) { throw 'Plugin payload folder is missing.' }
+if (-not (Test-Path -LiteralPath $src -PathType Container)) { throw 'Plugin payload folder is missing. Extract the whole ZIP first, then run SETUP-WINDOWS.cmd from the extracted folder.' }
 
 # Manual recovery guard: stop only stale R Project one-click updater processes from an older build.
 # Never run this inside AutoUpdate because the parent updater is intentionally still alive.
@@ -15,6 +15,8 @@ if (-not $AutoUpdate -and -not $TestRoot) {
         } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
         $staleStatus = Join-Path $env:LOCALAPPDATA 'RProjectMulticamAI/updater/status.json'
         Remove-Item -LiteralPath $staleStatus -Force -ErrorAction SilentlyContinue
+        # A manual install supersedes any pending in-panel update: its helper exits when attempt.txt no longer matches.
+        Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'RProjectMulticamAI/updater/attempt.txt') -Force -ErrorAction SilentlyContinue
     } catch {}
 }
 
@@ -64,10 +66,11 @@ if ($TestRoot) {
     if (-not (Test-Path -LiteralPath $profileRoot -PathType Container)) { throw 'TestRoot must already exist.' }
     $roaming = Join-Path $profileRoot 'Roaming'; $local = Join-Path $profileRoot 'Local'
 } else {
-    if ($AutoUpdate) {
-        if (Get-Process -Name 'Adobe Premiere Pro' -ErrorAction SilentlyContinue) { throw 'Close Premiere before automatic installation.' }
-    } elseif (Get-Process -Name 'Adobe Premiere Pro','AfterFX','CEPHtmlEngine' -ErrorAction SilentlyContinue) {
-        throw 'Close Adobe applications before installation.'
+    # Only Premiere loads this extension. 'Adobe Premiere Pro*' also covers 'Adobe Premiere Pro (Beta)'.
+    # Photoshop/After Effects keep their own CEPHtmlEngine running and do not lock the plugin folder.
+    if (Get-Process -Name 'Adobe Premiere Pro*' -ErrorAction SilentlyContinue) {
+        if ($AutoUpdate) { throw 'Close Premiere before automatic installation.' }
+        throw 'Close Adobe Premiere Pro before installation.'
     }
     $roaming = $env:APPDATA; $local = $env:LOCALAPPDATA
     if (-not $roaming -or -not $local) { throw 'Windows profile paths unavailable.' }
@@ -78,9 +81,12 @@ $dest = Join-Path $extensionRoot 'RProjectMulticamAI'
 $backup = Join-Path $local ('RProjectMulticamAI/backups/' + [Guid]::NewGuid().ToString('N'))
 $stage = Join-Path $extensionRoot ('rproject-stage-' + [Guid]::NewGuid().ToString('N'))
 
-foreach ($target in @($extensionRoot,$backup)) {
-    $check = [IO.Path]::GetFullPath($target)
-    while ($check) {
+# Check only folders the installer owns inside the profile. A junctioned or redirected profile/AppData (e.g. C:\Users on another drive)
+# is a valid setup; %APPDATA% is used as-is and is not affected by OneDrive/Documents redirection.
+foreach ($pair in @(@($roaming,$extensionRoot),@($local,$backup))) {
+    $stop = [IO.Path]::GetFullPath($pair[0]).TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
+    $check = [IO.Path]::GetFullPath($pair[1])
+    while ($check -and $check.Length -gt $stop.Length -and $check.StartsWith($stop,[StringComparison]::OrdinalIgnoreCase)) {
         if ((Test-Path -LiteralPath $check) -and ((Get-Item -LiteralPath $check -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Redirected installation path: $check" }
         $parent = [IO.Directory]::GetParent($check); if ($null -eq $parent) { break }; $check = $parent.FullName
     }
@@ -128,10 +134,23 @@ if (-not $TestRoot) {
             # Windows PowerShell's progress bar slows large downloads dramatically.
             $previousProgress = $ProgressPreference
             $ProgressPreference = 'SilentlyContinue'
+            # curl.exe (Windows 10 1803+) aborts stalled transfers and retries once; Invoke-WebRequest (system proxy aware) is the fallback.
+            $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
+            # PowerShell 7 applies -TimeoutSec to the whole transfer; Windows PowerShell 5.1 only to connect/response headers.
+            $iwrTimeout = if ($PSVersionTable.PSVersion.Major -ge 6) { 1800 } else { 60 }
             foreach ($ffmpegUrl in $ffmpegSources) {
                 try {
                     Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-                    Invoke-WebRequest -Uri $ffmpegUrl -OutFile $zip -UseBasicParsing
+                    $downloaded = $false
+                    if (Test-Path -LiteralPath $curl -PathType Leaf) {
+                        & $curl -fsSL --proto '=https' --connect-timeout 20 --speed-limit 1024 --speed-time 60 --max-time 1800 --retry 1 -o $zip $ffmpegUrl
+                        $downloaded = ($LASTEXITCODE -eq 0) -and (Test-Path -LiteralPath $zip -PathType Leaf)
+                        if (-not $downloaded) { Write-Host ('curl could not download ' + $ffmpegUrl + ' (exit ' + $LASTEXITCODE + '); retrying with PowerShell.') }
+                    }
+                    if (-not $downloaded) {
+                        Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+                        Invoke-WebRequest -Uri $ffmpegUrl -OutFile $zip -UseBasicParsing -TimeoutSec $iwrTimeout
+                    }
                     if ((Get-SafeSha256 $zip) -eq $ffmpegSha256) { $verified = $true; break }
                     Write-Host ('FFmpeg download from ' + $ffmpegUrl + ' failed its integrity check; trying the next source.')
                 } catch {

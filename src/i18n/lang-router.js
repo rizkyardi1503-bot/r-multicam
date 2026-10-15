@@ -17,9 +17,16 @@
     });
     var lang = d.documentElement.lang === 'id' ? 'id' : 'en';
     if (navigator.webdriver || /bot|crawl|spider|slurp|google|bing|yandex|baidu|duckduck|facebookexternalhit|embedly|preview|lighthouse|pagespeed|headless/i.test(navigator.userAgent)) return;
-    if (/[?&#](code|oauth|access_token|refresh_token|error|error_description|download|account|token_hash|type)=/.test(location.search + location.hash)) return;
+    // Auth callbacks (Supabase OAuth/PKCE, email links), the Premiere plugin Google relay
+    // (#plugin-google=...) and download/account deep links are never redirected: the
+    // query and hash carry one-time codes/tokens that a redirect could drop or replay.
+    var AUTH = /(^|[?&#\/])(code|oauth|state|access_token|refresh_token|provider_token|provider_refresh_token|expires_at|expires_in|token_type|error|error_code|error_description|download|account|token_hash|type|plugin-google)=/;
+    var authUrl = function () { return AUTH.test(location.search) || AUTH.test(location.hash); };
+    if (authUrl() || window.RP_PLUGIN_GOOGLE_ACTIVE) return;
+    var here = location.href;
     var alt = d.querySelector('link[rel="alternate"][hreflang="' + (lang === 'id' ? 'en' : 'id') + '"]');
     if (!alt) return;
+    // Always keep the visitor's query string and hash (UTM tags, anchors, payment returns).
     var go = function () {
       var u = new URL(alt.href, location.href);
       location.replace(u.pathname + location.search + location.hash);
@@ -38,7 +45,8 @@
       var m = /^loc=([A-Z]{2})\s*$/m.exec(t);
       var target = m && m[1] === 'ID' ? 'id' : 'en';
       set('rp-lang-auto', target);
-      if (target === 'id' && !get('rp-lang')) go();
+      // Late answer: do not interrupt a page that started a sign-in or changed its URL meanwhile.
+      if (target === 'id' && !get('rp-lang') && location.href === here && !authUrl() && !window.RP_PLUGIN_GOOGLE_ACTIVE && !d.querySelector('dialog[open]')) go();
     }).catch(function () {});
   } catch (e) {}
 })();

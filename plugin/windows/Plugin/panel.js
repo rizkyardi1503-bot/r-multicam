@@ -1,7 +1,11 @@
 (function(){
 'use strict';
 var cs,busy=false,pending=false,stopRequested=false,job=null,ready=false,lastInfo=null,lastReply=Date.now(),started=0,activeTool='multi';
-var analysisState=null,suggestion=null,uploadIndex=0;
+var analysisState=null,suggestion=null,uploadIndex=0,pendingSeq=0;
+// v2.3.11.5: generous host ceilings. A long DJ set (80+ min, thousands of clips) or a Premiere autosave
+// can block ExtendScript for tens of seconds; a short timeout only produced false failures.
+var HOST_TIMEOUT_MS=60000,HOST_STEP_TIMEOUT_MS=120000;
+function hostTimeout(base,units,perUnitMs){return Math.min(900000,Math.round(Math.max(base,base+(Number(units)||0)*(Number(perUnitMs)||0))));}
 var bestDropCache=null;
 var aiPlan=null,autoDirector=false;
 var restoredCameraSelection=null;
@@ -24,23 +28,35 @@ function musicMapKey(a1){return String(a1&&a1.signature||'')+'|'+String(Number(a
 function stripMusicMap(result,a1){
  var x={version:4,key:musicMapKey(a1),createdAt:Date.now(),result:{}};var allow=['points','meta','beats','beatMeta','music','dropSeries','onsetSeries','fingerprint','tempo','bpm','tempoConfidence','tempoSpread','tempoSamples','beatInterval','beatCount','tempoMap','musicGrid','pacing','structure','musicV12','excludedDropTimes','dropFeatureCache','onlineReviewCache','hybridAI','dropSensitivity','bestDropWindow','beatFirst'];
  for(var i=0;i<allow.length;i++)if(result&&result[allow[i]]!==undefined)x.result[allow[i]]=result[allow[i]];
+ // raw_energy is consumed only inside the audio decoder; do not persist it per energy sample.
+ if(Array.isArray(x.result.music))x.result.music=x.result.music.map(function(m){if(!m||m.raw_energy===undefined)return m;var y={},k;for(k in m)if(k!=='raw_energy')y[k]=m[k];return y;});
  x.result.snapshot=a1;return x;
 }
-function musicMapFile(){var path=resumeRequire('path');return path.join(path.dirname(resumeFilePath()),'master-music-map-v18-multifeature-public.json');}
-function persistMusicMap(x){try{var fs=resumeRequire('fs'),path=resumeRequire('path'),fp=musicMapFile();fs.mkdirSync(path.dirname(fp),{recursive:true});fs.writeFileSync(fp+'.tmp',JSON.stringify(x),'utf8');fs.renameSync(fp+'.tmp',fp);}catch(e){log('Disk music cache unavailable: '+e.message);}}
-function readMusicMap(){try{return JSON.parse(resumeRequire('fs').readFileSync(musicMapFile(),'utf8'));}catch(e){return null;}}
+function musicMapFile(){var base=resumeFilePath();if(!base)return '';var path=resumeRequire('path');return path.join(path.dirname(base),'master-music-map-v18-multifeature-public.json');}
+// v2.3.11.5: a 2 h set produces a ~50+ MB map. It lives only in the cache folder next to the resume
+// file (never localStorage: quota errors + slow panel start), is capped, and is written asynchronously
+// once per burst of saves instead of being stringified 2-3 times on the UI thread.
+var MUSIC_MAP_MAX_BYTES=96*1048576,musicMapTimer=null,musicMapLatest=null,musicMapWriteSeq=0;
+function persistMusicMap(x){musicMapLatest=x;if(musicMapTimer)window.clearTimeout(musicMapTimer);musicMapTimer=window.setTimeout(function(){musicMapTimer=null;var y=musicMapLatest;musicMapLatest=null;if(y)writeMusicMapNow(y);},1500);}
+function writeMusicMapNow(x){
+ var fs,fp,text,seq=++musicMapWriteSeq;try{fs=resumeRequire('fs');fp=musicMapFile();if(!fp)return false;text=JSON.stringify(x);}catch(e){log('Disk music cache unavailable: '+e.message);return false;}
+ if(text.length>MUSIC_MAP_MAX_BYTES){log('Music map cache skipped: '+Math.round(text.length/1048576)+' MB exceeds the '+Math.round(MUSIC_MAP_MAX_BYTES/1048576)+' MB cache limit. It stays in memory for this session.');try{if(fs.existsSync(fp))fs.unlinkSync(fp);}catch(e){}return false;}
+ try{var path=resumeRequire('path'),tmp=fp+'.'+seq+'.tmp';fs.mkdirSync(path.dirname(fp),{recursive:true});
+  fs.writeFile(tmp,text,'utf8',function(err){if(err||seq!==musicMapWriteSeq){try{fs.unlink(tmp,function(){});}catch(e){}if(err)log('Disk music cache unavailable: '+err.message);return;}fs.rename(tmp,fp,function(renameErr){if(renameErr){try{fs.unlink(tmp,function(){});}catch(e){}log('Disk music cache unavailable: '+renameErr.message);}});});
+ }catch(e){log('Disk music cache unavailable: '+e.message);return false;}return true;
+}
+function readMusicMap(){try{var fp=musicMapFile();if(!fp)return null;var fs=resumeRequire('fs');if(fs.statSync(fp).size>MUSIC_MAP_MAX_BYTES)return null;return JSON.parse(fs.readFileSync(fp,'utf8'));}catch(e){return null;}}
+function dropLegacyMusicMapStorage(){try{if(window.localStorage&&window.localStorage.getItem(MASTER_MUSIC_MAP_KEY)!==null)window.localStorage.removeItem(MASTER_MUSIC_MAP_KEY);}catch(e){}}
 function saveMasterMusicMap(result,a1){
  if(!result||!a1||!a1.signature)return result;var x=stripMusicMap(result,a1);masterMusicMapMemory=x;persistMusicMap(x);
- try{if(window.localStorage)window.localStorage.setItem(MASTER_MUSIC_MAP_KEY,JSON.stringify(x));}catch(e){log('Master Music Map saved in session memory (persistent cache unavailable: '+e.message+').');}
  log('Master Music Map locked for current A1 · '+(result.tempo||'?')+' BPM · '+(result.structure&&result.structure.drop_count||0)+' drops.');return result;
 }
 function loadMasterMusicMap(a1){
- var key=musicMapKey(a1),x=masterMusicMapMemory||readMusicMap();
- try{if((!x||x.key!==key)&&window.localStorage){var raw=window.localStorage.getItem(MASTER_MUSIC_MAP_KEY);if(raw)x=JSON.parse(raw);}}catch(e){x=null;}
+ var key=musicMapKey(a1),x=masterMusicMapMemory&&masterMusicMapMemory.key===key?masterMusicMapMemory:musicMapLatest&&musicMapLatest.key===key?musicMapLatest:readMusicMap();
  if(!x||x.version!==4||x.key!==key||!x.result||!x.result.beats||!x.result.beats.length)return null;
  if(!window.RPAudio.fresh(a1,x.result.fingerprint))return null;x.result.musicV10=x.result.musicV12;x.result.masterMusicMapV12=x.result.musicV12;x.result.masterMusicMapV10=x.result.musicV12;x.result.snapshot=a1;masterMusicMapMemory=x;return x.result;
 }
-function invalidateMasterMusicMap(a1){var x=masterMusicMapMemory;if(x&&a1&&x.key===musicMapKey(a1))return;masterMusicMapMemory=null;try{if(window.localStorage)window.localStorage.removeItem(MASTER_MUSIC_MAP_KEY);}catch(e){}}
+function invalidateMasterMusicMap(a1){var x=masterMusicMapMemory;if(x&&a1&&x.key===musicMapKey(a1))return;masterMusicMapMemory=null;dropLegacyMusicMapStorage();}
 function el(id){return document.getElementById(id);}
 function log(t){el('log').textContent=(el('log').textContent+'\n'+t).slice(-5000);}
 function toolPrefix(tool){return tool==='zoom'?'zoom':tool==='drop'?'drop':tool==='podcast'?'podcast':'multi';}
@@ -79,7 +95,7 @@ function renderLicense(){
  if(mode==='lifetime'){
   if(el('licenseHeadline'))el('licenseHeadline').textContent='ACCOUNT ACTIVE';
   if(el('licenseTopBadge')){el('licenseTopBadge').className='badge success';el('licenseTopBadge').textContent='LIFETIME';}
-  if(el('licenseHeroDetail'))el('licenseHeroDetail').textContent='Lifetime license active.';
+  if(el('licenseHeroDetail'))el('licenseHeroDetail').textContent=licenseState.offline||licenseState.updateAvailable?licenseState.detail:'Lifetime license active.';
  }
  return licenseState;
 }
@@ -147,7 +163,9 @@ function renderResumePanel(){
  if(el('resumeInfo'))el('resumeInfo').innerHTML=resumeLabel(x);
  if(el('resumeBadge')){var k=x.status==='error'?'error':'warning';el('resumeBadge').className='badge '+k;el('resumeBadge').textContent=x.phase==='delete'?'CLEANUP':'RESUME';}
  if(el('resumeRun'))el('resumeRun').disabled=busy||pending||!ready||!licenseCanUse();
- if(el('resumeCleanup'))el('resumeCleanup').disabled=busy||pending||!ready||!licenseCanUse()||x.phase!=='delete';
+ // v2.3.11.5: "Continue Cleanup Only" was only enabled in the cleanup phase, where it ran exactly the same
+ // host resume as Continue. One button resumes whatever stage was saved (cut -> cleanup).
+ if(el('resumeCleanup')){el('resumeCleanup').style.display='none';el('resumeCleanup').disabled=true;}
  if(el('resumeDiscard'))el('resumeDiscard').disabled=busy||pending;
 }
 async function resumeSavedMulticam(cleanupOnly){
@@ -158,23 +176,23 @@ async function resumeSavedMulticam(cleanupOnly){
   if(x.minimumShotBeats!==4)throw Error('This saved job predates the 4-beat minimum. Generate a new plan on a project copy.');
   if(x.maxHoldBeats!==8)throw Error('This saved job predates the fixed 8-beat rule. Generate a new plan on a project copy before continuing.');var savedBounds=[0].concat(x.points||[]).concat([x.duration]),savedIntervals=[];for(var si=1;si<savedBounds.length;si++)savedIntervals.push({start:savedBounds[si-1],end:savedBounds[si]});window.RPBeatFirst.validateHold((x.choices||[]).map(function(camera){return {camera:camera};}),savedIntervals,{estimated_bpm:x.estimatedBpm,beat_first:{tempo_map:x.tempoMap||[]}});
   window.RPDirector.validateMinimumPhysicalTransitions((x.choices||[]).map(function(camera){return {camera:camera};}),savedIntervals,{estimated_bpm:x.estimatedBpm,beat_first:{tempo_map:x.tempoMap||[]}});
-  state(cleanupOnly?'Restoring saved cleanup job…':'Restoring saved Multicam job…',false,'running');
+  state(x.phase==='delete'?'Restoring saved cleanup job…':'Restoring saved Multicam job…',false,'running');
   var r=null;
-  if(x.liveJobId){try{r=await call('rp_resume('+quote(x.liveJobId)+')',15000);}catch(liveErr){r=null;}}
+  if(x.liveJobId){try{r=await call('rp_resume('+quote(x.liveJobId)+')',HOST_STEP_TIMEOUT_MS);}catch(liveErr){r=null;}}
   if(!r||!r.id){
-   var phase=cleanupOnly?'delete':String(x.phase||'cut');
-   r=await call('rp_resumeSaved('+quote(x.projectPath||'')+','+quote(x.sequenceID||'')+','+quote(x.a1Signature||'')+','+quote((x.points||[]).join(','))+','+quote((x.choices||[]).join(','))+','+quote(phase)+','+(Number(x.point)||0)+','+(Number(x.track)||0)+','+(Number(x.cuts)||0)+','+(Number(x.removed)||0)+','+(Number(x.skipped)||0)+','+(Number(x.verifyPoint)||0)+','+(Number(x.prepScene)||0)+','+(Number(x.task)||0)+','+quote(((x.enabledTracks&&x.enabledTracks.length)?x.enabledTracks:collectEnabledCameras()).join(','))+','+quote(x.cameraMediaSignature||'')+','+(Number(x.duration)||0)+','+quote(x.kind||'delete')+')',120000);
+   var phase=String(x.phase||'cut');
+   r=await call('rp_resumeSaved('+quote(x.projectPath||'')+','+quote(x.sequenceID||'')+','+quote(x.a1Signature||'')+','+quote((x.points||[]).join(','))+','+quote((x.choices||[]).join(','))+','+quote(phase)+','+(Number(x.point)||0)+','+(Number(x.track)||0)+','+(Number(x.cuts)||0)+','+(Number(x.removed)||0)+','+(Number(x.skipped)||0)+','+(Number(x.verifyPoint)||0)+','+(Number(x.prepScene)||0)+','+(Number(x.task)||0)+','+quote(((x.enabledTracks&&x.enabledTracks.length)?x.enabledTracks:collectEnabledCameras()).join(','))+','+quote(x.cameraMediaSignature||'')+','+(Number(x.duration)||0)+','+quote(x.kind||'delete')+')',hostTimeout(120000,(x.points||[]).length,40));
   }
   if(r.seqID){x.sequenceID=String(r.seqID);x.liveJobId=String(r.id||'');writeResumeCheckpoint(x);}
   job=r;syncResumeCheckpoint(r);
   while(r.status==='running'){
    if(analysisState.cancelled){r=await call('rp_stop('+quote(r.id)+')',10000);job=r;syncResumeCheckpoint(r);break;}
-   r=await call('rp_step('+quote(r.id)+')',20000);job=r;syncResumeCheckpoint(r);updateResumeProgressOnly(r);
+   r=await call('rp_step('+quote(r.id)+')',HOST_STEP_TIMEOUT_MS);job=r;syncResumeCheckpoint(r);updateResumeProgressOnly(r);
   }
   if(r.status==='done'){clearResumeCheckpoint();state('Continued Multicam job complete.',false,'success');log('Resumed Multicam complete: '+(r.cuts||0)+' cuts, '+(r.removed||0)+' pieces removed.');}
   else if(r.status==='stopped'){state(r.message||'Resume stopped. Checkpoint kept.',false,'warning');}
   else throw Error(r.message||'Could not continue the saved Multicam job.');
- }catch(e){state(e.message,true,'error');log('Resume: '+e.message);}
+ }catch(e){var resumeMsg=e.message;if(/different (sequence|Premiere project)/.test(resumeMsg))resumeMsg+=' Saved job: "'+String(x.sequenceName||'Sequence')+'"'+(x.projectPath?' in '+String(x.projectPath):'')+'.';state(resumeMsg,true,'error');log('Resume: '+resumeMsg);}
  finally{releaseJobResources(analysisState,'resume-finished',true);analysisState=null;busy=false;job=null;controls();renderResumePanel();}
 }
 function updateResumeProgressOnly(r){
@@ -288,40 +306,52 @@ function controls(){
 function hostAuthorizedCode(code){
  var safe=/^\s*(rp_getActiveInfo|rp_ping|rp_state|rp_stop)\s*\(/.test(String(code||''));if(safe)return code;
  var sess=null;try{sess=window.RPLicense&&window.RPLicense.hostSession?window.RPLicense.hostSession():null;}catch(e){}
- if(!sess||!sess.ok)return "rp_licenseDenied()";
+ if(!sess||!sess.ok){
+  // A job that already started under a valid session may finish (the host accepts this only for the
+  // running job's own step/upload calls). Every new job, plan or analysis still requires a session.
+  if(busy&&/^\s*rp_(step|a1Upload)\(/.test(String(code||'')))return code;
+  return "rp_licenseDenied()";
+ }
  return "(function(){var __a=rp_authorize("+Math.floor(sess.expires)+","+JSON.stringify(sess.proof)+");if(!__a.ok)return rp_encode(__a);return "+code+";})()";
 }
 function invoke(code,cb,timeoutMs){
  var guard=window.RPResourceGuard;
  if(!guard||!/^\s*rp_step\(/.test(code)||pending)return invokeHost(code,cb,timeoutMs);
  // Own the host slot while sampling: Stop cannot enqueue a competing request.
+ // v2.3.11.5: the callback runs exactly once and the slot is released on every failure path.
+ var delivered=false,reply=function(r){if(delivered)return;delivered=true;cb(r);},sample;
  pending=true;
- guard.observe(job);
- guard.check().then(function(reading){
-  pending=false;
+ try{guard.observe(job);sample=guard.check();}catch(guardError){sample=Promise.reject(guardError);}
+ Promise.resolve(sample).then(function(reading){
+  pending=false;reading=reading||{};
   var match=/rp_step\((.*)\)/.exec(code),id=match?match[1]:'';
   if(stopRequested||(analysisState&&analysisState.cancelled)||reading.critical){
    return invokeHost('rp_stop('+id+')',function(r){
     if(reading.critical){r.warning=true;r.message='Paused for low memory. Save the project, close other heavy apps, then use Continue Multicam. '+reading.label;}
-    cb(r);
+    reply(r);
    },timeoutMs);
   }
-  invokeHost(reading.slow?code.replace(/\)\s*$/,',true)'):code,cb,timeoutMs);
- },function(){pending=false;invokeHost(code,cb,timeoutMs);});
+  invokeHost(reading.slow?code.replace(/\)\s*$/,',true)'):code,reply,timeoutMs);
+ },function(){pending=false;invokeHost(code,reply,timeoutMs);}).then(null,function(e){if(!delivered){pending=false;reply({ok:false,status:'error',message:'Host call failed: '+(e&&e.message||e)});}});
 }
 function invokeHost(code,cb,timeoutMs){
  if(pending){cb({ok:false,status:'error',message:'Premiere is still processing the previous request.'});return;}
  code=hostAuthorizedCode(code);
- var waitMs=Number(timeoutMs)||15000;pending=true;var finished=false,timeout=null;function timeoutError(){
-  if(finished)return;finished=true;lastReply=Date.now();
-  cb({ok:false,status:'error',message:'Premiere did not respond within '+Math.round(waitMs/1000)+' seconds. Stop, save the project and restart Premiere before retrying.'});
+ // Each request owns a ticket. Timeout/error always release the slot; a late reply from a timed-out
+ // request can never clear the flag of a newer request (the old code left pending=true until restart).
+ var waitMs=Number(timeoutMs)||HOST_TIMEOUT_MS,ticket=++pendingSeq;pending=true;var finished=false,timeout=null;
+ function release(){if(pendingSeq===ticket)pending=false;}
+ function timeoutError(){
+  if(finished)return;finished=true;release();lastReply=Date.now();
+  try{cb({ok:false,status:'error',timeout:true,message:'Premiere did not respond within '+Math.round(waitMs/1000)+' seconds. Stop, save the project and restart Premiere before retrying.'});}
+  finally{try{controls();}catch(uiError){}}
  }if(window.clearTimeout&&window.setTimeout)timeout=window.setTimeout(timeoutError,waitMs);
  try{cs.evalScript(code,function(raw){
-  if(finished){pending=false;controls();return;}finished=true;if(window.clearTimeout)window.clearTimeout(timeout);pending=false;lastReply=Date.now();var r;
+  if(finished){lastReply=Date.now();return;}finished=true;if(window.clearTimeout)window.clearTimeout(timeout);release();lastReply=Date.now();var r;
   try{if(!raw||raw==='EvalScript error.')throw Error('Host script did not respond. Close Premiere and reinstall this package.');r=JSON.parse(raw);}
   catch(e){r={ok:false,status:'error',message:e.message+' Response: '+String(raw).slice(0,180)};}
   cb(r);
- });}catch(e){if(!finished){finished=true;if(window.clearTimeout)window.clearTimeout(timeout);pending=false;cb({ok:false,status:'error',message:e.message});}}
+ });}catch(e){if(!finished){finished=true;if(window.clearTimeout)window.clearTimeout(timeout);release();cb({ok:false,status:'error',message:e.message});}}
 }
 function estimate(){
  if(!lastInfo)return;
@@ -373,7 +403,7 @@ function next(){
   var part=suggestion.points.slice(uploadIndex,uploadIndex+100);uploadIndex+=part.length;
   invoke('rp_a1Upload('+JSON.stringify(job.id)+','+JSON.stringify(part.join(','))+')',update);return;
  }
- invoke((stopRequested?'rp_stop(':'rp_step(')+JSON.stringify(job.id)+')',update);
+ invoke((stopRequested?'rp_stop(':'rp_step(')+JSON.stringify(job.id)+')',update,HOST_STEP_TIMEOUT_MS);
 }
 function start(kind){
  setActiveTool('multi');
@@ -400,7 +430,7 @@ async function applySuggestionDirect(result){
  var r=await call('rp_a1DirectApply('+quote(result.snapshot.signature)+','+quote(result.points.join(','))+')');
  aiProgress(.5,'Legacy marker mode ready');
  while(r.status==='running'){
-  r=await call('rp_step('+quote(r.id)+')');
+  r=await call('rp_step('+quote(r.id)+')',HOST_STEP_TIMEOUT_MS);
   if(r.total)aiProgress(r.done/Math.max(1,r.total),'Applying legacy markers');
  }
  if(r.status!=='done')throw Error(r.message||'Could not apply A1 markers.');
@@ -418,13 +448,13 @@ async function makeAIPlan(previous,base,scale){
  window.RPAudio.applyPacing(suggestion,pacing,suggestion.snapshot.duration,6000);showMusic(suggestion);
  if(!suggestion.points.length)throw Error('Auto Music Map produced no usable beat-aligned edit points. Try a clearer A1 music track.');
  if(suggestion.pacing&&suggestion.pacing.capped)log('Long-set safety: '+suggestion.pacing.uncapped_points+' requested edit points were reduced to '+suggestion.points.length+' to keep the plan stable.');
- var snapshot=await call(internalSnapshotCall(suggestion),60000);
+ var snapshot=await call(internalSnapshotCall(suggestion),hostTimeout(60000,suggestion.points.length,40));
  var availableCameraMap={};(snapshot.tracks||[]).forEach(function(t){availableCameraMap[Number(t.index)]=true;});var requestedCameras=enabledCameras.slice(0),unavailableCameras=requestedCameras.filter(function(c){return !availableCameraMap[Number(c)];});enabledCameras=requestedCameras.filter(function(c){return !!availableCameraMap[Number(c)];});
  if(!enabledCameras.length)throw Error('None of the enabled Camera Selection tracks has usable footage. Check Camera Roles / Camera Selection and make sure at least one selected V-track is unlocked, enabled and contains clips.');
  if(unavailableCameras.length)log('Camera Selection auto-skip: '+unavailableCameras.map(function(c){return 'V'+(Number(c)+1);}).join(', ')+' is missing, empty, locked or disabled in this sequence. Multicam will continue with '+enabledCameras.map(function(c){return 'V'+(Number(c)+1);}).join(', ')+'.');
  var result=await window.RPDirector.run(snapshot,{key:'agent-ai',model:'R Project Auto Music Map V14',roles:el('aiRoles').value,enabledCameras:enabledCameras,dropCamera:selectedDropCamera(),vision:el('aiVision').checked,budget:Number(el('aiBudget').value),ffmpeg:el('ffmpeg').value,music:music,musicAnalysis:musicContext(suggestion)},analysisState,function(p,message){aiProgress(base+scale*(.18+.82*p),message);});
  if(unavailableCameras.length)result.summaries.unshift('Camera Selection Auto-Skip: '+unavailableCameras.map(function(c){return 'V'+(Number(c)+1);}).join(', ')+' unavailable; continued safely with '+enabledCameras.map(function(c){return 'V'+(Number(c)+1);}).join(', ')+'.');
- var current=await call('rp_validateAIContext('+quote(snapshot.sequenceID)+','+quote(snapshot.projectPath||'')+','+quote(snapshot.a1Signature||'')+','+Number(snapshot.duration||0)+')',30000);if(!current.contextValid)throw Error(current.message||'Timeline or A1 changed while generating the plan.');
+ var current=await call('rp_validateAIContext('+quote(snapshot.sequenceID)+','+quote(snapshot.projectPath||'')+','+quote(snapshot.a1Signature||'')+','+Number(snapshot.duration||0)+')',HOST_TIMEOUT_MS);if(!current.contextValid)throw Error(current.message||'Timeline or A1 changed while generating the plan.');
  result.snapshot=snapshot;result.pacing=suggestion.pacing;aiPlan=result;
  el('aiResult').textContent='Camera Roles: '+roleEntries.length+' detected · '+enabledCameras.length+' enabled ('+enabledCameras.map(function(c){return 'Camera '+(c+1);}).join(', ')+') · Main Drop Camera: '+dropCameraSelectionText()+'\n'+musicLabel(suggestion)+'\nPacing: '+(suggestion.pacing.summary||'Auto Music Map '+pacingSelectionText()+' pacing')+'\n'+result.choices.length+' interval · '+result.images+' AI Vision frame samples · '+result.failedImages+' failed samples · '+(music.length?'with A1 energy data':'without A1 energy data')+(result.holdGuardChanges?' · '+result.holdGuardChanges+' long holds corrected':'')+'\n'+result.summaries.join('\n')+'\n\n'+result.choices.map(function(c){var it=snapshot.intervals[c.id];return it.start.toFixed(2)+'–'+it.end.toFixed(2)+'s → '+(c.camera<0?'Empty':'V'+(c.camera+1))+' ['+c.confidence+'] '+c.reason;}).join('\n');
  return result;
@@ -432,10 +462,10 @@ async function makeAIPlan(previous,base,scale){
 el('chooseFF').onclick=function(){
  if(busy||pending)return;
  pending=true;
- cs.evalScript("(function(){var f=File.openDialog('Choose FFmpeg executable');return f?encodeURIComponent(f.fsName):'';})()",function(r){
+ try{cs.evalScript("(function(){var f=File.openDialog('Choose FFmpeg executable');return f?encodeURIComponent(f.fsName):'';})()",function(r){
   pending=false;lastReply=Date.now();
   if(r&&r!=='EvalScript error.')try{el('ffmpeg').value=decodeURIComponent(r);localStorage.setItem('rp.ffmpeg',el('ffmpeg').value);}catch(e){log(e.message);}
- });
+ });}catch(e){pending=false;log('FFmpeg picker failed: '+e.message);}
 };
 var autoAMEPreset='';
 var AME_PRESET_KEY='rp.amePreset.agent.v208';
@@ -481,7 +511,7 @@ async function resolveAutoAMEPreset(forceDialog){
  if(!forceDialog){
   if(!window.RPAME||!window.RPAME.findMatchSourcePresets)throw Error('Automatic Media Encoder preset finder is unavailable. Reinstall this plugin build.');
   state('Best Drops: searching Adobe H.264 presets on this computer…',false,'running');
-  var scan=window.RPAME.findMatchSourcePresets(),all=[],seen={};
+  var scan=window.RPAME.findMatchSourcePresetsAsync?await window.RPAME.findMatchSourcePresetsAsync({shouldStop:function(){return !!(analysisState&&analysisState.cancelled);}}):window.RPAME.findMatchSourcePresets(),all=[],seen={};
   (scan.candidates||[]).concat(scan.fallback||[]).forEach(function(p){var k=String(p).toLowerCase();if(!seen[k]){seen[k]=1;all.push(p);}});
   if(all.length){
    try{
@@ -649,10 +679,10 @@ async function renderBestDrops(){
   aiProgress(.08,'Best Drops · resolving H.264 export preset…');var exportSetup=await resolveAutoAMEPreset();
   var csv=windows.map(function(w){return [w.start,w.drop_time,w.end,bestDropCache.beatInterval,w.pre_beats,w.post_beats].join('|');}).join(',');
   aiProgress(.12,'Best Drops · launching Media Encoder and preparing exports…');
-  var r=await call('rp_best15Begin('+quote(bestDropCache.signature)+','+quote(csv)+','+quote(exportSetup.preset)+')',30000);job=r;
+  var r=await call('rp_best15Begin('+quote(bestDropCache.signature)+','+quote(csv)+','+quote(exportSetup.preset)+')',HOST_STEP_TIMEOUT_MS);job=r;
   while(r.status==='running'){
    if(analysisState.cancelled){try{await call('rp_stop('+quote(r.id)+')',10000);}catch(stopError){}throw Error('Best Drop export stopped. Any already queued exports remain in Media Encoder.');}
-   aiProgress(.12+.87*(r.done/Math.max(1,r.total)),'Best Drops · creating and queueing '+Math.min(r.done+1,r.total)+' / '+r.total);r=await call('rp_step('+quote(r.id)+')',20000);job=r;
+   aiProgress(.12+.87*(r.done/Math.max(1,r.total)),'Best Drops · creating and queueing '+Math.min(r.done+1,r.total)+' / '+r.total);r=await call('rp_step('+quote(r.id)+')',HOST_STEP_TIMEOUT_MS);job=r;
   }
   if(r.status!=='done')throw Error(r.message||'Best Drop export queue failed.');
   aiProgress(1,'Best Drops queued to Adobe Media Encoder');el('dropInfo').innerHTML='<strong>Queued:</strong> '+r.queued+' / '+requested+' selected drops are rendering in Adobe Media Encoder.<br>'+r.outputFolder;
@@ -694,7 +724,7 @@ el('podcastRun').onclick=async function(){
   var cameraCsv=parts.map(function(x){return x.camera;});if(wide>0)cameraCsv.push(wide-1);var r=await call('rp_podcastBegin('+quote(plan.points.join(','))+','+quote(plan.choices.join(','))+','+quote(cameraCsv.join(','))+')',30000);job=r;
   while(r.status==='running'){
    if(analysisState.cancelled){r=await call('rp_stop('+quote(r.id)+')',10000);job=r;break;}
-   r=await call('rp_step('+quote(r.id)+')',20000);job=r;
+   r=await call('rp_step('+quote(r.id)+')',HOST_STEP_TIMEOUT_MS);job=r;
    var frac=r.total?r.done/Math.max(1,r.total):0;progressFor('podcast',.66+.34*frac,1,(r.done||0).toLocaleString()+' / '+(r.total||0).toLocaleString()+' '+(r.phase==='delete'?'pieces':'edit points')+' · '+(r.cuts||0)+' cuts · '+(r.removed||0)+' removed');
   }
   if(r.status==='done'){progressFor('podcast',1,1,'Complete · '+(r.cuts||0)+' cuts · '+(r.removed||0)+' unused pieces removed');state('Podcast AI complete: active speakers matched to their cameras.',false,'success');log('Podcast AI complete: '+(r.cuts||0)+' cuts, '+(r.removed||0)+' pieces removed.');}
@@ -728,18 +758,19 @@ async function applyAI(kind,progressBase,progressSpan){
   window.RPDirector.validateMinimumPhysicalTransitions(aiPlan.choices,aiPlan.snapshot.intervals,aiPlan.musicAnalysis||musicContext(suggestion));
   stageResumeCheckpoint(kind);
   state('Camera plan saved. Starting single-pass Premiere timeline edit…',false,'running');applyProgress(.015,'Camera plan checkpoint saved · single-pass apply');
-  await call('rp_aiStage('+quote(aiPlan.snapshot.signature)+','+quote(aiPlan.snapshot.a1Signature)+','+quote(aiPlan.snapshot.points.join(','))+','+quote((aiPlan.enabledCameras||collectEnabledCameras()).join(','))+')',180000);
+  await call('rp_aiStage('+quote(aiPlan.snapshot.signature)+','+quote(aiPlan.snapshot.a1Signature)+','+quote(aiPlan.snapshot.points.join(','))+','+quote((aiPlan.enabledCameras||collectEnabledCameras()).join(','))+')',hostTimeout(180000,aiPlan.snapshot.points.length,60));
   for(var i=0;i<aiPlan.choices.length;i+=100){
    if(analysisState.cancelled)throw Error('Application cancelled before cutting.');
-   await call('rp_aiUpload('+quote(aiPlan.choices.slice(i,i+100).map(function(c){return c.camera;}).join(','))+')');
+   await call('rp_aiUpload('+quote(aiPlan.choices.slice(i,i+100).map(function(c){return c.camera;}).join(','))+')',HOST_TIMEOUT_MS);
    applyProgress(.10*((i+Math.min(100,aiPlan.choices.length-i))/aiPlan.choices.length),'Preparing camera choices');
   }
   if(analysisState.cancelled)throw Error('Application cancelled before cutting.');
-  var r=await call('rp_aiApply('+quote(kind)+')');job=r;syncResumeCheckpoint(r);
+  // rp_aiApply clones the sequence as a backup before editing: allow time for very long sets.
+  var r=await call('rp_aiApply('+quote(kind)+')',hostTimeout(180000,aiPlan.snapshot.points.length,20));job=r;syncResumeCheckpoint(r);
   if(autoDirector){
    while(r.status==='running'){
     if(analysisState.cancelled){r=await call('rp_stop('+quote(r.id)+')');job=r;syncResumeCheckpoint(r);throw Error('Agent AI Director stopped.');}
-    r=await call('rp_step('+quote(r.id)+')',120000);job=r;syncResumeCheckpoint(r);
+    r=await call('rp_step('+quote(r.id)+')',HOST_STEP_TIMEOUT_MS);job=r;syncResumeCheckpoint(r);
     if(r.total)updateResumeProgressOnly(r);
    }
    if(r.status!=='done')throw Error(r.message||'Agent AI cut failed.');
@@ -750,7 +781,7 @@ async function applyAI(kind,progressBase,progressSpan){
  }catch(e){analysisState=null;busy=false;state(e.message,true);log(e.message);controls();}
 }
 if(el('resumeRun'))el('resumeRun').onclick=function(){resumeSavedMulticam(false);};
-if(el('resumeCleanup'))el('resumeCleanup').onclick=function(){resumeSavedMulticam(true);};
+if(el('resumeCleanup'))el('resumeCleanup').onclick=function(){resumeSavedMulticam(false);};
 if(el('resumeDiscard'))el('resumeDiscard').onclick=function(){if(window.confirm&&!window.confirm('Discard the saved Multicam checkpoint? This does not undo timeline changes already made.'))return;clearResumeCheckpoint();state('Saved Multicam checkpoint discarded. Timeline changes were not undone.',false,'warning');};
 el('aiApply').onclick=function(){setActiveTool('multi');applyAI('angle');};
 el('aiDelete').onclick=function(){setActiveTool('multi');applyAI('delete');};
@@ -778,7 +809,7 @@ function renderAccount(){
  if(gate)gate.className='authgate'+(a.signedIn?' hidden':'');
  if(bar)bar.style.display=a.signedIn?'flex':'none';
  if(el('accountBarEmail'))el('accountBarEmail').textContent=a.signedIn?(a.email||'Signed-in Supabase account'):'Not signed in';
- if(el('accountBarTrial')){var trialText=a.signedIn?formatTrialRemaining(a.remainingMs):'SIGN IN REQUIRED';if(a.signedIn&&a.canUse&&a.remainingMs!==null&&a.remainingMs>0&&a.remainingMs<=259200000)trialText+=' · Lifetime US$200 available';el('accountBarTrial').textContent=trialText;}
+ if(el('accountBarTrial')){var ls=window.RPLicense&&window.RPLicense.status(),trialText=a.signedIn?(ls&&ls.accountLabel||formatTrialRemaining(a.remainingMs)):'SIGN IN REQUIRED';if(a.signedIn&&a.canUse&&a.remainingMs!==null&&a.remainingMs>0&&a.remainingMs<=259200000)trialText+=' · Lifetime US$200 available';el('accountBarTrial').textContent=trialText;}
  var lifetime=pr.license_status==='lifetime'||(a.entitlement&&a.entitlement.license_status==='lifetime');['accountBuyLifetime','accountCheckPayment'].forEach(function(id){var b=el(id);if(b)b.style.display=(a.signedIn&&!lifetime)?'':'none';});if(el('accountBarLogout'))el('accountBarLogout').style.display=a.signedIn?'':'none';
  if(el('gateLogin'))el('gateLogin').disabled=!!a.busy;if(el('gateResend'))el('gateResend').disabled=!!a.busy;if(el('gateForgot'))el('gateForgot').disabled=!!a.busy;
  if(el('gateCreate'))el('gateCreate').disabled=!!a.busy;if(el('gateGoogle'))el('gateGoogle').disabled=!!a.busy;if(el('gateYahoo'))el('gateYahoo').disabled=!!a.busy;
@@ -793,7 +824,7 @@ function bindAccountUI(){
  el('gateForgot').onclick=async function(){var email=el('gateEmail').value.trim();if(!email)return accountMessage('Enter your email first, then press Forgot password.',true);accountMessage('Sending password reset email…');try{await window.RPAccountAuth.forgotPassword(email);accountMessage('Password reset email sent. Check your inbox and spam folder. After changing the password, return here and Sign In.');}catch(e){accountMessage(e.message,true);}};
  el('gateResend').onclick=async function(){var email=el('gateEmail').value.trim();accountMessage('Requesting confirmation email…');try{await window.RPAccountAuth.resendConfirmation(email);accountMessage('If this account still needs confirmation, check your inbox and spam folder. Already confirmed? Use Sign In.');}catch(e){accountMessage(window.RPAccountAuth.friendly(e),true);}};
  el('gateLogin').onclick=async function(){var email=el('gateEmail').value.trim(),pw=el('gatePassword').value;if(!email||!pw)return accountMessage('Enter your email and password.',true);accountMessage('Verifying account…');try{await window.RPAccountAuth.signIn(email,pw);renderAccount();var saved=window.RPAccountAuth.status();accountMessage(saved.storageWarning||'Access verified. Login saved for the next Premiere launch.',!!saved.storageWarning);}catch(e){accountMessage('Sign in failed: '+e.message,true);}};
- el('gateGoogle').onclick=async function(){accountMessage('Complete Google sign-in in your browser. Keep Premiere open; login will return here automatically.');try{await window.RPAccountAuth.social('google');renderAccount();var a=window.RPAccountAuth.status();accountMessage(a.storageWarning||(a.canUse?'Google login verified. Login saved for your next Premiere launch.':a.entitlement&&a.entitlement.update_required?'Google login verified. Update the plugin to continue.':'Google login verified. Your account does not currently have active plugin access.'),!a.canUse||!!a.storageWarning);}catch(e){accountMessage(e.message,true);}};
+ el('gateGoogle').onclick=async function(){accountMessage('Complete Google sign-in in your browser. Keep Premiere open; login will return here automatically.');try{await window.RPAccountAuth.social('google');renderAccount();var a=window.RPAccountAuth.status();accountMessage(a.storageWarning||(a.canUse?'Google login verified. Login saved for your next Premiere launch.':a.entitlement&&a.entitlement.reason==='UPDATE_REQUIRED'?'Google login verified. Update the plugin to continue.':'Google login verified. Your account does not currently have active plugin access.'),!a.canUse||!!a.storageWarning);}catch(e){accountMessage(e.message,true);}};
  el('gateCancelGoogle').onclick=function(){window.RPAccountAuth.cancelSocial();accountMessage('Google sign-in cancelled. You can retry or use email login.');};
  el('gateYahoo').onclick=async function(){accountMessage('Checking Yahoo sign-in…');try{await window.RPAccountAuth.social('yahoo');accountMessage('Complete Yahoo sign-in in the browser.');}catch(e){accountMessage(e.message,true);}};
  el('gateCreate').onclick=async function(){var email=el('gateEmail').value.trim(),pw=el('gatePassword').value;if(!email||pw.length<8)return accountMessage('Enter a valid email and password (minimum 8 characters).',true);var w=window.RPAccountAuth.signupWait?window.RPAccountAuth.signupWait():0;if(w>0)return accountMessage('Please wait '+Math.ceil(w/1000)+' seconds before requesting another verification email.',true);accountMessage('Creating trial account… Please click only once.');try{var r=await window.RPAccountAuth.signUp(email,pw);if(r&&r.signedIn){accountMessage('Verified. Trial activated on this device.');renderAccount();}else accountMessage('Verification sent. Open the email once, confirm it, then return and press Sign In. If you already created this account earlier, press Sign In now.');}catch(e){accountMessage(e.message,true);}};
@@ -811,7 +842,7 @@ function bindAccountUI(){
  window.setInterval(renderAccount,30000);
  window.setInterval(function(){
   if(window.RPAccountAuth&&window.RPAccountAuth.status().signedIn){
-   window.RPAccountAuth.refreshEntitlement().then(function(){renderAccount();accountMessage('');}).catch(function(e){renderAccount();if(e&&e.code==='SESSION_REPLACED')accountMessage('Signed out: Your account was signed in on another device. Only one device can use this account at a time.',true);});
+   window.RPAccountAuth.refreshEntitlement().then(function(){renderAccount();}).catch(function(e){renderAccount();if(e&&e.code==='SESSION_REPLACED')accountMessage('Signed out: Your account was signed in on another device. Only one device can use this account at a time.',true);});
   }
  },60000);
  window.setInterval(function(){if(window.RPAccountAuth&&window.RPAccountAuth.status().signedIn)window.RPAccountAuth.heartbeat().catch(function(e){renderAccount();if(e&&e.code==='SESSION_REPLACED')accountMessage('Signed out: Your account was signed in on another device. Only one device can use this account at a time.',true);});},300000);
@@ -825,7 +856,7 @@ bootPremiereBridge();
 try{renderLicense();}catch(e){state('UI init warning: '+e.message,true,'warning');}
 try{bindAccountUI();}catch(e){state('Account UI warning: '+e.message,true,'warning');}
 renderHardwareInfo();
-bindOnlineSettings();restoreSetup();bindSetupMemory();renderCameraToggles(restoredCameraSelection);renderResumePanel();
+dropLegacyMusicMapStorage();bindOnlineSettings();restoreSetup();bindSetupMemory();renderCameraToggles(restoredCameraSelection);renderResumePanel();
 if(window.addEventListener)window.addEventListener('beforeunload',function(){
  saveSetup();el('aiKey').value='';if(el('onlineKey'))el('onlineKey').value='';if(analysisState){analysisState.cancelled=true;if(analysisState.process)analysisState.process.kill();if(analysisState.request)analysisState.request.destroy();}
 });
