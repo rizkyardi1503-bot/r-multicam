@@ -13,6 +13,8 @@ function median(a){if(!a.length)return 0;var x=a.slice().sort(function(p,q){retu
 function quantile(a,q){if(!a.length)return 0;var x=a.slice().sort(function(p,q){return p-q;}),p=(x.length-1)*q,lo=Math.floor(p),hi=Math.ceil(p);return lo===hi?x[lo]:x[lo]+(x[hi]-x[lo])*(p-lo);}
 function hash01(s){var h=2166136261>>>0;for(var i=0;i<String(s).length;i++){h^=String(s).charCodeAt(i);h=Math.imul(h,16777619)>>>0;}return (h%100000)/100000;}
 var MIN_CUT_BEATS=4,MAX_CUT_BEATS=8;
+// Frame-snapped 4-beat shots measure slightly under 4 beats (one frame is up to ~0.12 beat); merge, validate and block with the same tolerance.
+var SHOT_BEAT_TOLERANCE=.25;
 function allowedBeat(v){v=Math.round(Number(v)||MIN_CUT_BEATS);return Math.max(MIN_CUT_BEATS,Math.min(MAX_CUT_BEATS,v));}
 function nextFaster(v){return allowedBeat(Math.max(MIN_CUT_BEATS,Math.round(Number(v)/2)));}
 function nextSlower(v){return allowedBeat(Math.min(MAX_CUT_BEATS,Math.round(Number(v)*2)));}
@@ -291,7 +293,7 @@ function physicalShotRuns(choices,intervals,musicAnalysis){
 }
 function validateMinimumPhysicalTransitions(choices,intervals,musicAnalysis){
  if(!Array.isArray(choices)||!Array.isArray(intervals)||choices.length!==intervals.length)throw Error('Camera plan is incomplete.');
- var short=physicalShotRuns(choices,intervals,musicAnalysis).filter(function(r){return r.camera>=0&&r.beats<4-1e-6;});
+ var short=physicalShotRuns(choices,intervals,musicAnalysis).filter(function(r){return r.camera>=0&&r.beats<4-SHOT_BEAT_TOLERANCE;});
  if(short.length)throw Error('4-beat minimum: '+short.length+' camera shot(s) remain too short; first at '+short[0].startTime.toFixed(3)+'s ('+short[0].beats.toFixed(2)+' beats). Coverage or exact-drop constraints prevent a safe merge. No timeline changes made. Review camera coverage and regenerate the plan.');
  return true;
 }
@@ -312,7 +314,7 @@ function enforceMinimumPhysicalTransitions(choices,intervals,musicAnalysis,enabl
  while(pass++<limit){
   var runs=physicalShotRuns(out,intervals,musicAnalysis),changed=false;
   for(var n=0;n<runs.length;n++){
-   var r=runs[n];if(r.camera<0||r.beats>=4-.25)continue; // frame-snapped 4-beat shots measure slightly under 4 beats
+   var r=runs[n];if(r.camera<0||r.beats>=4-SHOT_BEAT_TOLERANCE)continue;
    var prev=n>0?runs[n-1]:null,next=n+1<runs.length?runs[n+1]:null;
    // Every repair removes a physical transition; locked exact-drop cameras cannot be changed.
    if(prev&&prev.camera>=0&&replaceRun(r,prev.camera)){changed=true;break;}
@@ -322,7 +324,7 @@ function enforceMinimumPhysicalTransitions(choices,intervals,musicAnalysis,enabl
   }
   if(!changed)break;
  }
- var remaining=physicalShotRuns(out,intervals,musicAnalysis).filter(function(r){return r.camera>=0&&r.beats<4-1e-6;});
+ var remaining=physicalShotRuns(out,intervals,musicAnalysis).filter(function(r){return r.camera>=0&&r.beats<4-SHOT_BEAT_TOLERANCE;});
  for(i=0;i<remaining.length;i++)warnings.push({time:remaining[i].startTime,beats:remaining[i].beats,message:'Shot remains below 4 beats because exact-drop timing/contrast or footage coverage prevents a safe merge. Apply is blocked.'});
  return {choices:out,repairs:repairs,warnings:warnings,minimumBeats:4,applyBlocked:remaining.length>0};
 }

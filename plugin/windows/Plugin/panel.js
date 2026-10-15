@@ -606,6 +606,8 @@ el('directorRun').onclick=async function(){
   var expectedCuts49=result.beatFirst?Math.floor((result.musicGrid||[]).length/Math.max(4,minCad49)):(bi49>0?Math.floor(Number(a1.duration||0)/(bi49*Math.max(4,minCad49))):0);
   if(expectedCuts49>40&&suggestion.points.length<Math.min(40,expectedCuts49*.12))throw Error('Full-length pacing verification failed: the edit plan does not cover the complete A1 duration. Cleanup cancelled; no camera clips were deleted.');
   state('Plan ready. Applying cuts inside the processing range and safely removing unused camera pieces…');log('Agent AI Director analysis complete: '+suggestion.points.length+' automatic music-driven edit points and '+aiPlan.choices.length+' intervals.'+(result.fullLengthBeatGrid&&result.fullLengthBeatGrid.reconstructed?' Full-length beat grid reconstructed: '+result.fullLengthBeatGrid.grid_beats+' beats.':''));
+  // Stop pressed during plan validation must win: applyAI resets stop state for its own job.
+  if(stopRequested||analysisState.cancelled)throw Error('Agent AI Director stopped before editing. No camera clips were changed.');
   autoDirector=true;await applyAI('delete',.60,.40);autoDirector=false;
  }catch(e){autoDirector=false;suggestion=null;aiPlan=null;state(e.message,true);log(e.message);}
  finally{releaseJobResources(analysisState,'full-multicam-finished',true);analysisState=null;busy=false;controls();}

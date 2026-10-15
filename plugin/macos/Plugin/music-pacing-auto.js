@@ -38,13 +38,23 @@ function apply(result,pacing,duration,maxPoints){duration=Number(duration)||0;en
  // Validated selected drops interrupt cadence and restart its beat count.
  if(pacing&&pacing.config&&pacing.config.userSelectedCadence){
   var range=result.snapshot&&result.snapshot.range||{start:0,end:duration},scopeStart=range.start,scopeEnd=range.end;
-  var at=scopeStart,previous=scopeStart,di=0,drops=(result.structure&&result.structure.events||[]).map(function(e){var raw=Number(e.drop_time);return {time:frame>0?Math.round(raw/frame)*frame:raw,confidence:Number(e.confidence_score)||0};}).filter(function(e){return isFinite(e.time)&&e.time>scopeStart&&e.time<scopeEnd;}).sort(function(a,b){return a.time-b.time;});
+  var at=scopeStart,previous=scopeStart,di=0,drops=(result.structure&&result.structure.events||[]).map(function(e){var raw=Number(e.drop_time);return {time:frame>0?Math.round(raw/frame)*frame:raw,confidence:Number(e.confidence_score)||0};}).filter(function(e){
+   // A drop cut closer than 4 beats to Mark In/Out leaves an edge shot the 4-beat guard can never merge
+   // (no neighbour on the edge side, locked drop camera on the other), which blocked Apply for the whole edit.
+   // Such drops get no own cut; the director still gives the shot containing the drop its drop camera.
+   return isFinite(e.time)&&e.time>scopeStart&&e.time<scopeEnd&&beatDistance(map,scopeStart,e.time,result.tempo)>=3.75&&beatDistance(map,e.time,scopeEnd,result.tempo)>=3.75;
+  }).sort(function(a,b){return a.time-b.time;});
+  // Count cadence on the detected beat grid (phase-accurate, no tempo drift); tempo stepping is only the fallback past the grid.
+  var gi=lower(grid,scopeStart-1e-6);
+  function nearestGrid(t){var k=lower(grid,t);if(k>0&&(k>=grid.length||t-grid[k-1].time<=grid[k].time-t))k--;return k;}
   while(at<scopeEnd){
    while(di<drops.length&&drops[di].time<=previous+1e-9)di++;
-   var cadence=targetAt(at),next=offsetBeats(map,at,cadence,result.tempo),snapped=frame>0?Math.round(next/frame)*frame:next,isDrop=di<drops.length&&drops[di].time<=snapped+1e-9;
+   var cadence=targetAt(at),onGrid=gi+cadence<grid.length,next=onGrid?grid[gi+cadence].time:offsetBeats(map,at,cadence,result.tempo),snapped=frame>0?Math.round(next/frame)*frame:next,isDrop=di<drops.length&&drops[di].time<=snapped+1e-9;
    if(!isFinite(next)||next<=at)throw Error('Invalid tempo map for selected pacing.');
-   if(isDrop){snapped=drops[di].time;next=snapped;}
-   if(snapped>=scopeEnd)break;
+   gi=onGrid?gi+cadence:grid.length;
+   if(isDrop){snapped=drops[di].time;next=snapped;gi=nearestGrid(snapped);}
+   // Never leave a sub-4-beat tail before Mark Out/sequence end: the last shot simply runs longer.
+   if(snapped>=scopeEnd||beatDistance(map,snapped,scopeEnd,result.tempo)<3.75)break;
    if(snapped>previous){meta.push({time:snapped,reason:isDrop?'Drop impact':'Selected pace '+cadence+' beats',beats_per_cut:cadence,strength:isDrop?1000+drops[di].confidence:0});previous=snapped;}
    at=next;if(isDrop)di++;if(meta.length>100000)throw Error('Sequence exceeds 100,000 cadence cuts. Split the sequence before editing.');
   }

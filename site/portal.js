@@ -46,6 +46,9 @@
  function persistSession(){try{if(session?.refresh_token)localStorage.setItem(SESSION_KEY,JSON.stringify({refresh_token:session.refresh_token}));}catch{}}
  function clearStoredSession(){try{localStorage.removeItem(SESSION_KEY);}catch{}}
  async function token(){if(!session)throw Error('Sign in first.');if(session.expires_at>Date.now()/1000+60)return session.access_token;
+  // Refresh tokens rotate: another tab may already have used ours and saved its successor. Reusing the
+  // stale token makes Supabase revoke the whole login, so always refresh with the newest stored token.
+  try{const stored=JSON.parse(localStorage.getItem(SESSION_KEY)||'null')?.refresh_token;if(stored&&stored!==session.refresh_token)session.refresh_token=stored;}catch{}
   if(!refreshFlight){const current=generation;refreshFlight=request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:session.refresh_token}}).then(next=>{if(current!==generation)throw Error('Session changed. Please sign in again.');session={...next,expires_at:Date.now()/1000+(next.expires_in||3600)};persistSession();return session.access_token;}).finally(()=>{refreshFlight=null;});}return refreshFlight;
  }
  async function authed(path,options={}){return request(path,{...options,token:await token()});}
@@ -179,7 +182,7 @@
  async function sendAccountEmail(kind){const email=el('account-email').value.trim();if(!email||!el('account-email').checkValidity())throw Error('Enter a valid email address first.');const wait=emailCooldowns[kind]-Date.now();if(wait>0)throw Error('Please wait '+Math.ceil(wait/1000)+' seconds before requesting another email.');const redirect=encodeURIComponent('https://r-multicam.pages.dev/auth/confirmed/');await request('/auth/v1/'+(kind==='recovery'?'recover':'resend')+'?redirect_to='+redirect,{method:'POST',body:kind==='recovery'?{email}:{email,type:'signup'}});emailCooldowns[kind]=Date.now()+65000;say(kind==='recovery'?'If an account exists for this email, check your inbox and spam folder for the password reset link.':'If this account still needs confirmation, check your inbox and spam folder. Already confirmed? Sign in.');}
  el('resend-confirmation').onclick=()=>run(()=>sendAccountEmail('confirmation'));
  el('forgot-password').onclick=()=>run(()=>sendAccountEmail('recovery'));
- el('account-signout').onclick=()=>run(async()=>{const access=session?.access_token;try{if(access)await request('/auth/v1/logout',{method:'POST',token:access});}catch{}ownerDashboard?.clear();affiliateUI?.clear();clearStoredSession();generation++;session=null;user=null;profile=null;downloadIntent=null;purchaseIntent=false;el('orders-list').replaceChildren();el('checkout-confirm').hidden=true;el('checkout-link').removeAttribute('href');render();say('Signed out of this website.');});
+ el('account-signout').onclick=()=>run(async()=>{const access=session?.access_token;try{if(access)await request('/auth/v1/logout?scope=local',{method:'POST',token:access});}catch{}ownerDashboard?.clear();affiliateUI?.clear();clearStoredSession();generation++;session=null;user=null;profile=null;downloadIntent=null;purchaseIntent=false;el('orders-list').replaceChildren();el('checkout-confirm').hidden=true;el('checkout-link').removeAttribute('href');render();say('Signed out of this website.');});
   el('account-purchase').onclick=()=>run(purchase);
   el('checkout-link').onclick=()=>window.RP_ANALYTICS?.track('checkout_opened',{},session?.access_token||null);
  el('download-windows').onclick=()=>run(()=>downloadRelease('windows'));
@@ -195,7 +198,7 @@
  document.querySelectorAll('[data-download]').forEach(button=>button.onclick=()=>{
   const platform=button.dataset.download==='macos'?'macos':'windows';
   purchaseIntent=false;
-  if(user){downloadIntent=null;run(()=>downloadRelease(platform));}
+  if(user){downloadIntent=null;show();run(()=>downloadRelease(platform));}
   else{downloadIntent=platform;show();setMode('signin');say('Sign in or create a free account to download the '+(platform==='macos'?'macOS':'Windows')+' installer. New accounts must confirm their email before signing in.');}
  });
  async function bootstrap(){

@@ -144,7 +144,9 @@ function rp_trackCrossesBoundary(track,time,frame,trackIndex){
    var clip=track.clips[k],a=rp_seconds(clip.start),b=rp_seconds(clip.end);
    if(!isFinite(a)||!isFinite(b)||b<a)throw Error('Invalid clip timing.');
    if(k===cursor&&b<=time+e){cursor=k+1;cursors[key]=cursor;}
-   if(a+e<time&&b-e>time)return true;
+   // Track clips are ordered by start: once one starts at/after the boundary none later can cross it.
+   if(a+e>=time)break;
+   if(b-e>time)return true;
   }
   return false;
  }
@@ -224,12 +226,11 @@ function rp_startJob(kind,points,sourceSignature,boundaryMode,a1Signature,choice
   }
   // v2.3.11.2: Camera Selection is a preference, not a destructive precondition.
   // Unavailable/empty selected tracks are skipped; usable selected cameras continue.
+  // Never unmute: the AI snapshot excludes muted tracks, so an unmuted track could never win
+  // and every piece of it would be deleted. A muted track is skipped and left untouched.
   if(tr.isMuted&&tr.isMuted()){
-   if(!(processingRange&&processingRange.selected)&&useOverride&&typeof tr.setMute==='function'){try{tr.setMute(0);}catch(unmuteError){}}
-   if(tr.isMuted&&tr.isMuted()){
-    if(useOverride)skippedSelected.push('V'+(v+1)+' Track Output OFF');
-    continue;
-   }
+   if(useOverride)skippedSelected.push('V'+(v+1)+' Track Output OFF');
+   continue;
   }
   if(tr.clips.numItems||allowEmptyTracks)tracks.push(v);
   else if(useOverride)skippedSelected.push('V'+(v+1)+' empty');
