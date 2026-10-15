@@ -51,7 +51,8 @@ for os_ in ('Windows', 'macOS'):
         assert rel in names, f'missing engine file {rel}'
     director = new.read('Plugin/ai-director.js').decode('utf-8-sig')
     assert 'function enforceRoleContrast' in director and 'contrastPool(antiRepeatPool(' in director, 'role contrast missing'
-    assert 'r.beats>=4-.25' in director, '4-beat guard tolerance missing'
+    assert 'var SHOT_BEAT_TOLERANCE=.25;' in director and 'r.beats>=4-SHOT_BEAT_TOLERANCE' in director, '4-beat guard tolerance missing'
+    assert 'r.beats<4-1e-6' not in director, '4-beat validate/block must use the same tolerance as the merge'
     assert 'TEMPO_MAP_CACHE' in new.read('Plugin/music-pacing-auto.js').decode('utf-8-sig'), 'tempo map cache missing'
     host = new.read('Plugin/jsx/host.jsx').decode('utf-8-sig')
     assert 'var rp_stepRanges=null;' in host, 'step range declaration missing'
