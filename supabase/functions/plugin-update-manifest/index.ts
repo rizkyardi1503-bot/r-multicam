@@ -1,16 +1,18 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
+// Optional update: v2.3.11.2 and newer keep working (matches plugin_entitlement c_min_supported).
+const MINIMUM_SUPPORTED = "2.3.11.2";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.5",
-    download: base + "?platform=windows&version=2.3.11.5",
-    sha256: "92988347aa244264d9d9fed0ff642b19fe3d468cc5e4c58f50250b4edbc49578"
+    version: "2.3.11.6",
+    download: base + "?platform=windows&version=2.3.11.6",
+    sha256: "a9e4d30a8d61ee189ccf3aad60ed024af1cc6899c7eb98413d8c2074960d44e0"
   },
   macos: {
-    version: "2.3.11.5",
-    download: base + "?platform=macos&version=2.3.11.5",
-    sha256: "61d6efffa9bcf0988081807993d393303da99c6a633a2f2ef904856760e2da19"
+    version: "2.3.11.6",
+    download: base + "?platform=macos&version=2.3.11.6",
+    sha256: "5d85b5604f2ee13f239fefc42c046635e9fa983d5408015914dbecce56da2692"
   }
 };
 
@@ -36,10 +38,10 @@ Deno.serve((req: Request) => {
   return new Response(JSON.stringify({
     version: selected.version,
     platform,
-    required: !supported(url.searchParams.get("v"), selected.version),
-    minimum_version: selected.version,
+    required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
+    minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.5 PUBLIC Windows and macOS: Camera Roles now steer the cut (no wide after wide), 4-beat cuts are kept at 25/30 fps and long sets analyze much faster. Also: sequence In/Out respected, backup copy before Apply, Continue after Stop fixed on Windows, Random Zoom relative to each clip, no stuck buttons, offline use up to 72 hours, and updates that wait only for Premiere. Save and close Premiere before installing, then generate a fresh plan.",
+    release_notes: "v2.3.11.6 PUBLIC Windows and macOS: new Sync to Master Music (beta, lifetime) places every camera clip on the master music and builds a new synced sequence; faster beat-drop detection; much faster removal of unused camera pieces on long sets; optional backup copy before Apply; tidier panel. Also: Camera Roles steer the cut (no wide after wide), 4-beat cuts kept at 25/30 fps, faster long-set analysis, sequence In/Out respected, reliable Stop/Continue. Optional update: save and close Premiere before installing.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

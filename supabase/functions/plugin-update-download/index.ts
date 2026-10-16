@@ -1,10 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const latest: Record<string, string> = { windows: "2.3.11.5", macos: "2.3.11.5" };
+const latest: Record<string, string> = { windows: "2.3.11.6", macos: "2.3.11.6" };
 const releases: Record<string, { windows?: string; macos?: string }> = {
-  "2.3.11.5": {
-    windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/cd4b99ca94cc2f6b716c66fd38d6813274debc2f/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.5-PUBLIC.zip",
-    macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/cd4b99ca94cc2f6b716c66fd38d6813274debc2f/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.5-PUBLIC.zip"
+  "2.3.11.6": {
+    windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/776a5d26e9b47c0de5e03b2f48b7b20bf3b6ea43/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.6-PUBLIC.zip",
+    macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/776a5d26e9b47c0de5e03b2f48b7b20bf3b6ea43/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.6-PUBLIC.zip"
   }
 };
 
