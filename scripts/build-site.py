@@ -58,6 +58,7 @@ FOOTER_EN = [
     ('Product', [
         ('/ai-multicam-editor-premiere-pro/', 'AI multicam editor'),
         ('/dj-multicam-editing/', 'DJ multicam editing'),
+        ('/sync-multicam-to-music/', 'Sync multicam to music'),
         ('/podcast-ai-editing/', 'Podcast AI editing'),
         ('/#pricing', 'Pricing'),
         ('/releases/', 'Release notes'),
@@ -83,6 +84,7 @@ FOOTER_ID = [
     ('Produk', [
         ('/id/ai-multicam-editor-premiere-pro/', 'AI multicam editor'),
         ('/id/dj-multicam-editing/', 'Editing multicam DJ'),
+        ('/id/sync-multicam-to-music/', 'Sinkron multicam ke musik'),
         ('/id/podcast-ai-editing/', 'Editing podcast AI'),
         ('/id/#pricing', 'Harga'),
         ('/id/releases/', 'Catatan rilis'),
