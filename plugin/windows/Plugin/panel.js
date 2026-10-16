@@ -59,7 +59,7 @@ function loadMasterMusicMap(a1){
 function invalidateMasterMusicMap(a1){var x=masterMusicMapMemory;if(x&&a1&&x.key===musicMapKey(a1))return;masterMusicMapMemory=null;dropLegacyMusicMapStorage();}
 function el(id){return document.getElementById(id);}
 function log(t){el('log').textContent=(el('log').textContent+'\n'+t).slice(-5000);}
-function toolPrefix(tool){return tool==='zoom'?'zoom':tool==='drop'?'drop':tool==='podcast'?'podcast':'multi';}
+function toolPrefix(tool){return tool==='zoom'?'zoom':tool==='drop'?'drop':tool==='podcast'?'podcast':tool==='sync'?'sync':'multi';}
 function setActiveTool(tool){activeTool=tool||'multi';}
 function renderToolState(tool,text,kind){
  var p=toolPrefix(tool),st=el(p+'State'),badge=el(p+'Badge');if(st)st.textContent=text||'';
@@ -81,7 +81,7 @@ function musicAnalysisStage(stage,p,detail){
  state(labels[stage]||'ANALYZE MUSIC',false,'running');
  progressFor('multi',pct,100,(detail||'Working…')+' · '+pct+'% overall');
 }
-function setToolStops(){['multi','zoom','drop'].forEach(function(t){var b=el(t+'Stop');if(b)b.disabled=!busy||stopRequested||activeTool!==t;});if(el('podcastStop'))el('podcastStop').disabled=true;}
+function setToolStops(){['multi','zoom','drop','sync'].forEach(function(t){var b=el(t+'Stop');if(b)b.disabled=!busy||stopRequested||activeTool!==t;});if(el('podcastStop'))el('podcastStop').disabled=true;}
 
 function licenseCanUse(){return !!(window.RPAccountAuth&&window.RPAccountAuth.canUse());}
 function renderLicense(){
@@ -276,10 +276,10 @@ function renderCameraRoleSummary(){var entries=parseCameraRoleEntries(el('aiRole
 function collectEnabledCameras(){var out=[],box=el('cameraToggles');if(!box)return out;var inputs=box.querySelectorAll('input[data-camera]');for(var i=0;i<inputs.length;i++)if(inputs[i].checked)out.push(Number(inputs[i].getAttribute('data-camera')));return out;}
 function cameraSelectionForSave(){var state={},entries=parseCameraRoleEntries(el('aiRoles')?el('aiRoles').value:''),enabled=collectEnabledCameras();for(var i=0;i<entries.length;i++)state[String(entries[i].number)]=enabled.indexOf(entries[i].index)>=0;return state;}
 function saveSetup(){
- try{if(!window.localStorage)return;window.localStorage.setItem(SETUP_KEY,JSON.stringify({roles:el('aiRoles').value,vision:!!el('aiVision').checked,budget:el('aiBudget').value,model:'R Project Auto Music Map V14',zoomMin:el('zoomMin').value,zoomMax:el('zoomMax').value,dropRenderCount:el('dropRenderCount').value,pacingCadences:selectedPacingCadences(),dropCamera:el('dropCamera')?el('dropCamera').value:'auto',cameraSelection:cameraSelectionForSave(),podcastPeople:el('podcastPeople').value,podName1:el('podName1').value,podName2:el('podName2').value,podName3:el('podName3').value,podCam1:el('podCam1').value,podCam2:el('podCam2').value,podCam3:el('podCam3').value,podMic1:el('podMic1').value,podMic2:el('podMic2').value,podMic3:el('podMic3').value,podWideCam:el('podWideCam').value,podMinShot:el('podMinShot').value}));var x=el('setupStatus');if(x)x.textContent='Camera setup saved automatically. Auto Music Map controls cut timing.';}catch(e){}
+ try{if(!window.localStorage)return;window.localStorage.setItem(SETUP_KEY,JSON.stringify({roles:el('aiRoles').value,vision:!!el('aiVision').checked,backup:!el('aiBackup')||!!el('aiBackup').checked,budget:el('aiBudget').value,model:'R Project Auto Music Map V14',zoomMin:el('zoomMin').value,zoomMax:el('zoomMax').value,dropRenderCount:el('dropRenderCount').value,pacingCadences:selectedPacingCadences(),dropCamera:el('dropCamera')?el('dropCamera').value:'auto',cameraSelection:cameraSelectionForSave(),podcastPeople:el('podcastPeople').value,podName1:el('podName1').value,podName2:el('podName2').value,podName3:el('podName3').value,podCam1:el('podCam1').value,podCam2:el('podCam2').value,podCam3:el('podCam3').value,podMic1:el('podMic1').value,podMic2:el('podMic2').value,podMic3:el('podMic3').value,podWideCam:el('podWideCam').value,podMinShot:el('podMinShot').value}));var x=el('setupStatus');if(x)x.textContent='Camera setup saved automatically. Auto Music Map controls cut timing.';}catch(e){}
 }
 function restoreSetup(){
- try{if(!window.localStorage){updatePacingSummary();renderCameraToggles();return;}var raw=window.localStorage.getItem(SETUP_KEY)||window.localStorage.getItem(LEGACY_SETUP_KEY)||window.localStorage.getItem('rp.lastSetup.v2');if(!raw){updatePacingSummary();renderCameraToggles();return;}var v=JSON.parse(raw)||{};if(typeof v.roles==='string')el('aiRoles').value=v.roles;if(typeof v.vision==='boolean')el('aiVision').checked=v.vision;if(['60','120','240'].indexOf(String(v.budget))>=0)el('aiBudget').value=String(v.budget);if(typeof v.model==='string'&&v.model)el('aiModel').value=v.model;if(isFinite(Number(v.zoomMin))&&Number(v.zoomMin)>0)el('zoomMin').value=String(v.zoomMin);if(isFinite(Number(v.zoomMax))&&Number(v.zoomMax)>0)el('zoomMax').value=String(v.zoomMax);if(isFinite(Number(v.dropRenderCount))&&Number(v.dropRenderCount)>=1&&Number(v.dropRenderCount)<=100)el('dropRenderCount').value=String(Math.round(Number(v.dropRenderCount)));if(Array.isArray(v.pacingCadences)&&v.pacingCadences.length){[2,4,6,8].forEach(function(n){var b=el('pacing'+n);if(b)b.checked=v.pacingCadences.indexOf(n)>=0||v.pacingCadences.indexOf(String(n))>=0;});if(!selectedPacingCadences().length){el('pacing4').checked=true;el('pacing6').checked=true;el('pacing8').checked=true;}}updatePacingSummary();restoredCameraSelection=v.cameraSelection&&typeof v.cameraSelection==='object'?v.cameraSelection:null;renderCameraToggles(restoredCameraSelection);refreshDirectionCameraSelects(parseCameraRoleEntries(el('aiRoles')?el('aiRoles').value:''),null,v.dropCamera!==undefined?v.dropCamera:'auto');updateDropCameraSummary();if(['2','3'].indexOf(String(v.podcastPeople))>=0)el('podcastPeople').value=String(v.podcastPeople);['podName1','podName2','podName3','podCam1','podCam2','podCam3','podMic1','podMic2','podMic3','podWideCam','podMinShot'].forEach(function(k){if(v[k]!==undefined&&v[k]!==null)el(k).value=String(v[k]);});renderPodcastPeople();var x=el('setupStatus');if(x)x.textContent='Restored camera setup. Auto Music Map controls cut timing.';}catch(e){updatePacingSummary();renderCameraToggles();}
+ try{if(!window.localStorage){updatePacingSummary();renderCameraToggles();return;}var raw=window.localStorage.getItem(SETUP_KEY)||window.localStorage.getItem(LEGACY_SETUP_KEY)||window.localStorage.getItem('rp.lastSetup.v2');if(!raw){updatePacingSummary();renderCameraToggles();return;}var v=JSON.parse(raw)||{};if(typeof v.roles==='string')el('aiRoles').value=v.roles;if(typeof v.vision==='boolean')el('aiVision').checked=v.vision;if(typeof v.backup==='boolean'&&el('aiBackup'))el('aiBackup').checked=v.backup;if(['60','120','240'].indexOf(String(v.budget))>=0)el('aiBudget').value=String(v.budget);if(typeof v.model==='string'&&v.model)el('aiModel').value=v.model;if(isFinite(Number(v.zoomMin))&&Number(v.zoomMin)>0)el('zoomMin').value=String(v.zoomMin);if(isFinite(Number(v.zoomMax))&&Number(v.zoomMax)>0)el('zoomMax').value=String(v.zoomMax);if(isFinite(Number(v.dropRenderCount))&&Number(v.dropRenderCount)>=1&&Number(v.dropRenderCount)<=100)el('dropRenderCount').value=String(Math.round(Number(v.dropRenderCount)));if(Array.isArray(v.pacingCadences)&&v.pacingCadences.length){[2,4,6,8].forEach(function(n){var b=el('pacing'+n);if(b)b.checked=v.pacingCadences.indexOf(n)>=0||v.pacingCadences.indexOf(String(n))>=0;});if(!selectedPacingCadences().length){el('pacing4').checked=true;el('pacing6').checked=true;el('pacing8').checked=true;}}updatePacingSummary();restoredCameraSelection=v.cameraSelection&&typeof v.cameraSelection==='object'?v.cameraSelection:null;renderCameraToggles(restoredCameraSelection);refreshDirectionCameraSelects(parseCameraRoleEntries(el('aiRoles')?el('aiRoles').value:''),null,v.dropCamera!==undefined?v.dropCamera:'auto');updateDropCameraSummary();if(['2','3'].indexOf(String(v.podcastPeople))>=0)el('podcastPeople').value=String(v.podcastPeople);['podName1','podName2','podName3','podCam1','podCam2','podCam3','podMic1','podMic2','podMic3','podWideCam','podMinShot'].forEach(function(k){if(v[k]!==undefined&&v[k]!==null)el(k).value=String(v[k]);});renderPodcastPeople();var x=el('setupStatus');if(x)x.textContent='Restored camera setup. Auto Music Map controls cut timing.';}catch(e){updatePacingSummary();renderCameraToggles();}
 }
 function bindSetupMemory(){
  ['zoomMin','zoomMax','dropRenderCount','podName1','podName2','podName3','podCam1','podCam2','podCam3','podMic1','podMic2','podMic3','podWideCam','podMinShot'].forEach(function(id){el(id).oninput=saveSetup;});var roleRefresh=function(){renderCameraToggles();saveSetup();};el('aiRoles').oninput=roleRefresh;el('aiRoles').onchange=roleRefresh;el('aiRoles').onkeyup=roleRefresh;['aiVision','aiBudget','aiModel'].forEach(function(id){el(id).onchange=saveSetup;});if(el('dropCamera'))el('dropCamera').onchange=function(){aiPlan=null;updateDropCameraSummary();saveSetup();controls();};[2,4,6,8].forEach(function(n){var box=el('pacing'+n);if(box)box.onchange=function(){var values=[2,4,6,8].filter(function(v){var b=el('pacing'+v);return b&&b.checked;});if(!values.length){this.checked=true;state('Keep at least one pacing option enabled.',false,'warning');}aiPlan=null;updatePacingSummary();saveSetup();controls();};});updatePacingSummary();el('podcastPeople').onchange=function(){renderPodcastPeople();saveSetup();};
@@ -290,7 +290,7 @@ function controls(){
  var entitled=licenseCanUse();
  ['cut','angle','delete'].forEach(function(id){el(id).disabled=busy||!ready||!entitled||!lastInfo||!lastInfo.manual;});
  el('analyzeA1').disabled=busy||!ready||!entitled;el('applyA1').disabled=busy||!ready||!entitled||!suggestion||!suggestion.points||!suggestion.points.length;el('chooseFF').disabled=busy;if(el('chooseAME'))el('chooseAME').disabled=busy;if(el('resetAME'))el('resetAME').disabled=busy;
- ['aiRoles','aiKey','aiModel','aiVision','aiBudget','pacing2','pacing4','pacing6','pacing8','dropCamera','zoomMin','zoomMax','podcastPeople','podName1','podName2','podName3','podCam1','podCam2','podCam3','podMic1','podMic2','podMic3','podWideCam','podMinShot'].forEach(function(id){if(el(id))el(id).disabled=busy||!ready;});
+ ['aiRoles','aiKey','aiModel','aiVision','aiBackup','aiBudget','pacing2','pacing4','pacing6','pacing8','dropCamera','zoomMin','zoomMax','podcastPeople','podName1','podName2','podName3','podCam1','podCam2','podCam3','podMic1','podMic2','podMic3','podWideCam','podMinShot'].forEach(function(id){if(el(id))el(id).disabled=busy||!ready;});
  if(el('dropRenderCount'))el('dropRenderCount').disabled=busy||!ready||!bestDropCache;
  var camInputs=el('cameraToggles')?el('cameraToggles').querySelectorAll('input[data-camera]'):[];for(var ci=0;ci<camInputs.length;ci++)camInputs[ci].disabled=busy||!ready;
  ['aiPlan','directorRun','aiMarkerRun','aiApply','aiDelete','aiExport','zoomRun','bestDropsAnalyze','podcastRun'].forEach(function(id){if(el(id))el(id).disabled=busy||!ready||!entitled;});
@@ -300,16 +300,17 @@ function controls(){
  el('directorRun').disabled=busy||!ready||!entitled;
  ['aiApply','aiDelete','aiExport'].forEach(function(id){el(id).disabled=busy||!ready||!entitled||!aiPlan;});
  el('stop').disabled=!busy||stopRequested;setToolStops();
+ if(window.RPSyncUI)window.RPSyncUI.controls();
  renderResumePanel();
 }
 
 function hostAuthorizedCode(code){
- var safe=/^\s*(rp_getActiveInfo|rp_ping|rp_state|rp_stop)\s*\(/.test(String(code||''));if(safe)return code;
+ var safe=/^\s*(rp_getActiveInfo|rp_ping|rp_state|rp_stop|rp_syncStop)\s*\(/.test(String(code||''));if(safe)return code;
  var sess=null;try{sess=window.RPLicense&&window.RPLicense.hostSession?window.RPLicense.hostSession():null;}catch(e){}
  if(!sess||!sess.ok){
   // A job that already started under a valid session may finish (the host accepts this only for the
   // running job's own step/upload calls). Every new job, plan or analysis still requires a session.
-  if(busy&&/^\s*rp_(step|a1Upload)\(/.test(String(code||'')))return code;
+  if(busy&&/^\s*rp_(step|a1Upload|syncStep)\(/.test(String(code||'')))return code;
   return "rp_licenseDenied()";
  }
  return "(function(){var __a=rp_authorize("+Math.floor(sess.expires)+","+JSON.stringify(sess.proof)+");if(!__a.ok)return rp_encode(__a);return "+code+";})()";
@@ -373,7 +374,17 @@ function refresh(){
   estimate();controls();
  });
 }
+// Host step timing (v2.3.11.6): written next to the resume checkpoint so slow runs can be diagnosed.
+var stepTimingAt=0,stepTimingLogged='';
+function stepTimingText(t){if(!t||!t.steps)return '';var avg=function(x){return Math.round(x/t.steps);};return 'Host timing: '+t.steps+' steps, avg '+avg(t.stepMs)+' ms/step · cut '+Math.round(t.cut/1000)+' s · prepare '+Math.round(t.prepare/1000)+' s · cleanup resolve '+Math.round(t.resolve/1000)+' s, unlink '+Math.round(t.unlink/1000)+' s ('+t.batches+' batches, '+t.batchPieces+' pieces), remove '+Math.round(t.remove/1000)+' s, verify '+Math.round(t.verify/1000)+' s · checks '+Math.round(t.checks/1000)+' s · GC '+Math.round(t.gc/1000)+' s';}
+function saveStepTiming(r,force){
+ if(!r||!r.timing||(!force&&Date.now()-stepTimingAt<3000))return;stepTimingAt=Date.now();
+ if(force&&r.id&&stepTimingLogged!==String(r.id)&&r.kind!=='zoom'){stepTimingLogged=String(r.id);var line=stepTimingText(r.timing);if(line)log(line);}
+ try{var n=window.cep_node,fs=n.require('fs'),path=n.require('path'),base=resumeFilePath();if(!base)return;var dir=path.dirname(base);if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});
+  fs.writeFile(path.join(dir,'step-timing.json'),JSON.stringify({at:new Date().toISOString(),id:r.id,kind:r.kind,phase:r.phase,status:r.status,done:r.done,total:r.total,removed:r.removed,cuts:r.cuts,timing:r.timing}),'utf8',function(){});}catch(e){}
+}
 function update(r){
+ saveStepTiming(r,!r.ok||r.status!=='running');
  if(r.id)job=r;try{syncResumeCheckpoint(r);}catch(storageError){busy=false;stopRequested=true;if(job&&!pending)invoke('rp_stop('+quote(job.id)+')',function(){});state(storageError.message,true);controls();return;}
  if(r.uiKind==='podcast')setActiveTool('podcast');else if(r.kind==='zoom')setActiveTool('zoom');else if(r.kind==='best15')setActiveTool('drop');
  if(typeof r.total==='number'){
@@ -416,14 +427,14 @@ function start(kind){
 }
 ['cut','angle','delete'].forEach(function(id){el(id).onclick=function(){start(id);};});
 function requestStop(){
- if(!busy)return;stopRequested=true;controls();state('Stopping after the current step…',false,'running');
+ if(!busy)return;if(activeTool==='sync'&&window.RPSyncUI){window.RPSyncUI.stop();state('Stopping sync…',false,'running');return;}stopRequested=true;controls();state('Stopping after the current step…',false,'running');
  if(analysisState){analysisState.cancelled=true;if(analysisState.process)analysisState.process.kill();if(analysisState.request)analysisState.request.destroy();/* The active async loop owns the next host call and will stop at its cancellation check. */return;}
  if(!pending&&job)next();
 }
 el('stop').onclick=requestStop;el('multiStop').onclick=requestStop;el('zoomStop').onclick=requestStop;el('dropStop').onclick=requestStop;el('podcastStop').onclick=requestStop;
 
 
-function call(code,timeoutMs){return new Promise(function(resolve,reject){invoke(code,function(r){try{if(r.ok){if(r.status==='running')window.setTimeout(function(){resolve(r);},Math.max(40,Number(r.waitMs)||0));else resolve(r);}else{if(r.id){job=r;syncResumeCheckpoint(r);}reject(Error(r.message||'Premiere did not respond'));}}catch(callbackError){reject(callbackError);}},timeoutMs);});}
+function call(code,timeoutMs){return new Promise(function(resolve,reject){invoke(code,function(r){try{if(r&&r.timing)saveStepTiming(r,!r.ok||r.status!=='running');if(r.ok){if(r.status==='running')window.setTimeout(function(){resolve(r);},Math.max(40,Number(r.waitMs)||0));else resolve(r);}else{if(r.id){job=r;syncResumeCheckpoint(r);}reject(Error(r.message||'Premiere did not respond'));}}catch(callbackError){reject(callbackError);}},timeoutMs);});}
 function quote(text){return JSON.stringify(text).replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');}
 function internalSnapshotCall(result){return 'rp_getAIInternal('+quote(result.snapshot.signature)+','+quote(result.points.join(','))+')';}
 async function applySuggestionDirect(result){
@@ -768,7 +779,7 @@ async function applyAI(kind,progressBase,progressSpan){
   }
   if(analysisState.cancelled)throw Error('Application cancelled before cutting.');
   // rp_aiApply clones the sequence as a backup before editing: allow time for very long sets.
-  var r=await call('rp_aiApply('+quote(kind)+')',hostTimeout(180000,aiPlan.snapshot.points.length,20));job=r;syncResumeCheckpoint(r);
+  var r=await call('rp_aiApply('+quote(kind)+','+quote(el('aiBackup')&&!el('aiBackup').checked?'1':'0')+')',hostTimeout(180000,aiPlan.snapshot.points.length,20));job=r;syncResumeCheckpoint(r);
   if(autoDirector){
    while(r.status==='running'){
     if(analysisState.cancelled){r=await call('rp_stop('+quote(r.id)+')');job=r;syncResumeCheckpoint(r);throw Error('Agent AI Director stopped.');}
@@ -895,4 +906,9 @@ function bootPremiereBridge(){
   probe(1);
  }catch(e){el('timeline').textContent='Premiere bridge unavailable';state('CEP bridge unavailable: '+e.message,true);}
 }
+// Narrow API for panel modules loaded after this file (sync-ui.js). Everything above lives in this closure.
+window.RPPanel={invokeHost:invokeHost,state:state,setActiveTool:setActiveTool,progressFor:progressFor,heartbeatFor:heartbeatFor,quote:quote,controls:controls,licenseCanUse:licenseCanUse,
+ isBusy:function(){return busy;},isReady:function(){return ready;},activeTool:function(){return activeTool;},isStopRequested:function(){return stopRequested;},
+ setBusy:function(on){busy=!!on;stopRequested=false;if(busy){started=Date.now();lastReply=started;}},setStopRequested:function(on){stopRequested=!!on;},
+ ffmpegPath:function(){return el('ffmpeg')?el('ffmpeg').value:'';}};
 }());

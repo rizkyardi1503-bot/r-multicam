@@ -35,21 +35,31 @@ function tempoStats(values){
  var confidence=clean.length>=4&&mad<2.5?'high':clean.length>=2&&mad<7?'medium':'low';
  return {bpm:Math.round(bpm),confidence:confidence,spread:Math.round(mad*10)/10,samples:clean.length,beatInterval:Math.round((60/bpm)*1000)/1000};
 }
+var LITTLE_ENDIAN=new Uint8Array(new Uint32Array([1]).buffer)[0]===1;
+// Seek exactly: an input -ss on AAC audio (m4a, mp4/mov camera files) lands 8-64 ms off (even -ss 0 drops
+// the first AAC frame). Seek the input to 10 s before the start, then trim the rest after decoding: exact.
+function seekArgs(file,start){var s=Math.max(0,Number(start)||0),coarse=Math.max(0,s-10),fine=s-coarse,out=[];if(coarse>=1e-6)out.push('-ss',coarse.toFixed(6));out.push('-i',file);if(fine>=1e-6)out.push('-ss',fine.toFixed(6));return out;}
 function decode(clip,ffmpeg,state,onProgress){
  var r=runtime();
  return new Promise(function(resolve,reject){
   if(state.cancelled)return reject(Error('Analysis stopped.'));
   var feature=root.RPBeat.features(),carry=r.Buffer.alloc(0),sampleCount=0,stderr='',last=0,settled=false;
   // Seek to source in point, then read only the visible clip duration.
-  var args=['-nostdin','-hide_banner','-v','error','-threads','2','-filter_threads','1','-ss',String(clip.input),'-i',clip.file,'-t',String(clip.end-clip.start),
-   '-map','0:a:0','-vn','-ac','1','-ar','8000','-af','highpass=f=20,lowpass=f=3800','-f','f32le','pipe:1'];
+  var args=['-nostdin','-hide_banner','-v','error','-threads','2','-filter_threads','1'].concat(seekArgs(clip.file,clip.input),['-t',(clip.end-clip.start).toFixed(6),
+   '-map','0:a:0','-vn','-ac','1','-ar','8000','-af','highpass=f=20,lowpass=f=3800','-f','f32le','pipe:1']);
   var proc=r.cp.spawn(ffmpeg,args,{windowsHide:true,shell:false});state.process=proc;
   function fail(err){if(!settled){settled=true;reject(err);}}
   proc.stdout.on('data',function(chunk){
    if(state.cancelled){proc.kill();return;}
    try{
     var b=carry.length?r.Buffer.concat([carry,chunk]):chunk,end=b.length-b.length%4;
-    for(var i=0;i<end;i+=4){feature.push(b.readFloatLE(i));sampleCount++;}
+    // Read the f32le PCM as a Float32Array view (copy only when the chunk is unaligned)
+    // instead of one Buffer.readFloatLE call per sample.
+    var count=end>>2;
+    if(LITTLE_ENDIAN){var pcm=b.byteOffset%4===0?new Float32Array(b.buffer,b.byteOffset,count):new Float32Array(new Uint8Array(b.subarray(0,end)).buffer,0,count);
+     if(feature.pushMany)feature.pushMany(pcm,0,count);else for(var i=0;i<count;i++)feature.push(pcm[i]);}
+    else for(var i2=0;i2<end;i2+=4)feature.push(b.readFloatLE(i2));
+    sampleCount+=count;
     carry=r.Buffer.from(b.subarray(end));
     if(Date.now()-last>350){onProgress(Math.min(1,sampleCount/8000/(clip.end-clip.start)));last=Date.now();}
    }catch(e){proc.kill();fail(e);}
@@ -78,7 +88,10 @@ root.RPAudio={
   progress=progress||function(){};state=state||{cancelled:false};
   var ffmpeg=executable(userPath),stamp=fingerprint(snapshot),results=[],music=[],dropSeries=[],onsetSeries=[];
   var total=snapshot.clips.reduce(function(s,c){return s+c.end-c.start;},0),processed=0;
-  function tick(){return new Promise(function(resolve,reject){setTimeout(function(){state.cancelled?reject(Error('Analysis stopped.')):resolve();},0);});}
+  // Yield to the panel only after ~40 ms of work: a 4-16 ms timer on every 4 s analysis hop
+  // used to dominate analysis time. Stop is still checked on every hop.
+  var lastYield=Date.now();
+  function tick(){if(state.cancelled)return Promise.reject(Error('Analysis stopped.'));if(Date.now()-lastYield<40)return Promise.resolve();return new Promise(function(resolve,reject){setTimeout(function(){lastYield=Date.now();state.cancelled?reject(Error('Analysis stopped.')):resolve();},0);});}
   for(var i=0;i<snapshot.clips.length;i++){
    await tick();var clip=snapshot.clips[i],length=clip.end-clip.start;
    var feature=await decode(clip,ffmpeg,state,function(p){progress((processed+length*p*.8)/total,'Reading A1 clip '+(i+1)+'/'+snapshot.clips.length);});

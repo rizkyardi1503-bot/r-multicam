@@ -59,7 +59,7 @@ function rp_ping(){
 function rp_state(){
  var j=rp_job;if(!j)return rp_encode({ok:false,status:'error',message:'No active job.'});return rp_encode({ok:j.status!=='error',id:j.id,status:j.status,kind:j.kind,name:j.name,
  phase:j.phase,done:j.done,total:j.total,point:j.point||0,track:j.track||0,verifyPoint:j.verifyPoint||0,prepScene:j.prepScene||0,task:j.task||0,tracks:j.tracks||[],seqID:j.seqID||'',projectPath:j.projectPath||'',created:j.created||0,cuts:j.cuts,changed:j.changed,removed:j.removed,skipped:j.skipped,
- waitMs:Math.max(0,(j.waitUntil||0)-new Date().getTime()),cameraMediaSignature:j.cameraMediaSignature||'',lastRazor:j.lastRazor||null,verifyTrack:j.verifyTrack||0,uiKind:j.uiKind||'',queued:j.queued||0,outputFolder:j.outputFolder||'',outputs:j.outputs||[],zoomIn:j.zoomIn||0,zoomOut:j.zoomOut||0,zoomErrors:j.zoomErrors||[],warning:!!j.warning,message:j.message});
+ waitMs:Math.max(0,(j.waitUntil||0)-new Date().getTime()),cameraMediaSignature:j.cameraMediaSignature||'',lastRazor:j.lastRazor||null,verifyTrack:j.verifyTrack||0,uiKind:j.uiKind||'',queued:j.queued||0,outputFolder:j.outputFolder||'',outputs:j.outputs||[],zoomIn:j.zoomIn||0,zoomOut:j.zoomOut||0,zoomErrors:j.zoomErrors||[],warning:!!j.warning,timing:j.timing||null,message:j.message});
 }
 function rp_coverage(track,a,b,eps){
  var cursor=a,any=false,rows=rp_nearRanges(track,a,b,eps);
@@ -205,7 +205,7 @@ function rp_resolveTask(s,task,frame){
  return found;
 }
 function rp_startJob(kind,points,sourceSignature,boundaryMode,a1Signature,choices,relaxed,trackOverride,allowEmptyTracks,knownCameraSignature){
- if(rp_job&&rp_job.status==='running')throw Error('A process is active. Click Stop first.');
+ if((rp_job&&rp_job.status==='running')||rp_syncBusy())throw Error('A process is active. Click Stop first.');
  var s=app.project.activeSequence;if(!s)throw Error('No active sequence.');
  if(kind!=='cut'&&kind!=='angle'&&kind!=='delete')throw Error('Unknown process type.');
  if(!points||!points.length)throw Error('No edit points are available.');
@@ -357,7 +357,7 @@ function rp_getAIInternal(a1Signature,csv){try{var d=rp_aiInternalSnapshot(a1Sig
 function rp_validateAIContext(sequenceID,projectPath,a1Signature,duration){try{var s=app.project.activeSequence;if(!s)throw Error('Open the original sequence first.');if(String(s.sequenceID)!==String(sequenceID))throw Error('Active sequence changed.');if(String(projectPath||'')&&String(app.project.path)!==String(projectPath))throw Error('Project changed.');var a1=rp_a1Snapshot();if(String(a1.signature)!==String(a1Signature))throw Error('A1 changed.');var d=rp_seqDuration(s);var frame=rp_frame(s);if(Math.abs(Number(d)-Number(duration||0))>Math.max(frame*2,.08))throw Error('Sequence duration changed.');return rp_encode({ok:true,contextValid:true,sequenceID:String(s.sequenceID),duration:d});}catch(e){return rp_encode({ok:false,contextValid:false,message:String(e)});}}
 function rp_aiStage(signature,a1Signature,csv,enabledCsv){
  try{
-  if(rp_job&&rp_job.status==='running')throw Error('A process is already active.');
+  if((rp_job&&rp_job.status==='running')||rp_syncBusy())throw Error('A process is already active.');
   var internal=arguments.length>1&&String(a1Signature||'').length>0;
   var d=internal?rp_aiInternalSnapshot(a1Signature,csv):rp_aiSnapshot();
   // v2.3.11.2 PLAN-STAGE FIX:
@@ -389,9 +389,9 @@ function rp_aiUpload(csv){
   p.choices=p.choices.concat(values);return rp_encode({ok:true,staged:p.choices.length});
  }catch(e){rp_ai_pending=null;return rp_encode({ok:false,message:String(e)});}
 }
-function rp_aiApply(kind){
+function rp_aiApply(kind,noBackup){
  try{
-  if(rp_job&&rp_job.status==='running')throw Error('A process is already active.');
+  if((rp_job&&rp_job.status==='running')||rp_syncBusy())throw Error('A process is already active.');
   var p=rp_ai_pending;if(!p)throw Error('AI plan has not been staged.');
   if(kind!=='angle'&&kind!=='delete')throw Error('Unknown AI action.');
   if(p.choices.length!==p.intervals.length)throw Error('AI plan is incomplete.');
@@ -402,10 +402,11 @@ function rp_aiApply(kind){
   if(Math.abs(rp_duration(live)-Number(p.duration||0))>Math.max(rp_frame(live)*2,.08)||Math.abs(rp_frame(live)-Number(p.frame||0))>.00000001)throw Error('Sequence duration or frame rate changed. Generate a new AI plan.');
   if(String(rp_a1Snapshot().signature)!==String(p.a1Signature))throw Error('A1 changed. Analyze the music again.');
   if(rp_razorFormat(rp_frame(live))===null)throw Error('Sequence frame rate '+Math.round(100/rp_frame(live))/100+' fps is not supported yet. Use 23.976, 24, 25, 29.97, 30, 48, 50, 59.94 or 60 fps. No edits were made.');
-  var backupMade=false;try{live.clone();backupMade=true;var back=app.project.activeSequence;if(!back||String(back.sequenceID)!==String(p.sequenceID))app.project.openSequence(String(p.sequenceID));}catch(be){}
+  // The backup copy is optional (panel setting): on long sets a full sequence copy adds memory pressure in Premiere.
+  var backupMade=false,backupSkipped=String(noBackup)==='1';if(!backupSkipped){try{live.clone();backupMade=true;var back=app.project.activeSequence;if(!back||String(back.sequenceID)!==String(p.sequenceID))app.project.openSequence(String(p.sequenceID));}catch(be){}}
   if(!app.project.activeSequence||String(app.project.activeSequence.sequenceID)!==String(p.sequenceID))throw Error('Could not return to the original sequence after backup. No edits were made.');
   var result=rp_startJob(kind,p.points,p.boundaryMode==='markers'?p.points.join('|'):p.signature,p.boundaryMode,p.a1Signature,p.choices,true,p.enabledTracks,false,p.cameraMediaSignature);
-  if(rp_job&&rp_job.status==='running'){rp_job.winners=p.choices;rp_job.message='Applying AI camera plan'+(backupMade?' · backup copy saved in the project':' · backup copy could not be created');result=rp_state();}
+  if(rp_job&&rp_job.status==='running'){rp_job.winners=p.choices;rp_job.message='Applying AI camera plan'+(backupMade?' · backup copy saved in the project':backupSkipped?' · no backup copy (turned off)':' · backup copy could not be created');result=rp_state();}
   rp_ai_pending=null;return result;
  }catch(e){rp_ai_pending=null;return rp_encode({ok:false,message:String(e)});}
 }
@@ -516,6 +517,85 @@ function rp_finishPrepare(j){
  j.phase=j.kind==='angle'?'angle':'delete';j.done=0;j.total=j.tasks.length;j.task=0;
  j.message=j.kind==='delete'?'Protected cleanup map ready. Removing unused camera pieces in batches.':'Camera map ready.';
 }
+/* v2.3.11.6 batch cleanup: losers are resolved and guarded first, the whole batch is selected and unlinked with ONE
+   unlinkSelection, then each piece is re-resolved (identity checked) and removed. One selection save/restore per batch
+   instead of per piece: on long sets the per-piece select/unlink/restore round trip dominated cleanup time. */
+var RP_DELETE_BATCH=12;
+function rp_now(){return new Date().getTime();}
+function rp_newTiming(){return {steps:0,stepMs:0,checks:0,cut:0,prepare:0,keep:0,resolve:0,unlink:0,remove:0,verify:0,gc:0,batches:0,batchPieces:0,lastStepMs:0,lastOps:0,lastPhase:''};}
+function rp_deleteBatch(j,s,maxTasks,T,deadline){
+ var batch=[],i,k,t0,selected=[],removedIds={},unlinked=0,removedHere=0,cap=Math.max(1,Math.min(RP_DELETE_BATCH,maxTasks));
+ // 1. Resolve and guard consecutive loser tasks. Nothing on the timeline changes in this pass.
+ for(i=j.task;i<j.tasks.length&&batch.length<cap;i++){
+  if(batch.length&&deadline&&rp_now()>=deadline)break;
+  var task=j.tasks[i];if(task.keep)break;
+  var tr=s.videoTracks[task.track];
+  if((tr.isLocked&&tr.isLocked())||(tr.isMuted&&tr.isMuted()))throw Error('Track locked or muted while switching or removing clips.');
+  // Final winner guard: the selected camera for this interval can never be deleted.
+  if((task.winner!==undefined?task.winner:(task.interval>=0?j.winners[task.interval]:-999))===task.track){batch.push({task:task,skip:true});continue;}
+  t0=rp_now();var target=rp_resolveTask(s,task,j.frame);T.resolve+=rp_now()-t0;
+  if(!target)throw Error('Camera piece changed before cleanup. Resume to rebuild the map.');
+  // Keep the destructive invariants: every covered interval must have a real, available, different winner.
+  for(var si=task.interval;si<=task.lastInterval;si++){
+   var winner=j.winners[si];if(winner<0||winner===task.track)throw Error('Preserved scene cannot be deleted.');
+   var wt=s.videoTracks[winner];if(!wt||(wt.isLocked&&wt.isLocked())||(wt.isMuted&&wt.isMuted()))throw Error('Winner track unavailable. Cleanup stopped.');
+  }
+  batch.push({task:task,target:target,node:String(target.nodeId)});
+ }
+ var targets=[];for(i=0;i<batch.length;i++)if(!batch[i].skip)targets.push(batch[i].target);
+ try{
+  // 2. Unlink the batch's video from its camera audio in one call; audio is never removed.
+  if(targets.length){
+   t0=rp_now();selected=s.getSelection()||[];
+   for(k=0;k<selected.length;k++){try{selected[k].setSelected(false,false);}catch(deselectError){}}
+   var want={};for(k=0;k<targets.length;k++){targets[k].setSelected(true,false);want[String(targets[k].nodeId)]=true;}
+   var only=s.getSelection()||[],isolated=only.length===targets.length;
+   for(k=0;isolated&&k<only.length;k++)if(!want[String(only[k].nodeId)])isolated=false;
+   if(!isolated)throw Error('Could not isolate video selection; audio protected.');
+   s.unlinkSelection();unlinked=targets.length;
+   for(k=0;k<targets.length;k++){try{targets[k].setSelected(false,false);}catch(clearError){}}
+   T.unlink+=rp_now()-t0;T.batches++;T.batchPieces+=targets.length;
+  }
+  // 3. Remove each piece. Never trust a stale clip object after earlier removals: re-resolve the exact loser
+  //    by protected track + start/end + source identity immediately before deletion.
+  for(i=0;i<batch.length;i++){
+   var b=batch[i],tk2=b.task;
+   if(b.skip){j.skipped++;j.message='Winner protection blocked an unsafe delete.';}
+   else{
+    var tr2=s.videoTracks[tk2.track];t0=rp_now();var live=rp_resolveAfterUnlink(s,tk2,j.frame,b.node);T.resolve+=rp_now()-t0;
+    if(!live)throw Error('Camera piece changed before cleanup. Resume to rebuild the map.');
+    var n=tr2.clips.numItems,mkey=rp_mediaKey(tk2.track,live);
+    t0=rp_now();var liveNode=String(live.nodeId);live.remove(false,false);T.remove+=rp_now()-t0;rp_invalidateRange(tr2);removedIds[b.node]=true;removedIds[liveNode]=true;removedHere++;
+    t0=rp_now();var confirmed=app.project.activeSequence.videoTracks[tk2.track].clips.numItems<n;T.verify+=rp_now()-t0;
+    if(!confirmed)throw Error('Removal was not confirmed. Resume to inspect the live timeline.');
+    j.removed++;j.liveCounts['v'+tk2.track]--;
+    var tkey='v'+tk2.track,tree=j.removalTrees[tkey]||(j.removalTrees[tkey]={});
+    for(var fi=tk2.clipIndex+1;fi<=j.trackSizes[tkey];fi+=fi&-fi)tree[fi]=(tree[fi]||0)+1;
+    if(j.mediaCounts){j.mediaCounts[mkey]--;if(j.mediaCounts[mkey]===0)j.cameraMediaSignature=rp_cameraMediaSignature(app.project.activeSequence,j.tracks);}
+   }
+   j.task++;j.done++;
+  }
+ }catch(e){
+  var left=unlinked-removedHere;
+  if(left>0)throw Error(String(e&&e.message||e)+' '+left+' unused camera piece'+(left===1?' was':'s were')+' unlinked from camera audio but not removed yet; Continue removes them (camera audio is untouched).');
+  throw e;
+ }finally{
+  // Clear the batch targets, then one restore of the user's selection per batch; removed pieces are skipped.
+  for(k=0;k<targets.length;k++){try{if(!removedIds[String(targets[k].nodeId)])targets[k].setSelected(false,false);}catch(clearError){}}
+  for(k=0;k<selected.length;k++){try{if(!removedIds[String(selected[k].nodeId)])selected[k].setSelected(true,false);}catch(selectionError){}}
+ }
+ return batch.length;
+}
+// After unlinkSelection the exact piece is re-resolved before deletion. If a Premiere build renumbers nodeId on unlink,
+// accept only the single piece on the same track with the same start/end, media, In/Out and speed.
+function rp_resolveAfterUnlink(s,task,frame,node){
+ var live=null;try{live=rp_resolveTask(s,task,frame);}catch(strictError){live=null;}
+ if(live&&String(live.nodeId)===node)return live;
+ var loose={track:task.track,start:task.start,end:task.end,clipIndex:task.clipIndex,identity:null},x=rp_resolveTask(s,loose,frame);
+ if(!x)return null;
+ var tail=function(id){var p=String(id||'').split('|');p.shift();return p.join('|');};
+ return tail(rp_clipIdentity(x))===tail(task.identity)?x:null;
+}
 function rp_removeVideo(s,clip){
  var selected=s.getSelection(),i;
  try{
@@ -563,7 +643,7 @@ function rp_podcastSnapshot(trackCsv){
 function rp_podcastBegin(pointsCsv,choicesCsv,cameraCsv){
  if(!rp_podcast_enabled)return rp_encode({ok:false,status:'error',message:'Podcast AI Director is coming soon.'});
  try{
-  if(rp_job&&rp_job.status==='running')throw Error('A process is already active. Click Stop first.');
+  if((rp_job&&rp_job.status==='running')||rp_syncBusy())throw Error('A process is already active. Click Stop first.');
   var s=app.project.activeSequence;if(!s)throw Error('Open the podcast sequence first.');
   var frame=Number(s.timebase)/254016000000,duration=rp_duration(s),points=[];
   if(String(pointsCsv||'').length)points=rp_parseInternalPoints(pointsCsv,frame,duration);
@@ -625,21 +705,9 @@ function rp_zoomIsFootage(clip){
   if(pi.isOffline&&pi.isOffline())return false;
   var path=String(pi.getMediaPath?pi.getMediaPath():'');if(!path)return false;
   if(/\.(mogrt|prproj|aep)$/i.test(path))return false;
-  // Stills and graphics (logos, photos, overlays) are not footage: never zoom them.
-  if(/\.(jpe?g|png|gif|bmp|tiff?|psd|ai|eps|svg|webp|heic|heif|ico|jp2)$/i.test(path))return false;
   return true;
  }catch(e){return false;}
 }
-function rp_zoomBaseScale(scale){
- // The user's own Scale (for example 50% for 4K in an HD sequence) is the base; zoom is relative to it.
- var varying=false,keys=null,best=null,k,v;try{varying=!!(scale.isTimeVarying&&scale.isTimeVarying());}catch(e){}
- if(!varying)return rp_zoomScalarValue(scale);
- // Already animated (e.g. an earlier Random Zoom run): use the lowest key so re-runs do not compound.
- try{keys=scale.getKeys();}catch(e2){keys=null;}
- if(keys&&keys.length)for(k=0;k<keys.length;k++){v=null;try{v=Number(scale.getValueAtKey(keys[k]));}catch(e3){v=null;}if(v!==null&&isFinite(v)&&v>0&&(best===null||v<best))best=v;}
- return best!==null?best:rp_zoomScalarValue(scale);
-}
-function rp_zoomRelative(base,percent){return Math.round(Math.max(0,Math.min(10000,Number(base)*Number(percent)/100))*100)/100;}
 function rp_zoomValueMatches(scale,seconds,value){
  var got=null,t=new Time();t.seconds=Number(seconds);
  try{got=Number(scale.getValueAtKey(Number(seconds)));}catch(e1){try{got=Number(scale.getValueAtKey(t));}catch(e2){got=null;}}
@@ -663,16 +731,14 @@ function rp_zoomApplyTask(j,task){
  var clip=task.clip||rp_resolveTask(app.project.activeSequence,task,j.frame);if(!clip)throw Error("Zoom footage changed. Start a new Zoom job.");var scale=rp_zoomScaleParam(clip);
  if(!scale)throw Error('Motion > Scale parameter was not found.');
  try{if(scale.areKeyframesSupported&&scale.areKeyframesSupported()!==true)throw Error('Motion > Scale does not support keyframes on this clip.');}catch(keySupportError){if(String(keySupportError).indexOf('does not support')>=0)throw keySupportError;}
- var base=rp_zoomBaseScale(scale);if(base===null||!isFinite(base)||!(base>0))throw Error('Could not read the current Motion > Scale value.');
- var zoomLo=rp_zoomRelative(base,j.zoomMin),zoomHi=rp_zoomRelative(base,j.zoomMax);
  var inSec=rp_seconds(clip.inPoint),outSec=rp_seconds(clip.outPoint);if(!(outSec>inSec))throw Error('Invalid clip source In/Out time.');
  var frame=(j.frame>0?j.frame:1/30),visibleEnd=outSec-frame;
  if(!(visibleEnd>inSec))visibleEnd=outSec;
  var removeA=new Time(),removeB=new Time();removeA.seconds=inSec;removeB.seconds=outSec;
  try{if(scale.isTimeVarying&&scale.isTimeVarying())scale.removeKeyRange(removeA,removeB);}catch(removeError){try{scale.removeKeyRange(inSec,outSec);}catch(removeError2){}}
  try{if(!scale.isTimeVarying||!scale.isTimeVarying())scale.setTimeVarying(true);}catch(varyError){throw Error('Could not enable Scale animation. '+String(varyError));}
- if(task.direction>0){rp_zoomSetKey(scale,inSec,zoomLo);rp_zoomSetKey(scale,visibleEnd,zoomHi);}
- else{rp_zoomSetKey(scale,inSec,zoomHi);rp_zoomSetKey(scale,visibleEnd,zoomLo);}
+ if(task.direction>0){rp_zoomSetKey(scale,inSec,j.zoomMin);rp_zoomSetKey(scale,visibleEnd,j.zoomMax);}
+ else{rp_zoomSetKey(scale,inSec,j.zoomMax);rp_zoomSetKey(scale,visibleEnd,j.zoomMin);}
  // Verify that Premiere now exposes at least two keys. Some builds silently ignore failed writes.
  try{var keys=scale.getKeys();if(!keys||keys===0||keys.length<2)throw Error('Premiere did not create the two Scale keyframes.');}catch(verifyError){
   if(String(verifyError).indexOf('two Scale keyframes')>=0)throw verifyError;
@@ -692,7 +758,7 @@ function rp_zoomTopError(j){
 }
 function rp_zoomBegin(minScale,maxScale){
  try{
-  if(rp_job&&rp_job.status==='running')throw Error('A process is already active. Click Stop first.');
+  if((rp_job&&rp_job.status==='running')||rp_syncBusy())throw Error('A process is already active. Click Stop first.');
   minScale=Number(minScale);maxScale=Number(maxScale);if(!isFinite(minScale)||!isFinite(maxScale)||minScale<=0||maxScale<=minScale||maxScale>1000)throw Error('Invalid Zoom range. Minimum must be above 0 and maximum must be greater than minimum, up to 1000%.');
   var s=app.project.activeSequence;if(!s)throw Error('No active sequence.');
   var tasks=[],v,c,tr,clip,locked=0,muted=0,ineligible=0;
@@ -708,7 +774,7 @@ function rp_zoomBegin(minScale,maxScale){
   var frame=Number(s.timebase)/254016000000;if(!(frame>0))frame=1/30;
   rp_job={id:String(new Date().getTime()),status:'running',kind:'zoom',phase:'zoom',seq:s,seqID:String(s.sequenceID),projectPath:String(app.project.path),name:s.name,frame:frame,
    tasks:tasks,task:0,done:0,total:tasks.length,created:0,cuts:0,changed:0,removed:0,skipped:0,zoomIn:0,zoomOut:0,zoomErrors:[],zoomErrorMap:{},warning:false,zoomMin:minScale,zoomMax:maxScale,
-   scanLocked:locked,scanMuted:muted,scanIneligible:ineligible,message:'Applying Random Zoom '+minScale+'% / '+maxScale+'% of each clip\'s current Scale to '+tasks.length+' footage clips'};
+   scanLocked:locked,scanMuted:muted,scanIneligible:ineligible,message:'Applying Random Zoom '+minScale+'% / '+maxScale+'% to '+tasks.length+' footage clips'};
   rp_gc();return rp_state();
  }catch(e){rp_gc();return rp_encode({ok:false,status:'error',message:String(e)});}
 }
@@ -777,7 +843,7 @@ function rp_best15ResolvePreset(lines){
 }
 function rp_best15Begin(signature,csv,presetPath){
  try{
-  if(rp_job&&rp_job.status==='running')throw Error('A process is already active. Click Stop first.');
+  if((rp_job&&rp_job.status==='running')||rp_syncBusy())throw Error('A process is already active. Click Stop first.');
   var a1=rp_a1Snapshot();if(a1.signature!==String(signature))throw Error('A1 or the sequence changed. Run Best Drops again.');
   var seq=app.project.activeSequence;if(!seq)throw Error('Open the sequence you want to export.');
   var projectPath=String(app.project.path||'');if(!projectPath)throw Error('Save the Premiere project before Best Drop export.');
@@ -836,6 +902,7 @@ function rp_step(id,light){
  if(j.kind==='a1')return rp_a1Step(id);
  if(j.kind==='zoom')return rp_zoomStep(id);
  if(j.kind==='best15')return rp_best15Step(id);
+ var stepStart=rp_now(),T=j.timing||(j.timing=rp_newTiming()),phaseAt=0,ops=0;
  try{
   var active=app.project.activeSequence;
   if(!active||String(active.sequenceID)!==j.seqID||String(app.project.path)!==j.projectPath)throw Error('Sequence changed. Process stopped.');
@@ -843,8 +910,10 @@ function rp_step(id,light){
   if(j.boundaryMode==='markers'){if(rp_manual(active).signature!==j.signature)throw Error('Manual markers changed or removed. Process stopped.');}
   else if(j.boundaryMode==='internal'&&rp_a1Snapshot().signature!==j.a1Signature)throw Error('A1 changed during processing. Process stopped.');
   if(j.waitUntil&&new Date().getTime()<j.waitUntil)return rp_state();
-  var start=new Date().getTime(),ops=0,limit=light?2:j.phase==='prepare'?48:j.phase==='cut'?16:12;rp_stepRanges=[];
-  while(j.status==='running'&&ops<limit&&new Date().getTime()-start<90){
+  var start=new Date().getTime(),cleanup=j.phase!=='cut'&&j.phase!=='prepare',limit=light?2:j.phase==='prepare'?48:j.phase==='cut'?16:j.kind==='delete'?24:12,budget=cleanup&&!light?1200:90;rp_stepRanges=[];
+  T.checks+=start-stepStart;
+  while(j.status==='running'&&ops<limit&&new Date().getTime()-start<budget){
+   phaseAt=rp_now();
    if(j.phase==='cut'){
     if(j.point>=j.points.length){
      // v2.3.11.2 FAST FINISH: cut correctness is guarded while each cut is applied.
@@ -852,11 +921,11 @@ function rp_step(id,light){
      if(j.kind==='cut'){j.status='done';j.message='Cutting complete.';break;}
      rp_beginPrepare(j);break;
     }
-    var batchResult=rp_cutBatch(j,start);ops+=batchResult.ops;if(batchResult.waiting)break;
+    var batchResult=rp_cutBatch(j,start);ops+=batchResult.ops;T.cut+=rp_now()-phaseAt;if(batchResult.waiting)break;
 
    }else if(j.phase==='prepare'){
-    if(j.prepTrack<j.tracks.length){if(rp_prepareTrack(j,j.prepTrack))j.prepTrack++;j.done=j.prepTrack;ops++;j.message='Building compact cleanup map · camera '+j.prepTrack+' / '+j.tracks.length;continue;}
-    rp_finishPrepare(j);break;
+    if(j.prepTrack<j.tracks.length){if(rp_prepareTrack(j,j.prepTrack))j.prepTrack++;j.done=j.prepTrack;ops++;j.message='Building compact cleanup map · camera '+j.prepTrack+' / '+j.tracks.length;T.prepare+=rp_now()-phaseAt;continue;}
+    rp_finishPrepare(j);T.prepare+=rp_now()-phaseAt;break;
    }else{
     if(j.task>=j.tasks.length){j.status='done';break;}
     var task=j.tasks[j.task],liveCleanup=app.project.activeSequence,tr=liveCleanup.videoTracks[task.track];
@@ -866,30 +935,10 @@ function rp_step(id,light){
      if(!currentClip)throw Error('Camera piece changed before switching. Resume to rebuild the map.');
      if(Boolean(currentClip.disabled)!==!task.keep){currentClip.disabled=!task.keep;if(!task.keep)rp_pdRecord(j.seqID,task.track,currentClip);}
      if(Boolean(currentClip.disabled)!==!task.keep)throw Error('Camera change was not confirmed.');
-     j.changed++;
+     j.changed++;T.keep+=rp_now()-phaseAt;
     }else{
-     // Never trust a stale clip object after earlier removals. Re-resolve the exact loser
-     // by protected track + start/end range immediately before deletion.
-     var target=rp_resolveTask(liveCleanup,task,j.frame);
-     // Final winner guard: the selected camera for this interval can never be deleted.
-     if((task.winner!==undefined?task.winner:(task.interval>=0?j.winners[task.interval]:-999))===task.track){j.skipped++;j.message='Winner protection blocked an unsafe delete.';}
-     else if(!target)throw Error('Camera piece changed before cleanup. Resume to rebuild the map.');
-     else{
-      // v2.3.11.2 FAST CLEANUP: the compact map is built after all transition cuts.
-      // Winner tasks are never deleted, so repeating a full winner-coverage scan for every loser
-      // is redundant and was the largest cleanup bottleneck on long DJ sets.
-      // Keep the destructive invariants: every covered interval must have a real different winner.
-      for(var si=task.interval;si<=task.lastInterval;si++){
-       var winner=j.winners[si];if(winner<0||winner===task.track)throw Error('Preserved scene cannot be deleted.');
-       var wt=liveCleanup.videoTracks[winner];if(!wt||(wt.isLocked&&wt.isLocked())||(wt.isMuted&&wt.isMuted()))throw Error('Winner track unavailable. Cleanup stopped.');
-      }
-      var n=tr.clips.numItems,mkey=rp_mediaKey(task.track,target);rp_removeVideo(liveCleanup,target);rp_invalidateRange(tr);
-      if(app.project.activeSequence.videoTracks[task.track].clips.numItems>=n)throw Error('Removal was not confirmed. Resume to inspect the live timeline.');
-      j.removed++;j.liveCounts['v'+task.track]--;
-      var tk='v'+task.track,tree=j.removalTrees[tk]||(j.removalTrees[tk]={});
-      for(var fi=task.clipIndex+1;fi<=j.trackSizes[tk];fi+=fi&-fi)tree[fi]=(tree[fi]||0)+1;
-      if(j.mediaCounts){j.mediaCounts[mkey]--;if(j.mediaCounts[mkey]===0)j.cameraMediaSignature=rp_cameraMediaSignature(app.project.activeSequence,j.tracks);}
-     }
+     // Losers are removed in guarded batches (one unlink per batch); the batch advances j.task/j.done itself.
+     ops+=rp_deleteBatch(j,liveCleanup,limit-ops,T,start+budget);continue;
     }
     j.task++;j.done++;ops++;
    }
@@ -899,7 +948,10 @@ function rp_step(id,light){
 
   j.status='error';j.message=String(e)+' [stage '+String(j.phase)+', point '+String(j.point)+', track '+String(j.track)+']';
  }
- rp_gc();if(j.status!=='running'){j.tasks=[];j.removalTrees=null;j.mediaCounts=null;j.seq=null;}return rp_state();
+ // $.gc() on a large ExtendScript heap is not free: run it at most every 2 s while the job runs, always at the end.
+ rp_stepRanges=null;var gcAt=rp_now();if(j.status!=='running'||gcAt-(j.lastGcAt||0)>=2000){rp_gc();j.lastGcAt=rp_now();T.gc+=j.lastGcAt-gcAt;}
+ T.steps++;T.lastStepMs=rp_now()-stepStart;T.stepMs+=T.lastStepMs;T.lastOps=ops;T.lastPhase=String(j.phase);
+ if(j.status!=='running'){j.tasks=[];j.removalTrees=null;j.mediaCounts=null;j.seq=null;}return rp_state();
 }
 function rp_stop(id){
  if(!rp_job||rp_job.id!==id)return rp_encode({ok:false,message:'Process not found.'});
@@ -960,6 +1012,7 @@ function rp_getA1(){
 }
 function rp_a1Begin(signature,total){
  try{
+  if(rp_syncBusy())throw Error('Sync to Master Music is running. Wait for it to finish or click Stop.');
   if(rp_job&&rp_job.status==='running'){
    if(rp_job.kind==='a1'){rp_job.status='stopped';rp_job.message='Previous marker process reset.';}
    else throw Error('A process is already active.');
@@ -994,6 +1047,7 @@ function rp_a1Upload(id,csv){
 }
 function rp_a1DirectApply(signature,csv){
  try{
+  if(rp_syncBusy())throw Error('Sync to Master Music is running. Wait for it to finish or click Stop.');
   if(rp_job&&rp_job.status==='running'){
    if(rp_job.kind==='a1'){rp_job.status='stopped';rp_job.message='Previous marker process reset.';}
    else throw Error('A process is already active.');
@@ -1039,6 +1093,181 @@ function rp_a1Step(id){
  return rp_state();
 }
 
+/* Sync to Master Music: builds a NEW sequence (clone of the active one) with every camera clip at the position
+   the panel's audio sync found. The original sequence is never edited.
+   Layout: A1 keeps the master music; V1 stays empty because overwriteClip puts a clip's audio on the audio track
+   with the same index as its video track, so camera k goes on V(k+1) and its (muted) audio on A(k+1), never A1.
+   Uncertain clips go on a muted Review track on top; medium-confidence clips get a check label. */
+var rp_syncJob=null;
+function rp_syncBusy(){return !!(rp_syncJob&&rp_syncJob.status==='running');}
+// Master identity for sync: the A1 clips and frame base only. rp_a1Snapshot's signature also covers the
+// sequence duration, which legitimately grows when a camera keeps rolling after the music ends.
+function rp_syncA1Key(){var a=rp_a1Snapshot();return 'SYNCA1:'+rp_digest(rp_encode({frame:Math.round(Number(a.frame)*1000000)/1000000,clips:a.clips}));}
+function rp_syncSequenceById(id){for(var k=0;k<app.project.sequences.numSequences;k++){var q=app.project.sequences[k];if(String(q.sequenceID)===String(id))return q;}return null;}
+var RP_SYNC_LABEL_CHECK=7,RP_SYNC_LABEL_REVIEW=6; // Premiere label indices: 7 Mango (check), 6 Rose (review)
+function rp_syncProjectItems(root,depth,path,bins,wanted,found){
+ if(depth>12)return;
+ for(var i=0;i<root.children.numItems;i++){
+  var it=root.children[i];if(!it)continue;
+  if(it.type===2){rp_syncProjectItems(it,depth+1,path?path+'/'+it.name:it.name,bins,wanted,found);continue;}
+  if(wanted&&wanted.hasOwnProperty(String(it.nodeId)))found[String(it.nodeId)]=it;
+  if(!bins)continue;
+  var file='';try{if(it.isSequence&&it.isSequence())continue;if(it.isOffline&&it.isOffline())continue;file=it.getMediaPath();}catch(e){continue;}
+  if(!file)continue;
+  var key=path||'(root)';if(!bins.hasOwnProperty(key))bins[key]=[];if(bins[key].length<2000)bins[key].push({nodeId:String(it.nodeId),name:String(it.name),file:String(file)});
+ }
+}
+/** Everything the panel needs to choose cameras: the active sequence (A1 master, video tracks) and every bin. */
+function rp_syncSources(){
+ try{
+  var s=app.project.activeSequence;if(!s)throw Error('Open the sequence with the master music on A1 first.');
+  var a1=rp_a1Snapshot(),tracks=[],v,c,binMap={},bins=[],k;
+  for(v=0;v<s.videoTracks.numTracks;v++){
+   var tr=s.videoTracks[v],clips=[];
+   for(c=0;c<tr.clips.numItems;c++){var it=tr.clips[c],pi=it.projectItem,file='';try{file=pi?pi.getMediaPath():'';}catch(e){file='';}if(!file||(pi.isSequence&&pi.isSequence()))continue;
+    clips.push({nodeId:String(pi.nodeId),name:String(it.name),file:String(file),start:rp_seconds(it.start),end:rp_seconds(it.end),inPoint:rp_seconds(it.inPoint),outPoint:rp_seconds(it.outPoint)});}
+   tracks.push({index:v,name:String(tr.name||('V'+(v+1))),clips:clips});
+  }
+  rp_syncProjectItems(app.project.rootItem,0,'',binMap,null,null);
+  for(k in binMap)if(binMap.hasOwnProperty(k))bins.push({path:k,items:binMap[k]});
+  return rp_encode({ok:true,projectPath:String(app.project.path),sequence:{id:String(s.sequenceID),name:String(s.name),frame:a1.frame,duration:a1.duration,a1:a1.clips,a1Signature:a1.signature},tracks:tracks,bins:bins});
+ }catch(e){return rp_encode({ok:false,message:String(e)});}
+}
+function rp_syncTime(seconds){var t=new Time();t.ticks=String(Math.round(Number(seconds)*254016000000));return t;}
+/** rowsCsv rows "camera,nodeId,sourceIn,sourceOut,start,flag" joined by ';'. camera 1..n (0 = review); flag h|m|r. */
+function rp_syncParseRows(rowsCsv,cameraCount,frame){
+ var rows=[],parts=String(rowsCsv||'').split(';'),i;
+ for(i=0;i<parts.length;i++){
+  if(!parts[i].length)continue;var f=parts[i].split(',');if(f.length!==6)throw Error('Invalid sync plan row '+(i+1)+'.');
+  var cam=Number(f[0]),node=String(f[1]),a=Number(f[2]),b=Number(f[3]),start=Number(f[4]),flag=String(f[5]);
+  if(!(cam>=0&&cam<=cameraCount&&cam===Math.floor(cam)))throw Error('Invalid camera in sync plan row '+(i+1)+'.');
+  if(!/^[A-Za-z0-9._:-]{1,64}$/.test(node))throw Error('Invalid project item in sync plan row '+(i+1)+'.');
+  if(!isFinite(a)||!isFinite(b)||!isFinite(start)||b<=a||a<0)throw Error('Invalid timing in sync plan row '+(i+1)+'.');
+  if(flag!=='h'&&flag!=='m'&&flag!=='r')throw Error('Invalid confidence in sync plan row '+(i+1)+'.');
+  // A clip that starts before the music is trimmed at the head; times are frame-exact.
+  if(start<0){a-=start;start=0;}if(b-a<frame/2)continue;
+  // Snap the start to the frame grid and shift the source range by the same amount, so sync stays exact.
+  var snapped=Math.round(start/frame)*frame;if(a+snapped-start<0)snapped=Math.ceil(start/frame-1e-9)*frame;a+=snapped-start;b+=snapped-start;start=snapped;
+  rows.push({camera:cam,nodeId:node,sourceIn:a,sourceOut:b,start:start,flag:flag});
+ }
+ if(!rows.length)throw Error('The sync plan has no clips to place.');
+ // Review clips from different cameras can overlap in time and overwriteClip would cut one with the other:
+ // give each one the first review lane that is free at its start.
+ var review=[],laneEnd=[],r,lane;for(i=0;i<rows.length;i++)if(rows[i].camera===0)review.push(rows[i]);
+ review.sort(function(x,y){return x.start-y.start;});
+ for(i=0;i<review.length;i++){r=review[i];for(lane=0;lane<laneEnd.length;lane++)if(laneEnd[lane]<=r.start+frame/4)break;laneEnd[lane]=r.start+(r.sourceOut-r.sourceIn)+frame;r.lane=lane;}
+ rows.reviewLanes=laneEnd.length;
+ return rows;
+}
+function rp_syncEnsureTracks(s,videoNeeded,audioNeeded){
+ var addV=videoNeeded-s.videoTracks.numTracks,addA=audioNeeded-s.audioTracks.numTracks;if(addV<=0&&addA<=0)return;
+ app.enableQE();var q=qe.project.getActiveSequence();if(!q)throw Error('Could not add tracks to the synced sequence.');
+ if(addV>0)q.addTracks(addV,s.videoTracks.numTracks,0,1,s.audioTracks.numTracks,0,0);
+ s=app.project.activeSequence;
+ if(addA>0)q.addTracks(0,s.videoTracks.numTracks,addA,1,s.audioTracks.numTracks,0,0);
+ s=app.project.activeSequence;
+ if(s.videoTracks.numTracks<videoNeeded||s.audioTracks.numTracks<audioNeeded)throw Error('Premiere did not add the tracks the synced sequence needs ('+videoNeeded+' video, '+audioNeeded+' audio).');
+}
+function rp_syncClearTrack(tr){for(var c=tr.clips.numItems-1;c>=0;c--)tr.clips[c].remove(false,false);if(tr.clips.numItems)throw Error('Could not clear a track in the synced sequence.');}
+function rp_syncBegin(name,cameraCount,rowsCsv){
+ var copy=null,originalID='';
+ try{
+  if(rp_syncBusy())throw Error('A sync is already running.');
+  if(rp_job&&rp_job.status==='running')throw Error('A process is already active. Click Stop first.');
+  var s=app.project.activeSequence;if(!s)throw Error('Open the sequence with the master music on A1 first.');
+  var a1=rp_a1Snapshot(),a1Key=rp_syncA1Key(),frame=Number(a1.frame),cams=Number(cameraCount);
+  if(!(cams>=1&&cams<=60&&cams===Math.floor(cams)))throw Error('Choose between 1 and 60 cameras.');
+  var rows=rp_syncParseRows(rowsCsv,cams,frame),i,lanes=rows.reviewLanes||0,wanted={},found={};
+  for(i=0;i<rows.length;i++)wanted[rows[i].nodeId]=true;
+  rp_syncProjectItems(app.project.rootItem,0,'',null,wanted,found);
+  for(i=0;i<rows.length;i++)if(!found.hasOwnProperty(rows[i].nodeId))throw Error('A camera clip is no longer in the project. Refresh the sources and sync again.');
+  // Clone: the copy keeps the sequence settings and the A1 master; the original is never touched.
+  originalID=String(s.sequenceID);var before={},k;for(k=0;k<app.project.sequences.numSequences;k++)before[String(app.project.sequences[k].sequenceID)]=true;
+  s.clone(); // some builds return nothing even on success: the new sequence is found below
+  for(k=0;k<app.project.sequences.numSequences;k++){var q=app.project.sequences[k];if(!before.hasOwnProperty(String(q.sequenceID))){copy=q;break;}}
+  if(!copy)throw Error('Premiere did not create the sequence copy.');
+  copy.name=String(name||(s.name+' - Synced'));app.project.openSequence(String(copy.sequenceID));
+  var live=app.project.activeSequence;if(!live||String(live.sequenceID)!==String(copy.sequenceID))throw Error('Could not open the synced sequence.');
+  // Camera k -> V(k+1)/A(k+1); review lanes on the top tracks.
+  var reviewTrack=lanes?cams+1:-1,videoNeeded=1+cams+lanes;
+  rp_syncEnsureTracks(live,videoNeeded,videoNeeded);live=app.project.activeSequence;
+  for(i=0;i<live.videoTracks.numTracks;i++)rp_syncClearTrack(live.videoTracks[i]);
+  for(i=1;i<live.audioTracks.numTracks;i++)rp_syncClearTrack(live.audioTracks[i]);
+  if(rp_syncA1Key()!==a1Key)throw Error('The A1 master changed while preparing the synced sequence.');
+  var a1Locked=false;try{a1Locked=!!live.audioTracks[0].isLocked();live.audioTracks[0].setLocked(1);}catch(lockError){}
+  rp_syncJob={id:'sync'+new Date().getTime(),status:'running',licensed:true,licensedAt:new Date().getTime(),originalID:originalID,sequenceID:String(copy.sequenceID),sequenceName:String(copy.name),
+   a1Key:a1Key,a1WasLocked:a1Locked,frame:frame,rows:rows,items:found,next:0,placed:0,checks:0,review:0,reviewTrack:reviewTrack,reviewLanes:lanes,cameraCount:cams,message:'Placing camera clips'};
+  return rp_syncState();
+ }catch(e){
+  // Never leave a half-built copy behind: delete it and go back to the original sequence.
+  if(copy){try{app.project.openSequence(originalID);}catch(openError){}try{app.project.deleteSequence(copy);}catch(deleteError){}}
+  return rp_encode({ok:false,status:'error',message:String(e)});
+ }
+}
+function rp_syncState(){var j=rp_syncJob;if(!j)return rp_encode({ok:true,status:'idle'});return rp_encode({ok:j.status!=='error',status:j.status,id:j.id,sequenceID:j.sequenceID,sequenceName:j.sequenceName,done:j.next,total:j.rows.length,placed:j.placed,checks:j.checks,review:j.review,message:j.message});}
+function rp_syncFindPlaced(tr,nodeId,start,frame){for(var c=0;c<tr.clips.numItems;c++){var it=tr.clips[c];if(Math.abs(rp_seconds(it.start)-start)<=frame/4&&it.projectItem&&String(it.projectItem.nodeId)===nodeId)return it;}return null;}
+// Put a project item's In/Out back exactly: clear it, and only set it again if the cleared value differs
+// (so a clip that had no marks does not suddenly show In/Out marks in the Source Monitor).
+function rp_syncRestoreMark(item,which,old){
+ if(!old)return;
+ try{
+  if(typeof item['clear'+which+'Point']==='function'){item['clear'+which+'Point'](4);var now=item['get'+which+'Point'](4);if(now&&String(now.ticks)===String(old.ticks))return;}
+  item['set'+which+'Point'](Number(old.seconds),4);
+ }catch(restoreError){}
+}
+function rp_syncPlace(j,row){
+ var s=app.project.activeSequence,item=j.items[row.nodeId],track=row.camera===0?j.reviewTrack+row.lane:row.camera,tr=s.videoTracks[track];
+ if(!tr)throw Error('Synced sequence track V'+(track+1)+' is missing.');
+ // Place exactly sourceIn..sourceOut: set the project item's In/Out for the overwrite, then restore them.
+ var oldIn=null,oldOut=null;try{oldIn=item.getInPoint(4);oldOut=item.getOutPoint(4);}catch(e){}
+ try{
+  item.setInPoint(row.sourceIn,4);item.setOutPoint(row.sourceOut,4);
+  tr.overwriteClip(item,rp_syncTime(row.start));
+ }finally{rp_syncRestoreMark(item,'In',oldIn);rp_syncRestoreMark(item,'Out',oldOut);}
+ var placed=rp_syncFindPlaced(tr,row.nodeId,row.start,j.frame);
+ if(!placed)throw Error('Premiere did not place '+item.name+' at '+row.start.toFixed(3)+' s.');
+ // The placed piece must be the planned source range (Premiere may include the Out frame: +1 frame allowed).
+ var gotIn=rp_seconds(placed.inPoint),gotLen=rp_seconds(placed.end)-rp_seconds(placed.start),wantLen=row.sourceOut-row.sourceIn;
+ if(Math.abs(gotIn-row.sourceIn)>j.frame/2||gotLen<wantLen-j.frame/2||gotLen>wantLen+j.frame*1.5)throw Error('Premiere placed '+item.name+' with a different In/Out than planned.');
+ if(row.flag!=='h'){
+  var tag=row.flag==='r'?'[REVIEW] ':'[CHECK] ';try{if(String(placed.name).indexOf(tag)!==0)placed.name=tag+placed.name;}catch(nameError){}
+  try{placed.setColorLabel(row.flag==='r'?RP_SYNC_LABEL_REVIEW:RP_SYNC_LABEL_CHECK);}catch(labelError){}
+ }
+ if(row.flag==='r')j.review++;else if(row.flag==='m')j.checks++;
+ j.placed++;
+}
+// On every exit (done, error, stop), on the synced sequence itself: camera audio muted, review lanes switched off
+// so Run Multicam ignores them, and A1's lock state restored. Returns false if a review lane could not be switched off.
+function rp_syncSecure(j){
+ var s=rp_syncSequenceById(j.sequenceID),i,ok=true;if(!s)return true;
+ for(i=1;i<s.audioTracks.numTracks;i++){try{s.audioTracks[i].setMute(1);}catch(e){}}
+ for(i=0;i<j.reviewLanes;i++){var tr=s.videoTracks[j.reviewTrack+i];try{tr.setMute(1);}catch(e){}try{if(!tr.isMuted())ok=false;}catch(e2){ok=false;}}
+ try{s.audioTracks[0].setLocked(j.a1WasLocked?1:0);}catch(e){}
+ return ok;
+}
+function rp_syncFinish(j){
+ var reviewOff=rp_syncSecure(j);
+ j.status='done';j.message='Synced sequence ready: '+j.placed+' clips placed'+(j.checks?', '+j.checks+' marked [CHECK]':'')+(j.review?', '+j.review+' on the muted Review track':'')+'.'+(reviewOff?'':' Switch off the Review tracks (eye icon) before Run Multicam.');
+}
+function rp_syncStep(id){
+ var j=rp_syncJob;if(!j||String(j.id)!==String(id))return rp_encode({ok:false,status:'error',message:'No sync job to continue.'});
+ if(j.status!=='running')return rp_syncState();
+ try{
+  var s=app.project.activeSequence;if(!s||String(s.sequenceID)!==j.sequenceID)throw Error('Keep the synced sequence open until placing finishes.');
+  var t0=new Date().getTime();
+  while(j.next<j.rows.length&&new Date().getTime()-t0<1200){
+   rp_syncPlace(j,j.rows[j.next]);j.next++;
+   // The master music must never change: stop at the first sign of it.
+   if(j.next%8===0||j.next===j.rows.length){if(rp_syncA1Key()!==j.a1Key)throw Error('A1 master music changed while placing clips. Stopped; delete the synced sequence. The original sequence is unchanged.');}
+  }
+  j.message='Placing camera clips '+j.next+' / '+j.rows.length;
+  if(j.next===j.rows.length)rp_syncFinish(j);
+ }catch(e){j.status='error';j.message=String(e)+(/original sequence is unchanged/.test(String(e))?'':' The synced sequence "'+j.sequenceName+'" is incomplete: delete it and sync again. The original sequence is unchanged.');try{rp_syncSecure(j);}catch(secureError){}}
+ return rp_syncState();
+}
+function rp_syncStop(id){var j=rp_syncJob;if(j&&String(j.id)===String(id)&&j.status==='running'){j.status='stopped';j.message='Sync stopped after '+j.placed+' clips. Delete the synced sequence or run sync again.';try{rp_syncSecure(j);}catch(e){}}return rp_syncState();}
+function rp_syncGuardStep(fn){return function(id){try{var j=rp_syncJob;if(!(j&&j.licensed&&j.status==='running'&&String(j.id)===String(id)&&new Date().getTime()-Number(j.licensedAt||0)<86400000))rp_requireLicense();return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
+
 /* Commercial host gate: public entry points refuse work without a short-lived licensed session. */
 function rp_guardLicensed(fn){return function(){try{rp_requireLicense();var out=fn.apply(this,arguments);if(rp_job&&rp_job.status==='running'){rp_job.licensed=true;rp_job.licensedAt=new Date().getTime();}return out;}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
 /* v2.3.11.5: a job started under a valid session may run to completion (its own step/upload calls only)
@@ -1066,3 +1295,6 @@ rp_a1Begin=rp_guardLicensed(rp_a1Begin);
 rp_a1Upload=rp_guardJob(rp_a1Upload);
 rp_a1DirectApply=rp_guardLicensed(rp_a1DirectApply);
 rp_a1Step=rp_guardJob(rp_a1Step);
+rp_syncSources=rp_guardLicensed(rp_syncSources);
+rp_syncBegin=rp_guardLicensed(rp_syncBegin);
+rp_syncStep=rp_syncGuardStep(rp_syncStep);

@@ -17,7 +17,14 @@ function beats(result){var src=result.beats||[],out=[];for(var i=0;i<src.length;
 function nearestIndex(a,t){if(!a.length)return -1;var lo=0,hi=a.length;while(lo<hi){var m=(lo+hi)>>1;if(a[m]<t)lo=m+1;else hi=m;}if(lo<=0)return 0;if(lo>=a.length)return a.length-1;return t-a[lo-1]<=a[lo]-t?lo-1:lo;}
 function beatOffset(result,t,n){return root.RPBeatFirst.offsetBeats(root.RPBeatFirst.tempoMap(result),Number(t),num(n,0),num(result.tempo||result.bpm,120));}
 function beatDistance(result,a,b){return root.RPBeatFirst.beatDistance(root.RPBeatFirst.tempoMap(result),a,b,num(result.tempo||result.bpm,120));}
-function localBeat(result,t){var map=(result.tempoMap||[]).slice().sort(function(a,b){return num(a.time,0)-num(b.time,0);}),bpm=num(result.tempo||result.bpm,120);for(var i=0;i<map.length;i++){if(num(map[i].time,0)<=t)bpm=num(map[i].bpm,bpm);else break;}return 60/Math.max(40,bpm);}
+// localBeat runs for every candidate beat; sorting the tempo map per call made drop scoring quadratic on long sets.
+// The sorted times and the last valid BPM at each entry are built once per tempo map, then binary-searched.
+var LOCAL_BEAT_CACHE=typeof WeakMap==='function'?new WeakMap():null;
+function localBeatTable(src){var hit=LOCAL_BEAT_CACHE&&LOCAL_BEAT_CACHE.get(src);if(hit&&hit.n===src.length)return hit;
+ var map=src.slice().sort(function(a,b){return num(a.time,0)-num(b.time,0);}),times=new Float64Array(map.length),bpm=new Float64Array(map.length),valid=new Uint8Array(map.length),have=false,last=0;
+ for(var i=0;i<map.length;i++){times[i]=num(map[i].time,0);var b=Number(map[i].bpm);if(isFinite(b)){last=b;have=true;}bpm[i]=last;valid[i]=have?1:0;}
+ var table={n:src.length,times:times,bpm:bpm,valid:valid};if(LOCAL_BEAT_CACHE)LOCAL_BEAT_CACHE.set(src,table);return table;}
+function localBeat(result,t){var table=localBeatTable(result.tempoMap||[]),times=table.times,lo=0,hi=times.length;while(lo<hi){var m=(lo+hi)>>1;if(times[m]<=t)lo=m+1;else hi=m;}var bpm=lo>0&&table.valid[lo-1]?table.bpm[lo-1]:num(result.tempo||result.bpm,120);return 60/Math.max(40,bpm);}
 function sourceCandidates(result,duration){var grid=result.musicGrid||[],out=[];for(var i=0;i<grid.length;i++){var t=num(grid[i].time,-1);if(t>0&&t<duration)out.push({time:t,strength:num(grid[i].strength,0),phrase8:!!grid[i].phrase8,phrase16:!!grid[i].phrase16,phrase32:!!grid[i].phrase32});}
  // A guessed bar phase must not hide a real impact. Phrase flags remain supporting evidence.
  if(out.length)return out;var a=beats(result);for(i=0;i<a.length;i++)if(a[i]>0&&a[i]<duration)out.push({time:a[i],strength:0,phrase8:i%32===0,phrase16:i%64===0,phrase32:i%128===0});return out;
@@ -95,8 +102,45 @@ function pickBestSpaced(result,ranked,mode,spacing,stats,minimum){
  for(var i=0;i<ranked.length;i++){var c=ranked[i];c.accepted=false;c.suppressed=false;c.selection_origin='';c.drop_evidence_count=0;c.evidence=null;c.rejection_reason='';var structural=mainDropEvidence(c,mode,stats);if(c.confidence_score<min){c.rejection_reason='confidence-threshold';continue;}if(!structural){c.rejection_reason='structural-evidence';continue;}var near=false;for(var j=0;j<accepted.length;j++)if(withinSpacing(result,accepted[j].time,c.time,spacing)){near=true;break;}if(near){c.suppressed=true;c.rejection_reason='minimum-spacing';continue;}c.accepted=true;c.selection_origin='best-spaced';accepted.push(c);}
  return accepted;
 }
-function selectMainDrops(result,ranked,mode,spacing,duration,options){options=options||{};var minimum=options.confidenceThreshold==null?threshold(mode):clamp(num(options.confidenceThreshold,threshold(mode)),1,99),stats=featureStats(ranked),selected=pickBestSpaced(result,ranked,mode,spacing,stats,minimum);selected.sort(function(a,b){return a.time-b.time;});return {selected:selected,stats:stats,threshold:minimum};}
-function analysisKey(result,duration){var text=JSON.stringify([result.snapshot&&result.snapshot.range,duration,result.tempo,result.bpm,result.beatInterval,result.tempoMap,result.musicGrid,result.beats,result.dropSeries,result.onsetSeries]),h=2166136261;for(var i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return 'features-v18-multifeature-public|'+text.length+'|'+(h>>>0);}
+/* Impact alignment. Drop scores compare 4-16 beat windows, so the beat before a drop often scores
+   about the same as the drop itself: its "before" window holds less of a crescendoing build-up.
+   The real drop is the beat where the low-band attack (kick/bass) suddenly appears, so a selected
+   drop moves to a nearby candidate (0.2-1.25 beats away: the grid can hold half-beat points near a
+   snare roll) only when that beat's attack jump is clearly larger. */
+var ATTACK_PREFIX=typeof WeakMap==='function'?new WeakMap():null;
+function attackPrefix(series){var hit=ATTACK_PREFIX&&ATTACK_PREFIX.get(series);if(hit&&hit.length===series.length+1)return hit;var p=new Float64Array(series.length+1);for(var i=0;i<series.length;i++)p[i+1]=p[i]+Math.max(0,num(series[i].attack,0));if(ATTACK_PREFIX)ATTACK_PREFIX.set(series,p);return p;}
+// Attack in a short impact window at t (-30..+120 ms) minus the same window one beat earlier: high only
+// where a kick/bass hit newly arrives. A whole-beat window would let a half-beat-early point borrow the drop hit.
+function attackJump(result,t){var s=result.onsetSeries||[];if(!s.length)return 0;var p=attackPrefix(s),b=localBeat(result,t);function hit(x){return p[lower(s,x+.12)]-p[lower(s,x-.03)];}return hit(t)-hit(t-b);}
+function alignImpacts(result,selected,ranked){
+ var byTime=ranked.slice().sort(function(a,b){return a.time-b.time;});
+ for(var i=0;i<selected.length;i++){
+  var c=selected[i],b=c.beat_interval||localBeat(result,c.time),own=attackJump(result,c.time),best=null,bestJump=own;
+  for(var j=lower(byTime,c.time-1.25*b);j<byTime.length&&byTime[j].time<=c.time+1.25*b;j++){var n=byTime[j];if(n===c||Math.abs(n.time-c.time)<.2*b)continue;var jump=attackJump(result,n.time);if(jump>bestJump){best=n;bestJump=jump;}}
+  if(!best||!(bestJump>Math.max(0,own)*1.25+1e-9))continue;
+  best.accepted=true;best.suppressed=false;best.rejection_reason='';best.selection_origin='impact-aligned';best.aligned_from=c.time;best.attack_jump=bestJump;
+  best.evidence=c.evidence;best.drop_evidence_count=c.drop_evidence_count;best.impact_profile=c.impact_profile;best.confidence_score=Math.max(num(best.confidence_score,0),num(c.confidence_score,0));best.confidence=c.confidence;
+  c.accepted=false;c.selection_origin='';c.rejection_reason='impact-aligned to '+round(best.time,3)+'s';
+  selected[i]=best;
+ }
+ return selected;
+}
+function selectMainDrops(result,ranked,mode,spacing,duration,options){options=options||{};var minimum=options.confidenceThreshold==null?threshold(mode):clamp(num(options.confidenceThreshold,threshold(mode)),1,99),stats=featureStats(ranked),selected=alignImpacts(result,pickBestSpaced(result,ranked,mode,spacing,stats,minimum),ranked);selected.sort(function(a,b){return a.time-b.time;});return {selected:selected,stats:stats,threshold:minimum};}
+// Content hash of every analysis input, walked value by value. It used to JSON.stringify the whole map
+// (~720k onset rows for a 2 h set) on every call. The key stays content-based so a cache saved in the
+// master music map still matches after reload; JSON round-trips keep keys, order and numbers.
+var HASH_F64=new Float64Array(1),HASH_U32=new Uint32Array(HASH_F64.buffer);
+function hashValue(h,v){
+ var i;
+ if(typeof v==='number'){HASH_F64[0]=v;h=Math.imul(h^HASH_U32[0],16777619);return Math.imul(h^HASH_U32[1],16777619);}
+ if(typeof v==='string'){h=Math.imul(h^(v.length|0x40000000),16777619);for(i=0;i<v.length;i++)h=Math.imul(h^v.charCodeAt(i),16777619);return h;}
+ if(typeof v==='boolean')return Math.imul(h^(v?0x7001:0x7000),16777619);
+ if(v===null||v===undefined)return Math.imul(h^0x7002,16777619);
+ if(Array.isArray(v)){h=Math.imul(h^(v.length|0x20000000),16777619);for(i=0;i<v.length;i++)h=hashValue(h,v[i]);return h;}
+ if(typeof v==='object'){var keys=Object.keys(v);h=Math.imul(h^(keys.length|0x10000000),16777619);for(i=0;i<keys.length;i++){var k=keys[i];if(v[k]===undefined)continue;h=hashValue(h,k);h=hashValue(h,v[k]);}return h;}
+ return h;
+}
+function analysisKey(result,duration){var parts=[result.snapshot&&result.snapshot.range,duration,result.tempo,result.bpm,result.beatInterval,result.tempoMap,result.musicGrid,result.beats,result.dropSeries,result.onsetSeries],h=2166136261,n=0;for(var i=0;i<parts.length;i++){h=hashValue(h,parts[i]);n+=Array.isArray(parts[i])?parts[i].length:1;}return 'features-v19-multifeature-public|'+n+'|'+(h>>>0);}
 function cachedFeatures(result,duration){var key=analysisKey(result,duration),cache=result.dropFeatureCache;if(!cache||cache.key!==key){cache={key:key,rows:candidateFeatures(result,duration).filter(function(c){var r=result.snapshot&&result.snapshot.range;return !r||(c.time>=r.start&&c.time<r.end);})};result.dropFeatureCache=cache;}return cache.rows.map(function(x){return Object.assign({},x);});}
 function sections(result,duration,events){var series=(result.dropSeries||[]).slice().sort(function(a,b){return a.time-b.time;}),prefE=prefix(series,'energy'),a=beats(result),bounds=[0,duration],i;
  for(i=0;i<a.length;i+=16)if(a[i]>0&&a[i]<duration)bounds.push(a[i]);events.forEach(function(e){[e.build_start,beatOffset(result,e.drop_time,-4),e.drop_time,e.impact_end,e.drop_end,beatOffset(result,e.drop_end,8)].forEach(function(t){if(t>0&&t<duration)bounds.push(t);});});bounds.sort(function(x,y){return x-y;});var uniq=[];for(i=0;i<bounds.length;i++)if(!uniq.length||bounds[i]>uniq[uniq.length-1]+.01)uniq.push(bounds[i]);var vals=series.map(function(x){return num(x.energy,0);}),lo=quantile(vals,.25),hi=quantile(vals,.72),out=[];

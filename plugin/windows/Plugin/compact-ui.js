@@ -20,6 +20,8 @@ var note=document.createElement('small');note.textContent='Auto Music Map V14 an
 var render=document.createElement('div');render.id='compactRender';dash.insertBefore(render,cam);move('dropRenderControls',render);move('bestDropsRender',render);el('bestDropsRender').textContent='Render Best Drops';
 var review=details('Review ranked drops','compactDropReview');render.appendChild(review);move('dropResult',review.lastChild);move('dropInfo',review.lastChild);
 document.querySelectorAll('.toolstatus').forEach(function(x){el('compactProgress').appendChild(x);});
+var cprog=el('compactProgress'),bk=el('aiBackup'),bkl=bk&&bk.parentNode;if(bkl&&cprog&&cprog.parentNode){Array.prototype.slice.call(bkl.childNodes).forEach(function(n){if(n.nodeType===3)bkl.removeChild(n);});bkl.appendChild(document.createTextNode('Save backup copy of sequence before applying'));bkl.className=(bkl.className?bkl.className+' ':'')+'backupRow';cprog.parentNode.insertBefore(bkl,cprog);}
+var cerr=el('compactError'),anchor=cerr&&cerr.parentNode===(cprog&&cprog.parentNode)?cerr.nextSibling:(cprog?cprog.nextSibling:null);['menuResume','menuSync','menuPodcast'].forEach(function(id){var x=el(id);if(x&&cprog&&cprog.parentNode){cprog.parentNode.insertBefore(x,anchor);x.open=false;}});
 document.querySelectorAll('body > details').forEach(function(x){ab.appendChild(x);x.open=false;});
 ['menuMulticam','menuDrop'].forEach(function(id){var x=el(id);if(x)x.style.display='none';});
 el('menuZoom').querySelector('summary .tooltitle').textContent='Zoom settings';el('menuZoom').querySelectorAll('small,.musicbox').forEach(function(x){x.style.display='none';});
