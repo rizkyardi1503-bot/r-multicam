@@ -1,4 +1,4 @@
-/* ES3 ExtendScript. v2.3.11.5 single-pass low-memory timeline engine. */
+/* ES3 ExtendScript. v2.3.11.6 single-pass low-memory timeline engine. */
 var rp_job=null;
 var RP_LOW_MEMORY=true;
 var rp_stepRanges=null;
@@ -49,11 +49,11 @@ function rp_manual(s){
 }
 function rp_getActiveInfo(){
  try{var s=app.project.activeSequence,marks={points:[],ignored:0};if(s){try{marks=rp_manual(s);}catch(me){marks={points:[],ignored:0};}}
- return rp_encode({ok:true,version:'2.3.11.5',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:''});}
+ return rp_encode({ok:true,version:'2.3.11.6',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:''});}
  catch(e){return rp_encode({ok:false,message:String(e)});}
 }
 function rp_ping(){
- try{return rp_encode({ok:true,version:'2.3.11.5',host:'R Project Multicam',sequence:!!(app&&app.project&&app.project.activeSequence)});}
+ try{return rp_encode({ok:true,version:'2.3.11.6',host:'R Project Multicam',sequence:!!(app&&app.project&&app.project.activeSequence)});}
  catch(e){return rp_encode({ok:false,message:'ExtendScript host is not ready: '+String(e)});}
 }
 function rp_state(){
@@ -288,7 +288,7 @@ function rp_parseInternalPoints(csv,frame,duration){
  if(out.length>100000)throw Error('Maximum 100,000 internal edit points per AI plan. The AI pacing plan is too dense for this sequence.');
  return out;
 }
-/* v2.3.11.5 Keep Clips registry: camera pieces disabled by an Apply · Keep Clips job stay
+/* v2.3.11.6 Keep Clips registry: camera pieces disabled by an Apply · Keep Clips job stay
    available for re-planning; pieces the user disabled are still treated as unavailable. */
 var rp_pluginDisabled={};
 function rp_pdRecord(seqID,track,clip){
@@ -456,7 +456,7 @@ function rp_resumeSaved(projectPath,sequenceID,a1Signature,pointsCsv,choicesCsv,
   if(rp_job&&rp_job.status==='running')throw Error('Another process is already active.');
   var s=app.project.activeSequence;if(!s)throw Error('Open the sequence you want to continue.');
   if(String(app.project.path)!==String(projectPath))throw Error('This checkpoint belongs to a different Premiere project. Open the saved project first.');
-  // v2.3.11.5: a checkpoint is bound to the sequence it was started in. A backup clone has the same
+  // v2.3.11.6: a checkpoint is bound to the sequence it was started in. A backup clone has the same
   // A1 and camera media, so media identity alone could resume cuts/deletes in the wrong sequence.
   if(String(sequenceID||'')&&String(s.sequenceID)!==String(sequenceID))throw Error('This saved job belongs to a different sequence. Open the sequence the job was started in, then continue. Nothing was changed.');
   var a1=rp_a1Snapshot();if(String(a1.signature)!==String(a1Signature))throw Error('A1 does not match the saved job. Resume stopped before any timeline change.');
@@ -1270,7 +1270,7 @@ function rp_syncGuardStep(fn){return function(id){try{var j=rp_syncJob;if(!(j&&j
 
 /* Commercial host gate: public entry points refuse work without a short-lived licensed session. */
 function rp_guardLicensed(fn){return function(){try{rp_requireLicense();var out=fn.apply(this,arguments);if(rp_job&&rp_job.status==='running'){rp_job.licensed=true;rp_job.licensedAt=new Date().getTime();}return out;}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
-/* v2.3.11.5: a job started under a valid session may run to completion (its own step/upload calls only)
+/* v2.3.11.6: a job started under a valid session may run to completion (its own step/upload calls only)
    if the trial/session ends mid-job. Every new job, plan, resume or analysis still needs a live session. */
 function rp_jobContinuation(id){var j=rp_job;return !!(j&&j.licensed&&j.status==='running'&&String(j.id)===String(id)&&new Date().getTime()-Number(j.licensedAt||0)<86400000);}
 function rp_guardJob(fn){return function(id){try{if(!rp_jobContinuation(id))rp_requireLicense();return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}

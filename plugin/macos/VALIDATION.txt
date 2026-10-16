@@ -1,13 +1,16 @@
-v2.3.11.5 PUBLIC validation — 2026-10-15
-- Camera Role Contrast: synthetic 4-camera plans contain no wide-to-wide cuts; exact-drop cameras unchanged.
-- 4-beat guard: 128 BPM at 30 fps keeps 4-beat cadence; music analysis output identical, enrich much faster.
-- Mock Premiere host tests: In/Out apply, Windows resume, manual-marker Begin, user-disabled clips, Keep Clips re-plan,
-  sequence-scoped resume, relative Random Zoom, license change mid-job, A1 messages (fail on v2.3.11.4, pass now).
-- Panel vm tests: pending flag cleared on timeout, merged Resume, disk-only music cache, async preset scan, macOS memory guard.
-- Account vm tests: offline grace 72 h, clock rollback, server denial, refresh-token sharing, bind-before-save, update labels.
-- Installer/update: helper wait loops simulated (Premiere only, timeout, superseded attempt, bad checksum); PowerShell parse
-  and bash -n checks; FFmpeg checksum pinning unchanged.
-- Not verified natively: Premiere Pro panel load on Windows/macOS hardware.
+v2.3.11.6 PUBLIC validation — 2026-10-16
+- Sync to Master Music: synthetic DJ-set benchmark (clips 0.4-240 s, good/none/bad camera clocks) with no
+  high-confidence misplacement; clips under 1 s go to Review instead of stopping the analysis; real-FFmpeg
+  end-to-end test (MP4/AAC, MOV) placed within 1 frame; mock-Premiere build tests (new sequence, A1 untouched,
+  camera audio muted, Review lanes, Stop, sequence switch, other jobs blocked while syncing); real panel.js
+  integration (15 checks).
+- Music engine: beat-drop benchmark and format test (WAV/M4A/MP4) identical drops, AAC seek within 1 ms.
+- Cleanup: mock full delete/angle jobs (winners kept, losers removed, camera audio intact, selection restored,
+  failure paths: isolation, mid-batch remove, nodeId renumbering); optional backup copy honoured.
+- Panel layout: rendered panel checked in Chromium at 300 px; no element ids lost; id-reference guard clean.
+- Random Zoom: identical keyframes to v2.3.11.3 in mock Premiere (numeric/Time keys, pre-animated, moved clips).
+- Earlier v2.3.11.5 checks (camera role contrast, 4-beat guard, host/panel/account vm tests, installer) re-run.
+- Not verified natively: Premiere Pro panel load on macOS hardware.
 
 v2.3.11.3 PUBLIC validation — 2026-10-14
 - FFmpeg 9.0.2 checksums confirmed from two independent sources (Windows: GitHub release digest and gyan.dev .sha256; macOS: martin-riedl.de .sha256 and a full download hash for arm64 and amd64).

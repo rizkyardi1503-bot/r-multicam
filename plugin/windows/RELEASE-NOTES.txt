@@ -1,4 +1,18 @@
-v2.3.11.5 PUBLIC — Camera Role Contrast, reliability and payment fixes
+v2.3.11.6 PUBLIC — Sync to Master Music (beta), faster cleanup, Camera Role Contrast and reliability
+New in this release:
+- Sync to Master Music (beta, lifetime license): places every camera clip, including very short ones,
+  at its position on the master music on A1, using each clip's own audio and the camera clock. It
+  builds a NEW synced sequence; the current sequence is not changed. Clips it is unsure about go to a
+  muted Review track; medium-confidence clips are marked [CHECK] for a quick look.
+- Music engine: faster beat-drop detection; cuts land on the kick/bass entry; M4A/MP4 masters no longer
+  cut about 2 frames late.
+- Removing unused camera pieces is much faster on long sets (pieces are unlinked in batches).
+- The backup copy of the sequence before Apply is now optional (checkbox under the main buttons; on by
+  default). Turn it off on very long sets to save memory.
+- Cleaner panel: Sync to Master Music and Podcast AI Director on the main screen, Continue Multicam
+  shows when a job can be resumed, and the activity log moved to Help.
+- Random Zoom keeps its v2.3.11.3 behaviour.
+Also included (first public with this release):
 - Camera Roles now steer the cut: the panel reads each role's shot size (wide / medium wide,
   medium, close / deck / detail) and direction (behind, left, right, front, top, crowd, side).
   Two angles of the same kind never follow each other (for example wide after wide). When no
@@ -8,18 +22,18 @@ v2.3.11.5 PUBLIC — Camera Role Contrast, reliability and payment fixes
   disk only (no more browser-storage quota errors on long sets).
 - Sequence In/Out is respected when applying an AI plan (before, Apply failed with
   "Edit point outside sequence In/Out").
-- A backup copy of the sequence is made before an AI plan is applied.
-- Windows: Continue after Stop works again (it reported "Camera media changed").
-- Clips you disabled stay disabled; Keep Clips can be re-planned in the same Premiere session; manual-marker Begin works;
-  many markers no longer disable the panel; unsupported frame rates are reported before any edit.
-- Random Zoom is relative to each clip's own Scale and skips still images.
+- Stop works reliably; Windows: Continue after Stop works again (it reported "Camera media changed").
+- Clips you disabled stay disabled; muted camera tracks are never touched; Keep Clips can be re-planned
+  in the same Premiere session; manual-marker Begin works; many markers no longer disable the panel;
+  unsupported frame rates are reported before any edit.
 - No more stuck buttons after a slow Premiere response; longer limits for long sequences.
 - macOS: no false "low memory" pauses; updates wait only for Premiere (not Photoshop/After Effects).
 - Account: works offline for up to 72 hours after the last online check; two open panels no
   longer sign each other out; clear update and Google sign-in messages; promo codes at checkout.
 - Installer: download timeouts, rollback of incomplete installs, clearer macOS privacy message.
 - Supports Premiere Pro 2022 (v22) and newer.
-- Delivered through Check Update. Save and close Premiere before installing.
+- Optional update: v2.3.11.2 and newer keep working. Delivered through Check Update. Save and close
+  Premiere before installing.
 
 v2.3.11.3 PUBLIC — Safer installer (Windows and macOS)
 - FFmpeg is now pinned to version 9.0.2 and its SHA-256 checksum is verified before it is ever run.
