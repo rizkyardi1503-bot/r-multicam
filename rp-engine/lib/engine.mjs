@@ -216,7 +216,7 @@ export async function planMulticam(options) {
       const wantAudio = src.sync === "audio" || (src.sync !== "none" && !Number.isFinite(offset));
       if (!wantAudio) { candidates.push({ info, offset: Number.isFinite(offset) ? offset : 0, sync: { method: Number.isFinite(offset) ? "manual" : "none", confidence: Number.isFinite(offset) ? "high" : "low" } }); continue; }
       if (!info.hasAudio) { excluded.push({ file: info.file, reason: "no audio to sync" }); continue; }
-      const s = await syncClip(info, null, 3);
+      const s = await syncClip(info, null, 4);
       if (s.error) { excluded.push({ file: info.file, reason: s.error }); continue; }
       candidates.push({ info, offset: s.offset, sync: { method: "audio", confidence: s.confidence, score: s.score, prominence: s.prominence, peak_ratio: s.peakRatio } });
     }
@@ -247,7 +247,7 @@ export async function planMulticam(options) {
         const expected = c.info.created - anchor;
         if (expected >= duration + 2 || expected + c.info.duration <= -2) { excluded.push({ file: c.info.file, reason: "camera clock places it outside this music", offset: expected, sync: c.sync }); continue; }
         progress(0.6 + 0.07 * done / totalClips, `Clock-guided sync: ${path.basename(c.info.file)}`);
-        const s = await syncClip(c.info, { expectedOffset: Math.round(expected * 100) / 100, searchRadius: radius }, 3);
+        const s = await syncClip(c.info, { expectedOffset: Math.round(expected * 100) / 100, searchRadius: radius }, 4);
         if (s.error) { excluded.push({ file: c.info.file, reason: s.error }); continue; }
         const sync = { method: "audio+clock", confidence: s.confidence, score: s.score, prominence: s.prominence, peak_ratio: s.peakRatio, clock_offset: Math.round(expected * 1000) / 1000 };
         if (RANK[s.confidence] < minRank) { excluded.push({ file: c.info.file, reason: `sync confidence ${s.confidence} near the clock position`, offset: s.offset, sync }); continue; }

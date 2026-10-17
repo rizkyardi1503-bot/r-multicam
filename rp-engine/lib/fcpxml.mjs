@@ -33,8 +33,10 @@ function mediaUrl(file, options) {
   const map = options.pathMap;
   if (map && map.from && f.startsWith(map.from)) f = map.to + f.slice(map.from.length);
   const name = f.split(/[\\/]/).pop();
-  if (options.mediaDir) return pathToFileURL(path.posix.join(options.mediaDir.replace(/\\/g, "/"), name)).href;
+  if (options.mediaDir) f = path.posix.join(options.mediaDir.replace(/\\/g, "/"), name);
   if (/^[A-Za-z]:[\\/]/.test(f)) return "file:///" + f.replace(/\\/g, "/").split("/").map((p, i) => (i === 0 ? p : encodeURIComponent(p))).join("/");
+  // A Mac/Linux target path written on Windows: pathToFileURL would prefix the current drive.
+  if (process.platform === "win32" && f.startsWith("/")) return "file://" + f.split("/").map(encodeURIComponent).join("/");
   return pathToFileURL(f).href;
 }
 

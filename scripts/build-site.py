@@ -13,6 +13,7 @@
 Idempotent: generated blocks are wrapped in <!--rp:NAME--> markers and replaced on
 every run. `--check` exits non-zero if the committed output is out of date (used in CI).
 """
+import base64
 import datetime
 import hashlib
 import html as htmllib
@@ -484,6 +485,24 @@ def build_sitemaps(changed_pages):
     return xml, '\n'.join(txt) + '\n'
 
 
+def with_csp(headers: str, router: str, motion_src: str) -> str:
+    """Content-Security-Policy for every page, derived from what the site loads: the inline language router
+    (by hash), three.js for motion3d.mjs, Supabase (config.js) and the Cloudflare Web Analytics beacon."""
+    router_hash = 'sha256-' + base64.b64encode(hashlib.sha256(router.encode('utf-8')).digest()).decode()
+    three = re.search(r"THREE_URL = '(https://[^']+/)[^/']+'", motion_src).group(1)
+    supabase = re.search(r"supabaseUrl: '(https://[^']+)'", (SITE / 'config.js').read_text()).group(1)
+    csp = ("default-src 'self'; "
+           f"script-src 'self' '{router_hash}' {three} https://static.cloudflareinsights.com; "
+           "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://developers.google.com/static/identity/images/; "
+           "font-src 'self'; media-src 'self'; "
+           f"connect-src 'self' {supabase} https://cloudflareinsights.com; "
+           "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
+    lines = [l for l in headers.split('\n') if not l.strip().startswith('Content-Security-Policy:')]
+    at = lines.index('/*') + 1
+    lines.insert(at, '  Content-Security-Policy: ' + csp)
+    return '\n'.join(lines)
+
+
 def build(check=False):
     changed = []
     css = build_bundles()
@@ -521,6 +540,7 @@ def build(check=False):
             changed_pages.append(page_path(rel))
 
     outputs[SITE / 'sitemap.xml'], outputs[SITE / 'sitemap.txt'] = build_sitemaps(changed_pages)
+    outputs[SITE / '_headers'] = with_csp((SITE / '_headers').read_text(), router, motion_src)
 
     for f, text in outputs.items():
         cur = f.read_text() if f.exists() else None

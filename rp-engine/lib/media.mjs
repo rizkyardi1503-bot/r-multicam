@@ -54,7 +54,10 @@ const ENV_RATE = 100; // 10 ms envelope, same hop as the plugin's analysis
 
 function onsetEnvelope(ffmpeg, file, start, length) {
   return new Promise((resolve, reject) => {
-    const args = ["-nostdin", "-hide_banner", "-v", "error", "-ss", String(start), "-i", file];
+    // Seek on the output side (decode, then trim): FFmpeg 9's input-side -ss on AAC/MP4
+    // starts up to one AAC frame (~23 ms) off, which shifts every sync result.
+    const args = ["-nostdin", "-hide_banner", "-v", "error", "-i", file];
+    if (start > 0) args.push("-ss", String(start));
     if (length) args.push("-t", String(length));
     args.push("-map", "0:a:0", "-vn", "-ac", "1", "-ar", "8000", "-af", "highpass=f=30,lowpass=f=3500", "-f", "f32le", "pipe:1");
     const proc = spawn(ffmpeg, args, { windowsHide: true });
@@ -105,6 +108,15 @@ function fft(re, im, inverse) {
   if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
 }
 
+// [1 2 1] blur of the onset cue. Onsets are 1-hop spikes, so a camera that sits a fraction
+// of a hop (10 ms) off the music grid would otherwise lose its true peak to a beat-periodic
+// rival that happens to land on a whole hop.
+function blur(a) {
+  const out = new Float64Array(a.length);
+  for (let i = 0; i < a.length; i++) out[i] = (2 * a[i] + (i > 0 ? a[i - 1] : 0) + (i + 1 < a.length ? a[i + 1] : 0)) / 4;
+  return out;
+}
+
 function zeroMean(a) {
   let m = 0; for (const v of a) m += v; m /= Math.max(1, a.length);
   let s = 0; const out = new Float64Array(a.length);
@@ -125,10 +137,10 @@ export async function syncByAudio(ffmpeg, musicFile, cameraFile, opts = {}) {
   const excerpt = Number(opts.excerptSeconds) || 120;
   const cache = opts.cache || {};
   if (!cache.music) {
-    const name = `envelope-${fileKey(musicFile, ENV_RATE)}.v8`;
+    const name = `envelope-${fileKey(musicFile, ENV_RATE)}.v9`;
     let m = cacheGet(opts.cacheDir, name);
     if (!m) { m = await onsetEnvelope(ffmpeg, musicFile, 0, 0); cachePut(opts.cacheDir, name, m); }
-    cache.music = { onset: zeroMean(m.onset), level: zeroMean(m.level) };
+    cache.music = { onset: zeroMean(blur(m.onset)), level: zeroMean(m.level) };
     cache.spectra = new Map();
   }
   const cam = await onsetEnvelope(ffmpeg, cameraFile, excerptStart, excerpt);
@@ -166,7 +178,7 @@ export async function syncByAudio(ffmpeg, musicFile, cameraFile, opts = {}) {
   const sumCorr = new Float64Array(size);
   for (const key of ["onset", "level"]) {
     const ar = new Float64Array(size), ai = new Float64Array(size), br = new Float64Array(size), bi = new Float64Array(size);
-    const bz = zeroMean(cam[key]); br.set(bz); fft(br, bi, false);
+    const bz = zeroMean(key === "onset" ? blur(cam.onset) : cam.level); br.set(bz); fft(br, bi, false);
     for (let i = 0; i < size; i++) { // conj(B) * A
       ar[i] = A[key].re[i] * br[i] + A[key].im[i] * bi[i]; ai[i] = A[key].im[i] * br[i] - A[key].re[i] * bi[i];
     }
