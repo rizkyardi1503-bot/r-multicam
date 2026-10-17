@@ -218,6 +218,10 @@ def alt_path(path: str, lang: str) -> str:
 
 def lang_switch(path: str, lang: str) -> str:
     other = alt_path(path, lang)
+    # A page without a counterpart (404.html) links to the other language's home page, not to a missing page.
+    target = SITE / other.lstrip('/')
+    if not (target.is_file() if other.endswith('.html') else (target / 'index.html').is_file()):
+        other = '/' if lang == 'id' else '/id/'
     en_href, id_href = (other, path) if lang == 'id' else (path, other)
     label = 'Pilih bahasa' if lang == 'id' else 'Choose language'
     def item(code, href, text, hl):

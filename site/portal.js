@@ -1,7 +1,7 @@
 'use strict';
 (() => {
  if(window.RP_PLUGIN_GOOGLE_ACTIVE)return;
- const cfg=window.RP_CONFIG;
+ const cfg=window.RP_CONFIG;const checkoutOpen=cfg.checkoutOpen===true;
  // Google uses PKCE; only the temporary verifier is kept in this tab.
  const GOOGLE_FLOW_KEY='rp_google_pkce_v1';
  const callbackParams=new URLSearchParams(window.location.search);
@@ -89,7 +89,7 @@
   const devicePlatform=String(profile?.device_platform||'').toLowerCase();
   const latest=devicePlatform==='macos'||devicePlatform==='darwin'?LATEST_VERSIONS.macos:devicePlatform==='windows'||devicePlatform==='win32'?LATEST_VERSIONS.windows:null;
   el('version-summary').textContent='Installed plugin: '+(installed==='not connected'?installed:'v'+installed)+' · Latest public: '+(latest?'v'+latest:'Windows v'+LATEST_VERSIONS.windows+' / macOS v'+LATEST_VERSIONS.macos)+(installed!=='not connected'&&latest&&newerVersion(installed,latest)?' · Update available.':'');
-  el('account-purchase').hidden=status==='lifetime'||status==='blocked';
+  el('account-purchase').hidden=!checkoutOpen||status==='lifetime'||status==='blocked';el('check-payment').hidden=!checkoutOpen;
   el('device-details').textContent=profile?.plugin_version?String(profile.device_platform||'Plugin')+' · v'+profile.plugin_version+' · Last seen '+(profile.last_active_at?new Date(profile.last_active_at).toLocaleString():'not available')+'. One plugin device can be active at a time. Sign in on the new device to switch.':'No plugin installation connected yet. Download the installer and sign in inside Premiere. Your 7-day trial begins on first plugin activation.';
  }
  async function loadAccount(){const epoch=generation,account=user?.id;if(!account)return;const [rows,orders]=await Promise.all([
@@ -101,7 +101,7 @@
   for(const order of orders){const row=document.createElement('p');row.className='order-row';row.textContent=order.status+' · '+order.charge_currency+' '+Number(order.gross_amount_idr).toLocaleString()+' · '+new Date(order.created_at).toLocaleDateString();el('orders-list').appendChild(row);}
   if(affiliateIntent&&affiliateUI)await affiliateUI.refresh();
  }
- async function purchase(){if(!user){say('Create an account or sign in to continue to checkout.');return;}await loadAccount();if(profile?.license_status==='blocked')throw Error('This account cannot purchase. Please contact support.');if(profile?.license_status==='lifetime'){say('Your lifetime license is already active.');return;}
+ async function purchase(){if(!checkoutOpen){say('Online checkout is closed for now. Your trial and existing licenses are not affected.');return;}if(!user){say('Create an account or sign in to continue to checkout.');return;}await loadAccount();if(profile?.license_status==='blocked')throw Error('This account cannot purchase. Please contact support.');if(profile?.license_status==='lifetime'){say('Your lifetime license is already active.');return;}
   el('checkout-confirm').hidden=true;
   window.RP_ANALYTICS?.track('checkout_started',{price_idr:3575000,promo_code_used:!!el('promo-code').value.trim()},session?.access_token||null);
   const data=await authed('/functions/v1/create-lifetime-checkout',{method:'POST',body:{promo_code:el('promo-code').value.trim()}});
@@ -194,6 +194,7 @@
  document.querySelectorAll('[data-login]').forEach(b=>b.onclick=()=>{show();purchaseIntent=false;downloadIntent=null;if(user)run(loadAccount);else{setMode('signin');say('Sign in to access your license and affiliate dashboard.');}});
  document.querySelectorAll('[data-signup]').forEach(b=>b.onclick=()=>{show();purchaseIntent=false;downloadIntent=null;if(user)run(loadAccount);else setMode('signup');});
  document.querySelectorAll('[data-account]').forEach(button=>button.onclick=()=>{show();purchaseIntent=false;downloadIntent=null;if(user)run(async()=>{await loadAccount();say('License status refreshed.');});else say('Create an account or sign in with your existing plugin account.');});
+ document.querySelectorAll('[data-buy]').forEach(button=>{if(!checkoutOpen)button.hidden=true;});
  document.querySelectorAll('[data-buy]').forEach(button=>button.onclick=()=>{show();purchaseIntent=true;downloadIntent=null;if(user)run(purchase);else say('Create an account or sign in to buy a lifetime license.');});
  document.querySelectorAll('[data-download]').forEach(button=>button.onclick=()=>{
   const platform=button.dataset.download==='macos'?'macos':'windows';

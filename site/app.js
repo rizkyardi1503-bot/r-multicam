@@ -11,6 +11,7 @@ function message(title, body, url, label) {
 }
 document.querySelector('#close-notice').onclick = () => notice.close();
 document.querySelector('#notice-done').onclick = () => notice.close();
+if (config.checkoutOpen !== true) document.querySelectorAll('[data-buy]').forEach(button => { button.hidden = true; });
 document.querySelectorAll('[data-buy]').forEach(button => button.onclick = () => {
  const url = safeUrl(config.paymentUrl);
  message(url ? 'Continue to secure checkout' : 'Checkout is not open yet', url ? 'The displayed license price is '+(window.RPPrice?.label()||'Rp3.575.000')+'. Review the final billing amount, currency and purchase terms on Midtrans before paying. Use the email address linked to your plugin account.' : 'Online purchases are not available yet. Please check back when checkout opens. No payment or license activation has taken place.', url, 'Continue to Midtrans');
