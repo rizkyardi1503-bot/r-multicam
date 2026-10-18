@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.2";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.7",
-    download: base + "?platform=windows&version=2.3.11.7",
-    sha256: "efc6e69306a75f4aa95070f15b111ae8a630206d1c7488406862ded4002c326e"
+    version: "2.3.11.8",
+    download: base + "?platform=windows&version=2.3.11.8",
+    sha256: "46d9afc799509848566aa93fbda5542be55d668cdcf4e70c63bce0db71261889"
   },
   macos: {
-    version: "2.3.11.7",
-    download: base + "?platform=macos&version=2.3.11.7",
-    sha256: "a2f700e50cd52d784bfcdcd1e1247b01991c1d210f075b2fb4e937d2e469f534"
+    version: "2.3.11.8",
+    download: base + "?platform=macos&version=2.3.11.8",
+    sha256: "6b8bc09e4194882d6de61aa9c99d88c2d73dd7572c166e8aed26deab5bb7e23d"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.7 PUBLIC Windows and macOS: drone and FPV clips sync by camera clock in Sync Cameras to Music (beta, lifetime) with remembered corrections; Cut Pace 2/4/6/8 counts real beats; no blocked Apply near drops; camera switch where footage ends; tempo no longer locks at half speed; update and installer fixes. Optional update: v2.3.11.2 and newer keep working. Save and close Premiere before installing.",
+    release_notes: "v2.3.11.8 PUBLIC Windows and macOS: Buy Lifetime and Check Payment are back in the panel (online checkout through Midtrans is open again). Includes everything from v2.3.11.7. Optional update: v2.3.11.2 and newer keep working. Save and close Premiere before installing.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

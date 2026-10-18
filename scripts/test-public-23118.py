@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Validate the public 2.3.11.7 archives: integrity, versions, pinned FFmpeg, no internal tools,
-and that the 2.3.11.7 engine and reliability fixes (camera role contrast, 4-beat guard, tempo-map cache) are shipped."""
+"""Validate the public 2.3.11.8 archives: integrity, versions, pinned FFmpeg, no internal tools,
+and that the 2.3.11.8 engine and reliability fixes (camera role contrast, 4-beat guard, tempo-map cache) are shipped."""
 import hashlib, io, json, pathlib, re, zipfile
 root = pathlib.Path(__file__).resolve().parent.parent
 dl = root / 'site' / 'downloads'
@@ -11,7 +11,7 @@ ENGINE = ['Plugin/audio-core.js', 'Plugin/audio-engine.js', 'Plugin/ai-director.
           'Plugin/music-learning.js', 'Plugin/spectral-features.js', 'Plugin/online-music-ai.js',
           'Plugin/plugin-google-auth.js', 'Plugin/compact-ui.js', 'Plugin/compact-ui.css', 'Plugin/CSInterface.js']
 for os_ in ('Windows', 'macOS'):
-    new = zipfile.ZipFile(dl / f'R-Project-Multicam-AI-{os_}-v2.3.11.7-PUBLIC.zip')
+    new = zipfile.ZipFile(dl / f'R-Project-Multicam-AI-{os_}-v2.3.11.8-PUBLIC.zip')
     assert new.testzip() is None
     names = new.namelist()
     assert not any(n.startswith('Training-Tools/') for n in names), 'internal tools shipped'
@@ -24,21 +24,21 @@ for os_ in ('Windows', 'macOS'):
         listed[rel] = h
     assert set(listed) == {n for n in names if not n.startswith('SHA256SUMS')}, 'inventory incomplete'
     manifest = new.read('Plugin/CSXS/manifest.xml').decode('utf-8-sig')
-    assert 'ExtensionBundleVersion="2.3.11.7"' in manifest and 'Version="2.3.11.7"' in manifest
-    assert "version:'2.3.11.7'" in new.read('Plugin/jsx/host.jsx').decode('utf-8-sig')
-    assert "r.version==='2.3.11.7'" in new.read('Plugin/panel.js').decode('utf-8-sig')
-    assert "var CURRENT='2.3.11.7'" in new.read('Plugin/update-manager.js').decode('utf-8-sig')
+    assert 'ExtensionBundleVersion="2.3.11.8"' in manifest and 'Version="2.3.11.8"' in manifest
+    assert "version:'2.3.11.8'" in new.read('Plugin/jsx/host.jsx').decode('utf-8-sig')
+    assert "r.version==='2.3.11.8'" in new.read('Plugin/panel.js').decode('utf-8-sig')
+    assert "var CURRENT='2.3.11.8'" in new.read('Plugin/update-manager.js').decode('utf-8-sig')
     cfg = json.loads(new.read('Plugin/commercial-config.json'))
-    assert cfg['version'] == '2.3.11.7' and cfg['purchase_mode'] == 'midtrans-checkout' and cfg['lifetime_price_idr'] == 3575000
+    assert cfg['version'] == '2.3.11.8' and cfg['purchase_mode'] == 'midtrans-checkout' and cfg['lifetime_price_idr'] == 3575000
     assert 'PayPal' not in json.dumps(cfg)
     if os_ == 'Windows':
         inst = new.read('Install-Windows.ps1').decode('utf-8-sig')
-        assert "$version = '2.3.11.7'" in inst and FF_WIN in inst
+        assert "$version = '2.3.11.8'" in inst and FF_WIN in inst
         assert 'ffmpeg-release-essentials.zip' not in inst, 'unpinned FFmpeg URL'
         assert inst.count('ffmpeg-9.0.2-essentials_build.zip') >= 2 and '(Get-SafeSha256 $zip) -eq $ffmpegSha256' in inst
     else:
         inst = new.read('Install-macOS.command').decode()
-        assert 'VERSION="2.3.11.7"' in inst and all(h in inst for h in FF_MAC.values())
+        assert 'VERSION="2.3.11.8"' in inst and all(h in inst for h in FF_MAC.values())
         assert 'redirect/latest' not in inst, 'unpinned FFmpeg URL'
         assert '[ "$FFACTUAL" = "$FFSHA" ] || fail' in inst
         info = new.getinfo('Install-macOS.command')
@@ -61,6 +61,6 @@ for os_ in ('Windows', 'macOS'):
     assert 'function rp_razorFormat(frame)' in host and 'live.clone()' in host, 'fps check / backup missing'
     assert 'Version="[22.0,99.9]"' in manifest, 'host range still capped'
     auth = new.read('Plugin/account-auth.js').decode('utf-8-sig')
-    assert "'2.3.11.7-public-v18'" in auth, 'account version handshake'
-print('PASS public 2.3.11.7 archives: CRC/SHA inventories, version handshakes, pinned+verified FFmpeg 9.0.2, '
+    assert "'2.3.11.8-public-v18'" in auth, 'account version handshake'
+print('PASS public 2.3.11.8 archives: CRC/SHA inventories, version handshakes, pinned+verified FFmpeg 9.0.2, '
       'no internal tools, no competitor names, accurate config, role contrast + 4-beat guard + tempo cache shipped')

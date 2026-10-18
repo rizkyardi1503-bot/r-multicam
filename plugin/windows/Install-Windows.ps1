@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
 $base = $PSScriptRoot
 $src = Join-Path $base 'Plugin'
-$version = '2.3.11.7'
+$version = '2.3.11.8'
 if (-not (Test-Path -LiteralPath $src -PathType Container)) { throw 'Plugin payload folder is missing. Extract the whole ZIP first, then run SETUP-WINDOWS.cmd from the extracted folder.' }
 
 # Manual recovery guard: stop only stale R Project one-click updater processes from an older build.

@@ -2,10 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const browserOrigins = new Set(["https://r-multicam.pages.dev","http://127.0.0.1:8765"]);
 const filenames: Record<string, string> = {
-  windows: "R-Project-Multicam-AI-Windows-v2.3.11.7-PUBLIC.zip",
-  macos: "R-Project-Multicam-AI-macOS-v2.3.11.7-PUBLIC.zip"
+  windows: "R-Project-Multicam-AI-Windows-v2.3.11.8-PUBLIC.zip",
+  macos: "R-Project-Multicam-AI-macOS-v2.3.11.8-PUBLIC.zip"
 };
-const fallbackBase = "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/25750823107ccca578d25c3e5391d0e31747414b/site/downloads/";
+const fallbackBase = "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/0000000000000000000000000000000000000000/site/downloads/";
 const fallbackUrls: Record<string, string> = {
   windows: fallbackBase + filenames.windows,
   macos: fallbackBase + filenames.macos

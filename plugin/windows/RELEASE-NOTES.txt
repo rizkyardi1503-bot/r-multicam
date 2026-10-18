@@ -1,3 +1,13 @@
+v2.3.11.8 PUBLIC — Buy Lifetime in the panel
+New in this release:
+- Online lifetime checkout is open again: Buy Lifetime and Check Payment are back in the panel (account bar and
+  the Sync Cameras to Music card) for signed-in accounts without a lifetime license. Buy asks before it opens
+  the Midtrans checkout in your browser; Check Payment activates the license when the payment is received.
+- A trial that has ended says "Buy Lifetime to continue" again.
+- Everything else is unchanged from v2.3.11.7.
+- Optional update: v2.3.11.2 and newer keep working. Delivered through Check Update. Save and close
+  Premiere before installing.
+
 v2.3.11.7 PUBLIC — Drone & FPV sync, exact Cut Pace and reliability
 New in this release:
 - Sync Cameras to Music (formerly Sync to Master Music; beta, lifetime license only): drone and FPV clips (no audio) are placed from their camera clock, bridged

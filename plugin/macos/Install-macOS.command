@@ -2,7 +2,7 @@
 set -euo pipefail
 BASE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$BASE/Plugin"
-VERSION="2.3.11.7"
+VERSION="2.3.11.8"
 say_line(){ printf '%s\n' "$*"; }
 fail(){ say_line "ERROR: $*"; exit 1; }
 # macOS privacy protection (TCC) can block Terminal from reading Downloads/Desktop/Documents. Report that instead of "missing" or "damaged" files.

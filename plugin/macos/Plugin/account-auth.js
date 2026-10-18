@@ -129,7 +129,7 @@ async function refreshOnce(){if(!session||!session.refresh_token)return false;va
 /* deviceId() directly: RPLicense.status() reads RPAccountAuth.status(), which needs device() for the offline-grace check. */
 function device(){try{var L=global.RPLicense;return (L.deviceId?L.deviceId():L.status().deviceId)||'';}catch(e){return '';}}
 function platform(){try{var p=nreq('process').platform;return p==='darwin'?'macOS':p==='win32'?'Windows':p;}catch(e){return 'Unknown';}}
-function rpcBody(){return {p_device_id:device(),p_platform:platform(),p_plugin_version:'2.3.11.7-public-v18'};}
+function rpcBody(){return {p_device_id:device(),p_platform:platform(),p_plugin_version:'2.3.11.8-public-v18'};}
 async function rpc(name){var body=rpcBody();try{return await request('/rest/v1/rpc/'+name,{method:'POST',auth:true,headers:Object.assign(headers(true),{'Accept':'application/vnd.pgrst.object+json'}),body:body});}catch(e){if(/jwt|token|expired/i.test(e.message)&&await refresh())return request('/rest/v1/rpc/'+name,{method:'POST',auth:true,headers:Object.assign(headers(true),{'Accept':'application/vnd.pgrst.object+json'}),body:body});throw e;}}
 function sessionReplacedError(){var e=Error('Your account was signed in on another device. Only one device can use this account at a time.');e.code='SESSION_REPLACED';return e;}
 function clearReplacedSession(){authGeneration++;verified=false;offline=false;session=null;profile=null;entitlement=null;verifiedMeta=null;signedEnt=null;save();restoreDiagnostic='SESSION_REPLACED_BY_ANOTHER_DEVICE';notify();}

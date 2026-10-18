@@ -20,6 +20,8 @@ const cors = {
 const LIFETIME_IDR = 3575000;
 const LIFETIME_USD_REFERENCE = 200;
 const REUSE_MS = 23 * 3600 * 1000;
+// Public webhook address (SUPABASE_URL inside a function is the API gateway and may not be the public host).
+const WEBHOOK_URL = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/midtrans-lifetime-webhook";
 const b64 = (s: string) => btoa(s);
 
 Deno.serve(async (req) => {
@@ -135,9 +137,11 @@ Deno.serve(async (req) => {
   });
   if (!insert.ok) return json({ error: "ORDER_CREATE_FAILED" }, 500);
 
+  // Every order notifies our webhook directly, whatever "Payment Notification URL" says in the Midtrans
+  // dashboard (X-Override-Notification replaces the dashboard URL for this transaction only).
   const mid = await fetch("https://app.midtrans.com/snap/v1/transactions", {
     method: "POST",
-    headers: { ...midtransAuth, "content-type": "application/json" },
+    headers: { ...midtransAuth, "content-type": "application/json", "x-override-notification": WEBHOOK_URL },
     signal: AbortSignal.timeout(20000),
     body: JSON.stringify({
       transaction_details: { order_id: orderId, gross_amount: grossAmount },

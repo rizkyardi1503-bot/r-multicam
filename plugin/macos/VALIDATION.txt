@@ -1,3 +1,15 @@
+v2.3.11.8 PUBLIC validation — 2026-10-18
+- Panel checkout (real panel.js, sync-ui.js and license.js in a fake DOM, mocked account service) on Windows
+  and macOS copies: Buy/Check Payment hidden for lifetime accounts and shown for trials; a declined confirm
+  opens nothing; a confirmed Buy opens the Midtrans URL once; the Sync card Buy uses the same checkout; a paid
+  check hides Buy. Fails when CHECKOUT_OPEN is false (mutation check).
+- Live payment functions (no transaction): unauthenticated and forged-token calls refused, webhook rejects a
+  forged signature. New checkout orders send X-Override-Notification with the webhook URL (check the first
+  real order in the Midtrans notification history).
+- All v2.3.11.7 host/panel/pacing/sync/drone/license suites rerun on Windows and macOS copies.
+- Not verified natively: macOS Premiere panel, macOS installer and Keychain on Apple hardware; a real paid
+  Midtrans transaction.
+
 v2.3.11.7 PUBLIC validation — 2026-10-18
 - Drone/FPV clock sync: real footage (argy: Mavic 4 + Gyroflow FPV via a Blackmagic reference) placed at the
   editor's corrected positions with 0 frames error after one remembered correction per shoot; mock-Premiere
