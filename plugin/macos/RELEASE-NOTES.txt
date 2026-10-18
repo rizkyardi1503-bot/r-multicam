@@ -1,3 +1,31 @@
+v2.3.11.7 PUBLIC — Drone & FPV sync, exact Cut Pace and reliability
+New in this release:
+- Sync Cameras to Music (formerly Sync to Master Music; beta, lifetime license only): drone and FPV clips (no audio) are placed from their camera clock, bridged
+  through a camera that synced by audio, on their own [CLOCK] track. Correct one clip with "Use selected
+  clip" (or the nudge buttons) and every clip of that drone follows; the correction is remembered per drone
+  and shoot date, so the next project of the same shoot needs no fix. Gyroflow FPV exports are remembered by
+  their bin name. Build refuses when the open sequence or its A1 changed since Find camera sources.
+- Simpler panel: five numbered steps in working order (Analyze Music, Sync Cameras to Music, Auto Cut
+  Multicam, Best Drops, Random Zoom). Music detection runs with built-in settings, and the optional online
+  AI music review was removed (analysis is always local).
+- Cut Pace 2/4/6/8 now counts real beats: cuts land every selected number of beats, also when the beat
+  detector misses or doubles beats, and stay on the beat when a second song starts on A1.
+- No more "4-beat minimum" blocking Apply near drops; 2 Beat no longer holds one camera for a whole section.
+- When a camera's footage ends inside a shot, the edit switches to the camera that continues, on a beat
+  both cameras share.
+- Music engine: tempo no longer locks at half speed (Best Drop windows have the promised length); drop
+  spacing presets work; the optional online music review stays off until you enable it.
+- Continue Multicam works after a stop that had already emptied a camera track; Stop before cutting no
+  longer leaves a saved job behind; a sync left running by a closed panel is stopped; workflow presets set
+  the right Cut Pace.
+- Updates and installers: Windows auto-update works with non-English letters in the user name; the macOS
+  installer waits for Premiere to quit; a pending update is shown after restarting Premiere; Windows
+  backup and rollback work across drives; downloads are https only.
+- Online lifetime checkout is closed for now, so Buy Lifetime is hidden. Trials and existing licenses are
+  not affected.
+- Optional update: v2.3.11.2 and newer keep working. Delivered through Check Update. Save and close
+  Premiere before installing.
+
 v2.3.11.6 PUBLIC — Sync to Master Music (beta), faster cleanup, Camera Role Contrast and reliability
 New in this release:
 - Sync to Master Music (beta, lifetime license): places every camera clip, including very short ones,

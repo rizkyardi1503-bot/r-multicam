@@ -32,7 +32,9 @@ function tempoStats(values){
  var clean=values.filter(function(v){return Number.isFinite(v)&&v>=40&&v<=240;});
  if(!clean.length)return {bpm:null,confidence:'low',spread:null,samples:0,beatInterval:null};
  var bpm=median(clean),dev=clean.map(function(v){return Math.abs(v-bpm);}),mad=median(dev)||0;
- var confidence=clean.length>=4&&mad<2.5?'high':clean.length>=2&&mad<7?'medium':'low';
+ // 'high' also needs most windows to agree: a median over mixed tempo-octave windows can have MAD 0 yet be wrong.
+ var agree=clean.filter(function(v){return Math.abs(v-bpm)<=bpm*.03;}).length/clean.length;
+ var confidence=clean.length>=4&&mad<2.5&&agree>=.6?'high':clean.length>=2&&mad<7?'medium':'low';
  return {bpm:Math.round(bpm),confidence:confidence,spread:Math.round(mad*10)/10,samples:clean.length,beatInterval:Math.round((60/bpm)*1000)/1000};
 }
 var LITTLE_ENDIAN=new Uint8Array(new Uint32Array([1]).buffer)[0]===1;

@@ -1,3 +1,17 @@
+v2.3.11.7 PUBLIC validation — 2026-10-18
+- Drone/FPV clock sync: real footage (argy: Mavic 4 + Gyroflow FPV via a Blackmagic reference) placed at the
+  editor's corrected positions with 0 frames error after one remembered correction per shoot; mock-Premiere
+  drone moves (overlap refusal, deleted clips skipped, rollback without Array.indexOf).
+- Cut Pace: all 15 selections of 2/4/6/8 through the real pacing engine, director and Apply guard on real
+  music maps (normal cameras, camera hand-overs, Mark In/Out); steady beat grid re-locks after phase jumps
+  and between two songs on A1; synthetic 10/60/180-minute drop benchmark unchanged (all drops, 0 false).
+- Tempo tracker: half-tempo windows on a 38-minute DJ set 210 -> 111 with identical benchmark drops.
+- Host/panel regressions: resume after an emptied camera, cancelled apply checkpoint, orphan sync, presets,
+  music options, delete/zoom/sync/guard/lifetime suites on Windows and macOS copies.
+- Installers: Windows install and half-move rollback in a scratch profile; non-ASCII profile path update
+  helper (PowerShell 5.1); macOS installer wait loop with mocked processes (bash -n).
+- Not verified natively: macOS Premiere panel, macOS installer and Keychain on Apple hardware.
+
 v2.3.11.6 PUBLIC validation — 2026-10-16
 - Sync to Master Music: synthetic DJ-set benchmark (clips 0.4-240 s, good/none/bad camera clocks) with no
   high-confidence misplacement; clips under 1 s go to Review instead of stopping the analysis; real-FFmpeg

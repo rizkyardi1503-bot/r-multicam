@@ -2,7 +2,7 @@
 'use strict';
 var cs,busy=false,pending=false,stopRequested=false,job=null,ready=false,lastInfo=null,lastReply=Date.now(),started=0,activeTool='multi';
 var analysisState=null,suggestion=null,uploadIndex=0,pendingSeq=0;
-// v2.3.11.6: generous host ceilings. A long DJ set (80+ min, thousands of clips) or a Premiere autosave
+// v2.3.11.7: generous host ceilings. A long DJ set (80+ min, thousands of clips) or a Premiere autosave
 // can block ExtendScript for tens of seconds; a short timeout only produced false failures.
 var HOST_TIMEOUT_MS=60000,HOST_STEP_TIMEOUT_MS=120000;
 function hostTimeout(base,units,perUnitMs){return Math.min(900000,Math.round(Math.max(base,base+(Number(units)||0)*(Number(perUnitMs)||0))));}
@@ -33,7 +33,7 @@ function stripMusicMap(result,a1){
  x.result.snapshot=a1;return x;
 }
 function musicMapFile(){var base=resumeFilePath();if(!base)return '';var path=resumeRequire('path');return path.join(path.dirname(base),'master-music-map-v18-multifeature-public.json');}
-// v2.3.11.6: a 2 h set produces a ~50+ MB map. It lives only in the cache folder next to the resume
+// v2.3.11.7: a 2 h set produces a ~50+ MB map. It lives only in the cache folder next to the resume
 // file (never localStorage: quota errors + slow panel start), is capped, and is written asynchronously
 // once per burst of saves instead of being stringified 2-3 times on the UI thread.
 var MUSIC_MAP_MAX_BYTES=96*1048576,musicMapTimer=null,musicMapLatest=null,musicMapWriteSeq=0;
@@ -135,7 +135,7 @@ function clearResumeCheckpoint(){clearPersistentResume();try{if(window.localStor
 function stageResumeCheckpoint(kind){
  if(!aiPlan||!aiPlan.snapshot||!aiPlan.snapshot.points)return;
  var snap=aiPlan.snapshot;
- var enabled=(aiPlan.enabledCameras||collectEnabledCameras()).slice(0); writeResumeCheckpoint({minimumShotBeats:4,version:RESUME_SCHEMA,kind:kind||'delete',structurePolicyVersion:1,structurePolicy:aiPlan.structurePolicy,maxHoldBeats:8,tempoMap:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.beat_first&&aiPlan.musicAnalysis.beat_first.tempo_map||[],estimatedBpm:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.estimated_bpm||0,status:'prepared',phase:'cut',projectPath:String(snap.projectPath||''),sequenceID:String(snap.sequenceID||''),sequenceName:lastInfo&&lastInfo.name?lastInfo.name:'Active Sequence',duration:Number(snap.duration)||0,frame:Number(snap.frame)||0,a1Signature:String(snap.a1Signature||''),cameraMediaSignature:cameraMediaSignatureFromSnapshot(snap,enabled),points:snap.points.slice(0),choices:aiPlan.choices.map(function(c){return Number(c.camera);}),enabledTracks:enabled,point:0,track:0,verifyPoint:0,prepScene:0,task:0,cuts:0,removed:0,skipped:0,done:0,total:snap.points.length,liveJobId:'',buildOrigin:'2.3.11.6',checkpointStore:'persistent-file',createdAt:Date.now(),updatedAt:Date.now()});
+ var enabled=(aiPlan.enabledCameras||collectEnabledCameras()).slice(0); writeResumeCheckpoint({minimumShotBeats:4,version:RESUME_SCHEMA,kind:kind||'delete',structurePolicyVersion:1,structurePolicy:aiPlan.structurePolicy,maxHoldBeats:8,tempoMap:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.beat_first&&aiPlan.musicAnalysis.beat_first.tempo_map||[],estimatedBpm:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.estimated_bpm||0,status:'prepared',phase:'cut',projectPath:String(snap.projectPath||''),sequenceID:String(snap.sequenceID||''),sequenceName:lastInfo&&lastInfo.name?lastInfo.name:'Active Sequence',duration:Number(snap.duration)||0,frame:Number(snap.frame)||0,a1Signature:String(snap.a1Signature||''),cameraMediaSignature:cameraMediaSignatureFromSnapshot(snap,enabled),points:snap.points.slice(0),coverageSwitches:(snap.intervals||[]).filter(function(it){return it.coverageSwitch;}).map(function(it){return it.start;}),choices:aiPlan.choices.map(function(c){return Number(c.camera);}),enabledTracks:enabled,point:0,track:0,verifyPoint:0,prepScene:0,task:0,cuts:0,removed:0,skipped:0,done:0,total:snap.points.length,liveJobId:'',buildOrigin:'2.3.11.7',checkpointStore:'persistent-file',createdAt:Date.now(),updatedAt:Date.now()});
 }
 var resumeFlushTime=0,resumeFlushPhase='',resumeFlushId='';
 function syncResumeCheckpoint(r){
@@ -163,7 +163,7 @@ function renderResumePanel(){
  if(el('resumeInfo'))el('resumeInfo').innerHTML=resumeLabel(x);
  if(el('resumeBadge')){var k=x.status==='error'?'error':'warning';el('resumeBadge').className='badge '+k;el('resumeBadge').textContent=x.phase==='delete'?'CLEANUP':'RESUME';}
  if(el('resumeRun'))el('resumeRun').disabled=busy||pending||!ready||!licenseCanUse();
- // v2.3.11.6: "Continue Cleanup Only" was only enabled in the cleanup phase, where it ran exactly the same
+ // v2.3.11.7: "Continue Cleanup Only" was only enabled in the cleanup phase, where it ran exactly the same
  // host resume as Continue. One button resumes whatever stage was saved (cut -> cleanup).
  if(el('resumeCleanup')){el('resumeCleanup').style.display='none';el('resumeCleanup').disabled=true;}
  if(el('resumeDiscard'))el('resumeDiscard').disabled=busy||pending;
@@ -174,7 +174,7 @@ async function resumeSavedMulticam(cleanupOnly){
  try{
   if(x.structurePolicyVersion!==1)throw Error('This saved job predates the build-up/drop camera rule. Generate a new plan on a project copy.');window.RPDirector.validateStructure((x.choices||[]).map(function(camera){return {camera:camera};}),x.structurePolicy);
   if(x.minimumShotBeats!==4)throw Error('This saved job predates the 4-beat minimum. Generate a new plan on a project copy.');
-  if(x.maxHoldBeats!==8)throw Error('This saved job predates the fixed 8-beat rule. Generate a new plan on a project copy before continuing.');var savedBounds=[0].concat(x.points||[]).concat([x.duration]),savedIntervals=[];for(var si=1;si<savedBounds.length;si++)savedIntervals.push({start:savedBounds[si-1],end:savedBounds[si]});window.RPBeatFirst.validateHold((x.choices||[]).map(function(camera){return {camera:camera};}),savedIntervals,{estimated_bpm:x.estimatedBpm,beat_first:{tempo_map:x.tempoMap||[]}});
+  if(x.maxHoldBeats!==8)throw Error('This saved job predates the fixed 8-beat rule. Generate a new plan on a project copy before continuing.');var savedBounds=[0].concat(x.points||[]).concat([x.duration]),savedIntervals=[];for(var si=1;si<savedBounds.length;si++)savedIntervals.push({start:savedBounds[si-1],end:savedBounds[si]});markCoverageSwitches(savedIntervals,x.coverageSwitches||[],x.frame);window.RPBeatFirst.validateHold((x.choices||[]).map(function(camera){return {camera:camera};}),savedIntervals,{estimated_bpm:x.estimatedBpm,beat_first:{tempo_map:x.tempoMap||[]}});
   window.RPDirector.validateMinimumPhysicalTransitions((x.choices||[]).map(function(camera){return {camera:camera};}),savedIntervals,{estimated_bpm:x.estimatedBpm,beat_first:{tempo_map:x.tempoMap||[]}});
   state(x.phase==='delete'?'Restoring saved cleanup job…':'Restoring saved Multicam job…',false,'running');
   var r=null;
@@ -204,21 +204,26 @@ var SETUP_KEY='rp.lastSetup.agent.v210';
 function dropSensitivity(){var x=el('dropSensitivity');return x?String(x.value||'balanced'):'balanced';}
 function dropPreBeats(){var x=el('dropPreBeats');return Math.max(8,Math.min(64,Number(x&&x.value)||24));}
 function dropPostBeats(){var x=el('dropPostBeats');return Math.max(8,Math.min(64,Number(x&&x.value)||32));}
+// Online lifetime checkout is closed: Buy Lifetime / Check Payment stay hidden until this is set true in a release.
+var CHECKOUT_OPEN=false;
+// Online music review (OpenAI) is not offered in this release: analysis is always local.
+var ONLINE_REVIEW=false;
 function selectedPacingCadences(){var out=[];[2,4,6,8].forEach(function(n){var x=el('pacing'+n);if(x&&x.checked)out.push(n);});return out.length?out:[4,6,8];}
 function pacingSelectionText(){return selectedPacingCadences().join(' / ')+' beat'+(selectedPacingCadences().length===1?'':'s');}
 function updatePacingSummary(){var values=selectedPacingCadences(),x=el('pacingSummary');if(x)x.textContent=values.join(' / ')+' beat'+(values.length===1?'':'s');[2,4,6,8].forEach(function(n){var box=el('pacing'+n);if(box&&box.parentNode)box.parentNode.className='pacingToggle'+(box.checked?'':' off');});}
 function constrainPacingToSelection(pacing){pacing=pacing||{segments:[],config:{}};var allowed=selectedPacingCadences().slice().sort(function(a,b){return a-b;}),fast=allowed[0],slow=allowed[allowed.length-1];function nearest(target){target=Number(target)||6;var best=allowed[0],dist=Math.abs(best-target);for(var i=1;i<allowed.length;i++){var d=Math.abs(allowed[i]-target);if(d<dist||(d===dist&&allowed[i]<best)){best=allowed[i];dist=d;}}return best;}var seg=(pacing.segments||[]).map(function(src){var x={},k;for(k in src)x[k]=src[k];var reason=String(x.reason||'').toLowerCase(),target=Number(x.beats_per_cut)||6;if(/drop|pre-drop|high-energy|build-up/.test(reason))target=fast;else if(/breakdown|intro|outro|calm|low/.test(reason))target=slow;x.beats_per_cut=nearest(target);x.max_hold_beats=8;return x;});var cfg={};for(var key in (pacing.config||{}))cfg[key]=pacing.config[key];cfg.allowedCadences=allowed;cfg.minCadence=fast;cfg.maxCadence=slow;cfg.base=nearest(6);cfg.explicitCadence=allowed.length===1;cfg.energyAdaptive=allowed.length>1;cfg.userSelectedCadence=true;cfg.softPreference=false;cfg.maxHoldBeats=8;return {summary:'Auto Music Map V14 · selected pacing '+allowed.join('/')+' beat · selected cut intervals',segments:seg,config:cfg};}
-function musicOptions(){return {sensitivity:dropSensitivity(),preBeats:dropPreBeats(),postBeats:dropPostBeats(),confidenceThreshold:el('miThreshold')&&el('miThreshold').value!==''?Number(el('miThreshold').value):null,minSpacingBeats:Number(el('miSpacing')&&el('miSpacing').value)||64,cutsBefore:3,cutsAfter:4};}
+function musicOptions(){return {sensitivity:dropSensitivity(),preBeats:dropPreBeats(),postBeats:dropPostBeats(),confidenceThreshold:el('miThreshold')&&el('miThreshold').value!==''?Number(el('miThreshold').value):null,minSpacingBeats:el('miSpacing')&&el('miSpacing').value!==''?Number(el('miSpacing').value):undefined,cutsBefore:3,cutsAfter:4};}
 window.RPCompactRulesChanged=function(){if(busy)return;aiPlan=null;clearBestDropCache('Music rules changed. Click Best Drops to refresh.');if(suggestion){enrichMusicMap(suggestion,suggestion.snapshot.duration);showMusic(suggestion);saveMasterMusicMap(suggestion,suggestion.snapshot);}};
 function enrichMusicMap(result,duration){aiPlan=null;var engine=window.RPMusicV12||window.RPMusicV10;if(!engine||!engine.enrich)throw Error('Auto Music Map V14 engine is unavailable. Reinstall this build.');engine.enrich(result,duration,musicOptions());window.RPBeatFirst.enrich(result,duration);return result;}
 
 async function prepareMusicMap(result,duration){
  result=enrichMusicMap(result,duration);
- if(window.RPOnlineMusicAI){
+ if(ONLINE_REVIEW&&window.RPOnlineMusicAI){
   var onlineSettings=window.RPOnlineMusicAI.settings();
   musicAnalysisStage(2,0,onlineSettings.mode==='off'?'Online AI is OFF · local analysis only':!onlineSettings.hasKey?'No API key · local analysis only':'Checking candidate batches for online review…');
   onlineMessage('Reviewing music candidates when API access is available…');
-  await window.RPOnlineMusicAI.refine(result,duration,analysisState,function(p,message){onlineMessage(message);musicAnalysisStage(2,p,String(message||'').replace(/^Online AI:\s*/i,''));});
+  try{await window.RPOnlineMusicAI.refine(result,duration,analysisState,function(p,message){onlineMessage(message);musicAnalysisStage(2,p,String(message||'').replace(/^Online AI:\s*/i,''));});}
+  catch(e){if((analysisState&&analysisState.cancelled)||(e&&e.code==='cancelled'))throw Error('Analysis stopped.');throw e;}
   if(analysisState&&analysisState.cancelled)throw Error('Analysis stopped.');
   musicAnalysisStage(3,.15,'Merging reviewed candidates with local structure rules…');
   result=enrichMusicMap(result,duration);
@@ -313,13 +318,13 @@ function hostAuthorizedCode(code){
   if(busy&&/^\s*rp_(step|a1Upload|syncStep)\(/.test(String(code||'')))return code;
   return "rp_licenseDenied()";
  }
- return "(function(){var __a=rp_authorize("+Math.floor(sess.expires)+","+JSON.stringify(sess.proof)+");if(!__a.ok)return rp_encode(__a);return "+code+";})()";
+ return "(function(){var __a=rp_authorize("+Math.floor(sess.expires)+","+JSON.stringify(sess.proof)+","+JSON.stringify(sess.tier||'')+");if(!__a.ok)return rp_encode(__a);return "+code+";})()";
 }
 function invoke(code,cb,timeoutMs){
  var guard=window.RPResourceGuard;
  if(!guard||!/^\s*rp_step\(/.test(code)||pending)return invokeHost(code,cb,timeoutMs);
  // Own the host slot while sampling: Stop cannot enqueue a competing request.
- // v2.3.11.6: the callback runs exactly once and the slot is released on every failure path.
+ // v2.3.11.7: the callback runs exactly once and the slot is released on every failure path.
  var delivered=false,reply=function(r){if(delivered)return;delivered=true;cb(r);},sample;
  pending=true;
  try{guard.observe(job);sample=guard.check();}catch(guardError){sample=Promise.reject(guardError);}
@@ -361,20 +366,22 @@ function estimate(){
 function refresh(){
  if(busy||pending)return;
  invoke('rp_getActiveInfo()',function(r){
-  ready=r.ok&&r.version==='2.3.11.6';lastInfo=r.ok?r:null;
+  ready=r.ok&&r.version==='2.3.11.7';lastInfo=r.ok?r:null;
   if(ready&&r.pendingID){
    // A Premiere host job can outlive/recover from a panel reload. Resume polling it
    // instead of automatically stopping it and leaving thousands of partial cuts.
    busy=true;stopRequested=false;started=Date.now();lastReply=started;controls();
    invoke('rp_state()',update);return;
   }
+  // This panel is busy while its own sync runs, so a running sync here was left by a closed panel and nothing can drive or stop it.
+  if(ready&&r.syncPendingID){invoke('rp_syncStop('+quote(r.syncPendingID)+')',function(x){if(x&&x.ok===false)state('A sync left running by a closed panel could not be stopped: '+(x.message||'unknown error')+'. Restart Premiere Pro.',true,'error');else state('A sync left running by a closed panel was stopped. Run Sync again.',false,'warning');controls();});}
   el('timeline').textContent=r.name?r.name+' · '+r.duration.toFixed(2)+' seconds':'Open an active sequence in Premiere.';
-  if(!ready)state(r.message||('Host version mismatch (panel 2.3.11.6 / host '+String(r&&r.version||'unknown')+'). Close Premiere completely, reinstall this build, then reopen Premiere.'),true);
+  if(!ready)state(r.message||('Host version mismatch (panel 2.3.11.7 / host '+String(r&&r.version||'unknown')+'). Close Premiere completely, reinstall this build, then reopen Premiere.'),true);
   else if(el('state').textContent==='Connecting…')state('Ready');
   estimate();controls();
  });
 }
-// Host step timing (v2.3.11.6): written next to the resume checkpoint so slow runs can be diagnosed.
+// Host step timing (v2.3.11.7): written next to the resume checkpoint so slow runs can be diagnosed.
 var stepTimingAt=0,stepTimingLogged='';
 function stepTimingText(t){if(!t||!t.steps)return '';var avg=function(x){return Math.round(x/t.steps);};return 'Host timing: '+t.steps+' steps, avg '+avg(t.stepMs)+' ms/step · cut '+Math.round(t.cut/1000)+' s · prepare '+Math.round(t.prepare/1000)+' s · cleanup resolve '+Math.round(t.resolve/1000)+' s, unlink '+Math.round(t.unlink/1000)+' s ('+t.batches+' batches, '+t.batchPieces+' pieces), remove '+Math.round(t.remove/1000)+' s, verify '+Math.round(t.verify/1000)+' s · checks '+Math.round(t.checks/1000)+' s · GC '+Math.round(t.gc/1000)+' s';}
 function saveStepTiming(r,force){
@@ -435,8 +442,9 @@ function requestStop(){
 el('stop').onclick=requestStop;el('multiStop').onclick=requestStop;el('zoomStop').onclick=requestStop;el('dropStop').onclick=requestStop;el('podcastStop').onclick=requestStop;
 
 
-function call(code,timeoutMs){return new Promise(function(resolve,reject){invoke(code,function(r){try{if(r&&r.timing)saveStepTiming(r,!r.ok||r.status!=='running');if(r.ok){if(r.status==='running')window.setTimeout(function(){resolve(r);},Math.max(40,Number(r.waitMs)||0));else resolve(r);}else{if(r.id){job=r;syncResumeCheckpoint(r);}reject(Error(r.message||'Premiere did not respond'));}}catch(callbackError){reject(callbackError);}},timeoutMs);});}
+function call(code,timeoutMs){return new Promise(function(resolve,reject){invoke(code,function(r){try{if(r&&r.timing)saveStepTiming(r,!r.ok||r.status!=='running');if(r.ok){if(r.status==='running')window.setTimeout(function(){resolve(r);},Math.max(40,Number(r.waitMs)||0));else resolve(r);}else{if(r.id){job=r;syncResumeCheckpoint(r);}var err=Error(r.message||'Premiere did not respond');err.timeout=!!r.timeout;reject(err);}}catch(callbackError){reject(callbackError);}},timeoutMs);});}
 function quote(text){return JSON.stringify(text).replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');}
+function markCoverageSwitches(intervals,times,frame){var tol=(Number(frame)||1/30)/4;(intervals||[]).forEach(function(it){for(var i=0;i<(times||[]).length;i++)if(Math.abs(Number(it.start)-Number(times[i]))<=tol){it.coverageSwitch=true;break;}});}
 function internalSnapshotCall(result){return 'rp_getAIInternal('+quote(result.snapshot.signature)+','+quote(result.points.join(','))+')';}
 async function applySuggestionDirect(result){
  var r=await call('rp_a1DirectApply('+quote(result.snapshot.signature)+','+quote(result.points.join(','))+')');
@@ -464,6 +472,10 @@ async function makeAIPlan(previous,base,scale){
  var availableCameraMap={};(snapshot.tracks||[]).forEach(function(t){availableCameraMap[Number(t.index)]=true;});var requestedCameras=enabledCameras.slice(0),unavailableCameras=requestedCameras.filter(function(c){return !availableCameraMap[Number(c)];});enabledCameras=requestedCameras.filter(function(c){return !!availableCameraMap[Number(c)];});
  if(!enabledCameras.length)throw Error('None of the enabled Camera Selection tracks has usable footage. Check Camera Roles / Camera Selection and make sure at least one selected V-track is unlocked, enabled and contains clips.');
  if(unavailableCameras.length)log('Camera Selection auto-skip: '+unavailableCameras.map(function(c){return 'V'+(Number(c)+1);}).join(', ')+' is missing, empty, locked or disabled in this sequence. Multicam will continue with '+enabledCameras.map(function(c){return 'V'+(Number(c)+1);}).join(', ')+'.');
+ // A shot no single camera covers is cut over to the camera that continues, instead of being left untouched.
+ var switches=window.RPBeatFirst&&window.RPBeatFirst.coverageSplits?window.RPBeatFirst.coverageSplits(snapshot,enabledCameras,suggestion):[],known={};suggestion.points.forEach(function(p){known[Number(p).toFixed(4)]=1;});switches=switches.filter(function(p){return !known[p.toFixed(4)];});
+ if(switches.length){suggestion.points=suggestion.points.concat(switches).sort(function(a,b){return a-b;});suggestion.meta=(suggestion.meta||[]).concat(switches.map(function(p){return {time:p,reason:'Coverage switch',beats_per_cut:0};})).sort(function(a,b){return a.time-b.time;});snapshot=await call(internalSnapshotCall(suggestion),hostTimeout(60000,suggestion.points.length,40));log('Coverage switch: '+switches.length+' shot'+(switches.length===1?'':'s')+' cut over to the camera that continues where the other camera has no footage.');}
+ markCoverageSwitches(snapshot.intervals,switches,snapshot.frame);
  var result=await window.RPDirector.run(snapshot,{key:'agent-ai',model:'R Project Auto Music Map V14',roles:el('aiRoles').value,enabledCameras:enabledCameras,dropCamera:selectedDropCamera(),vision:el('aiVision').checked,budget:Number(el('aiBudget').value),ffmpeg:el('ffmpeg').value,music:music,musicAnalysis:musicContext(suggestion)},analysisState,function(p,message){aiProgress(base+scale*(.18+.82*p),message);});
  if(unavailableCameras.length)result.summaries.unshift('Camera Selection Auto-Skip: '+unavailableCameras.map(function(c){return 'V'+(Number(c)+1);}).join(', ')+' unavailable; continued safely with '+enabledCameras.map(function(c){return 'V'+(Number(c)+1);}).join(', ')+'.');
  var current=await call('rp_validateAIContext('+quote(snapshot.sequenceID)+','+quote(snapshot.projectPath||'')+','+quote(snapshot.a1Signature||'')+','+Number(snapshot.duration||0)+')',HOST_TIMEOUT_MS);if(!current.contextValid)throw Error(current.message||'Timeline or A1 changed while generating the plan.');
@@ -490,7 +502,7 @@ function sequenceExportLabel(spec){
  return parts.join(' · ');
 }
 function amePresetName(path){var s=String(path||'').replace(/\\/g,'/'),parts=s.split('/');return parts[parts.length-1]||s;}
-function showAMEPreset(message){var x=el('amePresetInfo');if(x)x.innerHTML='<strong>Best Drop Export:</strong> '+message;}
+function showAMEPreset(message){var x=el('amePresetInfo');if(x)x.innerHTML='<strong>Best Drop Export:</strong> '+htmlEscape(message);}
 function saveAMEPreset(path){
  autoAMEPreset=String(path||'');
  try{if(autoAMEPreset)localStorage.setItem(AME_PRESET_KEY,autoAMEPreset);else localStorage.removeItem(AME_PRESET_KEY);}catch(e){}
@@ -699,7 +711,7 @@ async function renderBestDrops(){
    aiProgress(.12+.87*(r.done/Math.max(1,r.total)),'Best Drops · creating and queueing '+Math.min(r.done+1,r.total)+' / '+r.total);r=await call('rp_step('+quote(r.id)+')',HOST_STEP_TIMEOUT_MS);job=r;
   }
   if(r.status!=='done')throw Error(r.message||'Best Drop export queue failed.');
-  aiProgress(1,'Best Drops queued to Adobe Media Encoder');el('dropInfo').innerHTML='<strong>Queued:</strong> '+r.queued+' / '+requested+' selected drops are rendering in Adobe Media Encoder.<br>'+r.outputFolder;
+  aiProgress(1,'Best Drops queued to Adobe Media Encoder');el('dropInfo').innerHTML='<strong>Queued:</strong> '+r.queued+' / '+requested+' selected drops are rendering in Adobe Media Encoder.<br>'+htmlEscape(r.outputFolder);
   el('dropResult').textContent=bestDropListText(bestDropCache)+'\n\nEXPORT QUEUED\n'+(r.outputs||[]).map(function(o){return '#'+o.rank+' → '+o.file;}).join('\n')+'\n\nOutput folder: '+r.outputFolder;
   state('Best Drops complete: '+r.queued+' contents sent to Media Encoder.',false,'success');log('Best Drops queued '+r.queued+' exports to '+r.outputFolder);
  }catch(e){state(e.message,true,'error');log(e.message);}
@@ -764,13 +776,13 @@ el('aiMarkerRun').onclick=async function(){
 };
 async function applyAI(kind,progressBase,progressSpan){
  if((busy&&!autoDirector)||pending||!ready||!aiPlan)return;if(!requireEntitlement())return;
- busy=true;stopRequested=false;job=null;started=Date.now();analysisState={cancelled:false};progressBase=isFinite(Number(progressBase))?Number(progressBase):0;progressSpan=isFinite(Number(progressSpan))?Number(progressSpan):1;var applyProgress=function(p,m){aiProgress(progressBase+progressSpan*Math.max(0,Math.min(1,Number(p)||0)),m);};controls();state('Validating Agent AI camera plan…');
+ busy=true;stopRequested=false;job=null;started=Date.now();analysisState={cancelled:false};var staged=false,applySent=false;progressBase=isFinite(Number(progressBase))?Number(progressBase):0;progressSpan=isFinite(Number(progressSpan))?Number(progressSpan):1;var applyProgress=function(p,m){aiProgress(progressBase+progressSpan*Math.max(0,Math.min(1,Number(p)||0)),m);};controls();state('Validating Agent AI camera plan…');
  try{
   if(!window.RPDirector.fresh(aiPlan.snapshot,aiPlan.fingerprint))throw Error('Camera media changed. Generate a new plan.');
   window.RPBeatFirst.validateHold(aiPlan.choices,aiPlan.snapshot.intervals,aiPlan.musicAnalysis||musicContext(suggestion));
   window.RPDirector.validateStructure(aiPlan.choices,aiPlan.structurePolicy);
   window.RPDirector.validateMinimumPhysicalTransitions(aiPlan.choices,aiPlan.snapshot.intervals,aiPlan.musicAnalysis||musicContext(suggestion));
-  stageResumeCheckpoint(kind);
+  stageResumeCheckpoint(kind);staged=true;
   state('Camera plan saved. Starting single-pass Premiere timeline edit…',false,'running');applyProgress(.015,'Camera plan checkpoint saved · single-pass apply');
   await call('rp_aiStage('+quote(aiPlan.snapshot.signature)+','+quote(aiPlan.snapshot.a1Signature)+','+quote(aiPlan.snapshot.points.join(','))+','+quote((aiPlan.enabledCameras||collectEnabledCameras()).join(','))+')',hostTimeout(180000,aiPlan.snapshot.points.length,60));
   for(var i=0;i<aiPlan.choices.length;i+=100){
@@ -780,7 +792,7 @@ async function applyAI(kind,progressBase,progressSpan){
   }
   if(analysisState.cancelled)throw Error('Application cancelled before cutting.');
   // rp_aiApply clones the sequence as a backup before editing: allow time for very long sets.
-  var r=await call('rp_aiApply('+quote(kind)+','+quote(el('aiBackup')&&!el('aiBackup').checked?'1':'0')+')',hostTimeout(180000,aiPlan.snapshot.points.length,20));job=r;syncResumeCheckpoint(r);
+  applySent=true;var r=await call('rp_aiApply('+quote(kind)+','+quote(el('aiBackup')&&!el('aiBackup').checked?'1':'0')+')',hostTimeout(180000,aiPlan.snapshot.points.length,20));job=r;syncResumeCheckpoint(r);
   if(autoDirector){
    while(r.status==='running'){
     if(analysisState.cancelled){r=await call('rp_stop('+quote(r.id)+')');job=r;syncResumeCheckpoint(r);throw Error('Agent AI Director stopped.');}
@@ -792,7 +804,10 @@ async function applyAI(kind,progressBase,progressSpan){
    log('Full live set complete: '+(r.cuts||0)+' cuts · '+(r.removed||0)+' unused camera pieces removed · winners protected.');
    analysisState=null;aiPlan=null;busy=false;controls();
   }else{analysisState=null;aiPlan=null;update(r);}
- }catch(e){analysisState=null;busy=false;state(e.message,true);log(e.message);controls();}
+ }catch(e){
+  // No host job (job stays null) means nothing was cut; keep the checkpoint only if rp_aiApply timed out and may still be running.
+  if(staged&&!job&&!(applySent&&e&&e.timeout))clearResumeCheckpoint();
+  analysisState=null;busy=false;state(e.message,true);log(e.message);controls();}
 }
 if(el('resumeRun'))el('resumeRun').onclick=function(){resumeSavedMulticam(false);};
 if(el('resumeCleanup'))el('resumeCleanup').onclick=function(){resumeSavedMulticam(false);};
@@ -801,7 +816,7 @@ el('aiApply').onclick=function(){setActiveTool('multi');applyAI('angle');};
 el('aiDelete').onclick=function(){setActiveTool('multi');applyAI('delete');};
 el('aiExport').onclick=function(){
  if(busy||pending||!aiPlan)return;
- var report={version:'2.3.11.6-public-v18',engine:aiPlan.model,instructions:'Automatic music-driven editing; no prompt',selectedPacing:selectedPacingCadences(),dropCamera:selectedDropCamera()==null?'auto':'V'+(selectedDropCamera()+1),cameraRoles:aiPlan.roles,enabledCameras:aiPlan.enabledCameras||collectEnabledCameras(),musicAnalysis:aiPlan.musicAnalysis||musicContext(suggestion),pacing:aiPlan.pacing||suggestion&&suggestion.pacing||null,images:aiPlan.images,summary:aiPlan.summaries,choices:aiPlan.choices.map(function(c){var it=aiPlan.snapshot.intervals[c.id];return {start:it.start,end:it.end,camera:c.camera<0?null:'V'+(c.camera+1),confidence:c.confidence,reason:c.reason};})};
+ var report={version:'2.3.11.7-public-v18',engine:aiPlan.model,instructions:'Automatic music-driven editing; no prompt',selectedPacing:selectedPacingCadences(),dropCamera:selectedDropCamera()==null?'auto':'V'+(selectedDropCamera()+1),cameraRoles:aiPlan.roles,enabledCameras:aiPlan.enabledCameras||collectEnabledCameras(),musicAnalysis:aiPlan.musicAnalysis||musicContext(suggestion),pacing:aiPlan.pacing||suggestion&&suggestion.pacing||null,images:aiPlan.images,summary:aiPlan.summaries,choices:aiPlan.choices.map(function(c){var it=aiPlan.snapshot.intervals[c.id];return {start:it.start,end:it.end,camera:c.camera<0?null:'V'+(c.camera+1),confidence:c.confidence,reason:c.reason};})};
  pending=true;
  try{cs.evalScript("(function(){var f=File.saveDialog('Save Agent AI Director plan as JSON');return f?encodeURIComponent(f.fsName):'';})()",function(raw){
   pending=false;lastReply=Date.now();
@@ -824,7 +839,7 @@ function renderAccount(){
  if(bar)bar.style.display=a.signedIn?'flex':'none';
  if(el('accountBarEmail'))el('accountBarEmail').textContent=a.signedIn?(a.email||'Signed-in Supabase account'):'Not signed in';
  if(el('accountBarTrial')){var ls=window.RPLicense&&window.RPLicense.status(),trialText=a.signedIn?(ls&&ls.accountLabel||formatTrialRemaining(a.remainingMs)):'SIGN IN REQUIRED';if(a.signedIn&&a.canUse&&a.remainingMs!==null&&a.remainingMs>0&&a.remainingMs<=259200000)trialText+=' · Lifetime US$200 available';el('accountBarTrial').textContent=trialText;}
- var lifetime=pr.license_status==='lifetime'||(a.entitlement&&a.entitlement.license_status==='lifetime');['accountBuyLifetime','accountCheckPayment'].forEach(function(id){var b=el(id);if(b)b.style.display=(a.signedIn&&!lifetime)?'':'none';});if(el('accountBarLogout'))el('accountBarLogout').style.display=a.signedIn?'':'none';
+ var lifetime=pr.license_status==='lifetime'||(a.entitlement&&a.entitlement.license_status==='lifetime');['accountBuyLifetime','accountCheckPayment'].forEach(function(id){var b=el(id);if(b)b.style.display=(CHECKOUT_OPEN&&a.signedIn&&!lifetime)?'':'none';});if(el('accountBarLogout'))el('accountBarLogout').style.display=a.signedIn?'':'none';
  if(el('gateLogin'))el('gateLogin').disabled=!!a.busy;if(el('gateResend'))el('gateResend').disabled=!!a.busy;if(el('gateForgot'))el('gateForgot').disabled=!!a.busy;
  if(el('gateCreate'))el('gateCreate').disabled=!!a.busy;if(el('gateGoogle'))el('gateGoogle').disabled=!!a.busy;if(el('gateYahoo'))el('gateYahoo').disabled=!!a.busy;
  if(el('gateCancelGoogle'))el('gateCancelGoogle').style.display=a.oauthPending?'':'none';
@@ -843,7 +858,7 @@ function bindAccountUI(){
  el('gateYahoo').onclick=async function(){accountMessage('Checking Yahoo sign-in…');try{await window.RPAccountAuth.social('yahoo');accountMessage('Complete Yahoo sign-in in the browser.');}catch(e){accountMessage(e.message,true);}};
  el('gateCreate').onclick=async function(){var email=el('gateEmail').value.trim(),pw=el('gatePassword').value;if(!email||pw.length<8)return accountMessage('Enter a valid email and password (minimum 8 characters).',true);var w=window.RPAccountAuth.signupWait?window.RPAccountAuth.signupWait():0;if(w>0)return accountMessage('Please wait '+Math.ceil(w/1000)+' seconds before requesting another verification email.',true);accountMessage('Creating trial account… Please click only once.');try{var r=await window.RPAccountAuth.signUp(email,pw);if(r&&r.signedIn){accountMessage('Verified. Trial activated on this device.');renderAccount();}else accountMessage('Verification sent. Open the email once, confirm it, then return and press Sign In. If you already created this account earlier, press Sign In now.');}catch(e){accountMessage(e.message,true);}};
  var paymentBusy=false;
- async function buyLifetime(){if(paymentBusy)return;var a=window.RPAccountAuth.status();if(!a.signedIn)return accountMessage('Sign in first, then press Buy Lifetime.',true);paymentBusy=true;var button=el('accountBuyLifetime');if(button)button.disabled=true;accountMessage('Creating Midtrans checkout…');try{var data=await window.RPAccountAuth.createLifetimeCheckout();var amount='IDR '+Number(data.gross_amount_idr).toLocaleString();if(!window.confirm('Lifetime license: US$'+data.display_price_usd+'\nPay '+amount+' through Midtrans?\nReview the payment methods in your browser before paying.'))return accountMessage('Checkout is ready. Payment has not been made.');if(!window.RPAccountAuth.openExternalUrl(data.checkout_url))throw Error('Could not open checkout. Please use Buy Lifetime on r-multicam.pages.dev.');accountMessage('Midtrans checkout opened for '+amount+'. After paying, press Check Payment. If no payment methods are available, contact support.');}catch(e){if(e&&e.status===409&&/already (received|active)/i.test(String(e.message||''))){try{await window.RPAccountAuth.refreshEntitlement();}catch(re){}try{renderAccount();renderLicense();}catch(ue){}accountMessage(String(e.message));}else accountMessage('Checkout failed: '+e.message,true);}finally{paymentBusy=false;if(button)button.disabled=false;}}
+ async function buyLifetime(){if(paymentBusy)return;if(!CHECKOUT_OPEN)return accountMessage('Online checkout is closed for now. Your trial and existing licenses are not affected.',true);var a=window.RPAccountAuth.status();if(!a.signedIn)return accountMessage('Sign in first, then press Buy Lifetime.',true);paymentBusy=true;var button=el('accountBuyLifetime');if(button)button.disabled=true;accountMessage('Creating Midtrans checkout…');try{var data=await window.RPAccountAuth.createLifetimeCheckout();var amount='IDR '+Number(data.gross_amount_idr).toLocaleString();if(!window.confirm('Lifetime license: US$'+data.display_price_usd+'\nPay '+amount+' through Midtrans?\nReview the payment methods in your browser before paying.'))return accountMessage('Checkout is ready. Payment has not been made.');if(!window.RPAccountAuth.openExternalUrl(data.checkout_url))throw Error('Could not open checkout. Please use Buy Lifetime on r-multicam.pages.dev.');accountMessage('Midtrans checkout opened for '+amount+'. After paying, press Check Payment. If no payment methods are available, contact support.');}catch(e){if(e&&e.status===409&&/already (received|active)/i.test(String(e.message||''))){try{await window.RPAccountAuth.refreshEntitlement();}catch(re){}try{renderAccount();renderLicense();}catch(ue){}accountMessage(String(e.message));}else accountMessage('Checkout failed: '+e.message,true);}finally{paymentBusy=false;if(button)button.disabled=false;}}
  async function checkPayment(){if(paymentBusy)return;paymentBusy=true;accountMessage('Checking payment with Midtrans…');try{var result=await window.RPAccountAuth.reconcileLifetimePayment();renderAccount();var a=window.RPAccountAuth.status();if(a.entitlement&&a.entitlement.license_status==='lifetime')accountMessage('Lifetime Access is ACTIVE.');else accountMessage(result.status==='no_order'?'No payment order was found. Use Buy Lifetime to open checkout.':'No completed payment was verified yet. Check again after payment.');}catch(e){accountMessage('Payment check failed: '+e.message,true);}finally{paymentBusy=false;}}
  if(el('accountBuyLifetime'))el('accountBuyLifetime').onclick=buyLifetime;if(el('accountCheckPayment'))el('accountCheckPayment').onclick=checkPayment;
  el('accountBarLogout').onclick=function(){window.RPAccountAuth.signOut();accountMessage('Signed out. Plugin access is locked.');renderAccount();};

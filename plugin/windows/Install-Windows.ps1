@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
 $base = $PSScriptRoot
 $src = Join-Path $base 'Plugin'
-$version = '2.3.11.6'
+$version = '2.3.11.7'
 if (-not (Test-Path -LiteralPath $src -PathType Container)) { throw 'Plugin payload folder is missing. Extract the whole ZIP first, then run SETUP-WINDOWS.cmd from the extracted folder.' }
 
 # Manual recovery guard: stop only stale R Project one-click updater processes from an older build.
@@ -21,6 +21,45 @@ if (-not $AutoUpdate -and -not $TestRoot) {
 }
 
 function Get-SafeSha256([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
+
+# Older Windows PowerShell 5.1 builds cannot Move-Item a folder to another volume (e.g. %APPDATA% redirected to another drive than %LOCALAPPDATA%): copy, then delete.
+# Newer builds copy-and-delete inside Move-Item. Either way a copy or delete that stops part-way must not leave the source half-deleted.
+function Move-PluginFolder([string]$From, [string]$To) {
+    # Move-Item would nest $From inside an existing $To instead of replacing it.
+    if (Test-Path -LiteralPath $To) { throw "Destination already exists: $To" }
+    $partial = $false
+    try { Move-Item -LiteralPath $From -Destination $To -ErrorAction Stop; return }
+    catch {
+        if (-not (Test-Path -LiteralPath $From)) { throw }
+        $failure = $_
+        $partial = Test-Path -LiteralPath $To
+        # -2147024879 = ERROR_NOT_SAME_DEVICE (a junction or mount point to another volume behind the same drive letter).
+        $crossVolume = ([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($From)) -ine [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($To))) -or ($_.Exception.HResult -eq -2147024879)
+        if (-not $partial -and -not $crossVolume) { throw }
+    }
+    if (-not $partial) {
+        try {
+            Copy-Item -LiteralPath $From -Destination $To -Recurse -Force -ErrorAction Stop
+            Remove-Item -LiteralPath $From -Recurse -Force -ErrorAction Stop
+            return
+        } catch { $failure = $_ }
+    }
+    # Restore files already deleted from the source, then drop the copy. If that fails, keep the copy and say where it is.
+    if (Test-Path -LiteralPath $To) {
+        try {
+            $copyRoot = (Get-Item -LiteralPath $To -Force).FullName
+            foreach ($file in @(Get-ChildItem -LiteralPath $copyRoot -Recurse -Force -File)) {
+                $target = Join-Path $From $file.FullName.Substring($copyRoot.Length)
+                if (-not (Test-Path -LiteralPath $target)) {
+                    New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+                    Copy-Item -LiteralPath $file.FullName -Destination $target -Force -ErrorAction Stop
+                }
+            }
+        } catch { throw ($failure.Exception.Message + ' A complete copy is kept at: ' + $To) }
+        Remove-Item -LiteralPath $To -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    throw $failure
+}
 
 function Test-FFmpegExecutable([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
@@ -184,7 +223,7 @@ try {
         $old = Join-Path $extensionRoot $name
         if (Test-Path -LiteralPath $old) {
             if ((Get-Item -LiteralPath $old -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Redirected plugin folder: $old" }
-            Move-Item -LiteralPath $old -Destination (Join-Path $backup $name)
+            Move-PluginFolder $old (Join-Path $backup $name)
             $moved += $name
         }
     }
@@ -197,10 +236,12 @@ $installedPanel = Get-Content -LiteralPath (Join-Path $dest 'panel.js') -Raw
 if ($installedHost -notlike ("*version:'" + $version + "'*")) { throw 'Installed host script version verification failed.' }
 if ($installedPanel -notlike ("*r.version==='" + $version + "'*")) { throw 'Installed panel/host handshake verification failed.' }
 } catch {
-    if ($installed -and (Test-Path -LiteralPath $dest)) { Remove-Item -LiteralPath $dest -Recurse -Force -ErrorAction SilentlyContinue }
+    # Whatever is at $dest after the old copy was moved out is the new (possibly half-moved) plugin.
+    if (($installed -or ($moved -contains (Split-Path -Leaf $dest))) -and (Test-Path -LiteralPath $dest)) { Remove-Item -LiteralPath $dest -Recurse -Force -ErrorAction SilentlyContinue }
     foreach ($name in $moved) {
         $saved = Join-Path $backup $name
-        if (Test-Path -LiteralPath $saved) { Move-Item -LiteralPath $saved -Destination (Join-Path $extensionRoot $name) -Force }
+        # Restore each copy on its own: one failure must not hide the original error or skip the others.
+        if (Test-Path -LiteralPath $saved) { try { Move-PluginFolder $saved (Join-Path $extensionRoot $name) } catch { Write-Warning ("Could not restore $name automatically; it is kept at: $saved") } }
     }
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
     throw

@@ -291,9 +291,11 @@ function physicalShotRuns(choices,intervals,musicAnalysis){
  for(i=0;i<runs.length;i++)runs[i].beats=beats(runs[i].startTime,runs[i].endTime);
  return runs;
 }
+// A cut where one camera's footage ends (coverage switch) is unavoidable: a short shot next to it does not block Apply.
+function coverageForced(r,intervals){return !!(intervals[r.start]&&intervals[r.start].coverageSwitch||intervals[r.end+1]&&intervals[r.end+1].coverageSwitch);}
 function validateMinimumPhysicalTransitions(choices,intervals,musicAnalysis){
  if(!Array.isArray(choices)||!Array.isArray(intervals)||choices.length!==intervals.length)throw Error('Camera plan is incomplete.');
- var short=physicalShotRuns(choices,intervals,musicAnalysis).filter(function(r){return r.camera>=0&&r.beats<4-SHOT_BEAT_TOLERANCE;});
+ var short=physicalShotRuns(choices,intervals,musicAnalysis).filter(function(r){return r.camera>=0&&r.beats<4-SHOT_BEAT_TOLERANCE&&!coverageForced(r,intervals);});
  if(short.length)throw Error('4-beat minimum: '+short.length+' camera shot(s) remain too short; first at '+short[0].startTime.toFixed(3)+'s ('+short[0].beats.toFixed(2)+' beats). Coverage or exact-drop constraints prevent a safe merge. No timeline changes made. Review camera coverage and regenerate the plan.');
  return true;
 }
@@ -317,6 +319,10 @@ function enforceMinimumPhysicalTransitions(choices,intervals,musicAnalysis,enabl
    var r=runs[n];if(r.camera<0||r.beats>=4-SHOT_BEAT_TOLERANCE)continue;
    var prev=n>0?runs[n-1]:null,next=n+1<runs.length?runs[n+1]:null;
    // Every repair removes a physical transition; locked exact-drop cameras cannot be changed.
+   // Two short neighbours become one shot first: absorbing every short shot into the previous one chained a 2-beat pace
+   // into a single camera holding a whole section.
+   if(next&&next.camera>=0&&next.beats<4-SHOT_BEAT_TOLERANCE&&replaceRun(next,r.camera)){changed=true;break;}
+   if(prev&&prev.camera>=0&&prev.beats<4-SHOT_BEAT_TOLERANCE&&replaceRun(prev,r.camera)){changed=true;break;}
    if(prev&&prev.camera>=0&&replaceRun(r,prev.camera)){changed=true;break;}
    if(prev&&prev.camera>=0&&replaceRun(prev,r.camera)){changed=true;break;}
    if(next&&next.camera>=0&&replaceRun(next,r.camera)){changed=true;break;}
@@ -324,7 +330,7 @@ function enforceMinimumPhysicalTransitions(choices,intervals,musicAnalysis,enabl
   }
   if(!changed)break;
  }
- var remaining=physicalShotRuns(out,intervals,musicAnalysis).filter(function(r){return r.camera>=0&&r.beats<4-SHOT_BEAT_TOLERANCE;});
+ var remaining=physicalShotRuns(out,intervals,musicAnalysis).filter(function(r){return r.camera>=0&&r.beats<4-SHOT_BEAT_TOLERANCE&&!coverageForced(r,intervals);});
  for(i=0;i<remaining.length;i++)warnings.push({time:remaining[i].startTime,beats:remaining[i].beats,message:'Shot remains below 4 beats because exact-drop timing/contrast or footage coverage prevents a safe merge. Apply is blocked.'});
  return {choices:out,repairs:repairs,warnings:warnings,minimumBeats:4,applyBlocked:remaining.length>0};
 }

@@ -22,12 +22,12 @@ function create(deps){
  function prefs(){try{var s=storage||root.localStorage;return JSON.parse(s.getItem('rp.onlineMusic.v14')||'{}');}catch(e){return {};}}
  function envKey(){try{return String((deps.env||req('process').env).OPENAI_API_KEY||'').trim();}catch(e){return '';}}
  function key(){if(!loaded){loaded=true;try{sessionKey=store.read()||'';remembered=!!sessionKey;}catch(e){storageWarning='Saved key unavailable; enter it again or use OPENAI_API_KEY.';}}return sessionKey||envKey();}
- function settings(){var p=prefs(),k=key();return {mode:p.mode==='off'?'off':'auto',model:typeof p.model==='string'&&/^[a-zA-Z0-9._:-]{1,100}$/.test(p.model)?p.model:DEFAULT_MODEL,maxRequests:[1,4,8,16].indexOf(Number(p.maxRequests))>=0?Number(p.maxRequests):8,hasKey:!!k,keySource:sessionKey?(remembered?'encrypted Windows storage':'this session'):(k?'OPENAI_API_KEY':'none'),remembered:remembered,warning:storageWarning};}
+ function settings(){var p=prefs(),k=key();return {mode:p.mode==='auto'?'auto':'off',model:typeof p.model==='string'&&/^[a-zA-Z0-9._:-]{1,100}$/.test(p.model)?p.model:DEFAULT_MODEL,maxRequests:[1,4,8,16].indexOf(Number(p.maxRequests))>=0?Number(p.maxRequests):8,hasKey:!!k,keySource:sessionKey?(remembered?'encrypted Windows storage':'this session'):(k?'OPENAI_API_KEY':'none'),remembered:remembered,warning:storageWarning};}
  function save(options){options=options||{};var p=settings(),model=String(options.model||p.model).trim();if(!/^[a-zA-Z0-9._:-]{1,100}$/.test(model))throw failure('invalid_model');
   if(options.key!==undefined&&String(options.key).trim()){var k=String(options.key).trim();if(k.length>2048||/[\s\r\n]/.test(k))throw failure('invalid_key_format');sessionKey=k;loaded=true;remembered=false;storageWarning='';
    try{if(options.remember){store.write(k);remembered=true;}else store.remove();}catch(e){storageWarning='Key is usable for this session; secure storage update failed.';}
   }
-  var config={mode:options.mode==='off'?'off':'auto',model:model,maxRequests:[1,4,8,16].indexOf(Number(options.maxRequests))>=0?Number(options.maxRequests):p.maxRequests};
+  var config={mode:(options.mode||p.mode)==='auto'?'auto':'off',model:model,maxRequests:[1,4,8,16].indexOf(Number(options.maxRequests))>=0?Number(options.maxRequests):p.maxRequests};
   try{(storage||root.localStorage).setItem('rp.onlineMusic.v14',JSON.stringify(config));}catch(e){throw failure('settings_storage_unavailable');}
   blocked=null;return settings();
  }

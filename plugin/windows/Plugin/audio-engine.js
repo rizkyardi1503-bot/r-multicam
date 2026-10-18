@@ -32,7 +32,9 @@ function tempoStats(values){
  var clean=values.filter(function(v){return Number.isFinite(v)&&v>=40&&v<=240;});
  if(!clean.length)return {bpm:null,confidence:'low',spread:null,samples:0,beatInterval:null};
  var bpm=median(clean),dev=clean.map(function(v){return Math.abs(v-bpm);}),mad=median(dev)||0;
- var confidence=clean.length>=4&&mad<2.5?'high':clean.length>=2&&mad<7?'medium':'low';
+ // 'high' also needs most windows to agree: a median over mixed tempo-octave windows can have MAD 0 yet be wrong.
+ var agree=clean.filter(function(v){return Math.abs(v-bpm)<=bpm*.03;}).length/clean.length;
+ var confidence=clean.length>=4&&mad<2.5&&agree>=.6?'high':clean.length>=2&&mad<7?'medium':'low';
  return {bpm:Math.round(bpm),confidence:confidence,spread:Math.round(mad*10)/10,samples:clean.length,beatInterval:Math.round((60/bpm)*1000)/1000};
 }
 var LITTLE_ENDIAN=new Uint8Array(new Uint32Array([1]).buffer)[0]===1;
@@ -50,6 +52,7 @@ function decode(clip,ffmpeg,state,onProgress){
   var proc=r.cp.spawn(ffmpeg,args,{windowsHide:true,shell:false});state.process=proc;
   function fail(err){if(!settled){settled=true;reject(err);}}
   proc.stdout.on('data',function(chunk){
+   if(settled)return;
    if(state.cancelled){proc.kill();return;}
    try{
     var b=carry.length?r.Buffer.concat([carry,chunk]):chunk,end=b.length-b.length%4;
@@ -121,6 +124,9 @@ root.RPAudio={
     dropSeries.push({time:clip.start+base/100,raw_energy:Math.sqrt(rsum/den),raw_bass:Math.sqrt(bsum/den),raw_subbass:Math.sqrt(ssum/den),raw_mid:Math.sqrt(msum/den),raw_high:Math.sqrt(hsum/den),raw_transient:Math.sqrt(tsum/den),raw_flux:Math.sqrt(fsum/den)});
    }
    results.push(await root.RPBeat.analyze(feature,{tick:tick,progress:function(p){progress((processed+length*(.8+.2*p))/total,'Analyzing A1 beats');}}));
+   // Do not hold the last clip's full feature arrays through normalization,
+   // timeline mapping and subsequent director analysis.
+   feature=null;levels=null;
    processed+=length;
   }
   if(fingerprint(snapshot)!==stamp)throw Error('Audio changed during analysis. Analyze again.');

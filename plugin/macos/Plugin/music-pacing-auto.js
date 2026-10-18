@@ -32,12 +32,79 @@ function offsetBeats(map,t,n,fallback){
   if(left<=capacity||!isFinite(capacity))return at+sign*left*60/bpm;left-=capacity;at=boundary;
  }return at;
 }
+// Detected beats contain off-beat onsets (half- and 3/4-beat gaps) and miss beats (2-beat gaps), so "8 beats" counted
+// on them drifted from 6 to 16 real beats. Phase-locked grid: step one beat at the song tempo and snap to a detected
+// beat only when it sits within 10% of where the beat is due (DJ pitch range); the step follows real drift (median of nearby gaps).
+// Each A1 clip (segments: [{start,end}] in sequence time) gets its own phase anchor, so two songs on A1 each stay on
+// their beat; inside a clip the grid re-locks its phase after 4 beats without a detected beat.
+function asc(a,b){return a-b;}
+function steadyGrid(raw,beat,duration,frame,segments){
+ var all=raw.filter(function(x){return isFinite(x)&&x>=0&&x<duration;}).sort(asc),out=[];
+ function snap(x){return frame>0?Math.round(x/frame)*frame:x;}
+ function push(x){x=snap(x);if(x>=0&&x<duration&&(!out.length||x-out[out.length-1]>.04))out.push(x);}
+ if(!(beat>0))return out;
+ var segs=(segments||[]).filter(function(s){return isFinite(s.start)&&isFinite(s.end)&&s.end>s.start;}).map(function(s){return {start:Math.max(0,Number(s.start)),end:Math.min(duration,Number(s.end))};}).filter(function(s){return s.end>s.start;}).sort(function(a,b){return a.start-b.start;});
+ if(!segs.length)segs=[{start:0,end:duration}];
+ segs.forEach(function(seg){
+  var t=all.filter(function(x){return x>=seg.start&&x<seg.end;}),i,j,x,L,due,hit;
+  if(t.length<8){for(x=seg.start;x<seg.end;x+=beat)push(x);return;}
+  // The step follows real drift but stays within 10% of the song tempo: a band that followed its own last value ratcheted
+  // down onto the off-beat pattern (3/4 beat in artbat and argy), as did a per-clip estimate of the most common gap.
+  var T=t.map(function(v){return {time:v};});
+  function closest(v,win){var k=lower(T,v),best=null;for(var q=Math.max(0,k-2);q<Math.min(t.length,k+2);q++)if(Math.abs(t[q]-v)<=win&&(best===null||Math.abs(t[q]-v)<Math.abs(best-v)))best=t[q];return best;}
+  function step(v){var k=lower(T,v),w=[];for(var q=Math.max(1,k-24);q<Math.min(t.length,k+24);q++){var d=t[q]-t[q-1];if(d>beat*.9&&d<beat*1.1)w.push(d);}w.sort(asc);return w.length>=6?w[w.length>>1]:beat;}
+  // Next run of 4 detected beats evenly spaced at the current tempo, after v: where the beat continues after a phase jump.
+  function relock(v,limit,cur){for(var k=lower(T,v);k+3<t.length&&t[k]<limit;k++){var ok=true;for(var q=k+1;q<=k+3;q++){var d=t[q]-t[q-1];if(!(d>cur*.9&&d<cur*1.1)){ok=false;break;}}if(ok)return t[k];}return null;}
+  // Anchor on the phase most detected beats agree with (first 30 s of the clip), so an early off-beat hit cannot set it.
+  var anchor=t[0],support=-1;for(i=0;i<t.length&&t[i]<t[0]+30;i++){var n=0;for(j=i;j<t.length&&t[j]<t[i]+30;j++){var ph=(t[j]-t[i])/beat;ph-=Math.round(ph);if(Math.abs(ph)<.12)n++;}if(n>support){support=n;anchor=t[i];}}
+  var head=[];for(x=anchor;;){L=step(x);due=x-L;if(due<=seg.start-L*.25)break;hit=closest(due,L*.1);x=hit===null?due:hit;head.unshift(Math.max(seg.start,x));}head.forEach(push);
+  var miss=0;
+  for(x=anchor;x<seg.end;){push(x);L=step(x);due=x+L;hit=closest(due,L*.1);
+   if(hit!==null){miss=0;x=hit;continue;}
+   if(++miss>=4){var r=relock(x+L*.5,x+L*8,L);if(r!==null&&r>x+L*.25){var n2=Math.max(1,Math.round((r-x)/L));for(var f=1;f<n2;f++)push(x+(r-x)*f/n2);miss=0;x=r;continue;}}
+   x=due;}
+ });
+ return out;
+}
+// Tempo map that agrees with the steady grid (one entry per 8 beats), for the hold and 4-beat guards.
+function gridTempoMap(g){var out=[];for(var i=0;i+1<g.length;i+=8){var j=Math.min(i+8,g.length-1);out.push({time:i?g[i]:0,bpm:Math.round(60*(j-i)/(g[j]-g[i])*10)/10,confidence:1});}return out;}
+function countBeats(g,a,b){return Math.abs(lower(g,b-1e-6)-lower(g,a-1e-6));}
+/**
+ * Where no enabled camera covers a whole shot, cut over to the camera that continues: on a beat inside the
+ * overlap of both cameras (as even as possible), at the exact clip edge when they do not overlap. Returns new edit times.
+ */
+function coverageSplits(snapshot,enabled,result){
+ var g=(result&&result.beatFirst&&result.beatFirst.steady_grid||[]).map(function(t){return {time:t};}),frame=Number(snapshot&&snapshot.frame)||0,tol=frame>0?frame/4:.01,out=[];
+ var on=(enabled||[]).map(Number),tracks=(snapshot&&snapshot.tracks||[]).filter(function(t){return on.indexOf(Number(t.index))>=0;});
+ function best(t){var b=null;tracks.forEach(function(tr){(tr.coverageRanges||[]).forEach(function(r){if(r.start<=t+tol&&r.end>t+tol&&(!b||r.end>b.end))b=r;});});return b;}
+ function nextStart(t){var s=Infinity;tracks.forEach(function(tr){(tr.coverageRanges||[]).forEach(function(r){if(r.start>t+tol&&r.start<s)s=r.start;});});return s;}
+ function snap(x){return frame>0?Math.round(x/frame)*frame:x;}
+ (snapshot&&snapshot.intervals||[]).forEach(function(it){
+  if((it.candidates||[]).some(function(c){return on.indexOf(Number(c))>=0;}))return;
+  if((it.coverageNotes||[]).join(' ').indexOf('Outside In/Out')>=0)return;
+  var t=Number(it.start),b=Number(it.end),guard=0;
+  while(t<b-tol&&guard++<64){
+   var c=best(t);
+   if(!c){var s=nextStart(t);if(s>=b-tol)break;out.push(s);t=s;continue;}
+   if(c.end>=b-tol)break;
+   var y=best(c.end),from=y?Math.max(t,y.start):c.end,p=c.end,score=-1; // y: the camera that continues after c ends
+   if(y)for(var k=lower(g,from-tol);k<g.length&&g[k].time<=c.end+tol;k++){var q=g[k].time;if(q<=t+tol||q>=b-tol)continue;var m=Math.min(countBeats(g,t,q),countBeats(g,q,b));if(m>=score){score=m;p=q;}}
+   p=snap(p);if(p<=t+tol)p=snap(c.end);if(p<=t+tol||p>=b-tol)break;
+   // No shared beat: a cut at the clip edge under a beat from either end would flash a few frames; leave the shot as before.
+   if(score<0){var k2=lower(g,p),L=k2>0&&k2<g.length?g[k2].time-g[k2-1].time:.5;if(p-t<L||b-p<L)break;}
+   out.push(p);t=p;
+  }
+ });
+ return out.sort(asc).filter(function(x,i,a){return !i||x-a[i-1]>tol;});
+}
 function apply(result,pacing,duration,maxPoints){duration=Number(duration)||0;enrich(result,duration);var map=result.beatFirst.tempo_map||[],grid=ensureGrid(result,duration,map);if(!grid.length)throw Error('No usable A1 beat grid. Analyze Music again.');
  var segments=(pacing&&pacing.segments||[]).slice().sort(function(a,b){return Number(a.start_second)-Number(b.start_second);});if(!segments.length)segments=[{start_second:0,beats_per_cut:6,reason:'auto'}];var allowed=allowedCadences(pacing),cap=Math.max(1,Math.min(6000,Number(maxPoints)||6000)),meta=[],anchor=0,si=0,frame=Number(result.snapshot&&result.snapshot.frame)||0;
  function targetAt(t){while(si+1<segments.length&&t>=Number(segments[si+1].start_second))si++;var raw=clamp(Number(segments[si].beats_per_cut)||6,2,8);return nearestCadence(allowed,raw);}
  // Validated selected drops interrupt cadence and restart its beat count.
  if(pacing&&pacing.config&&pacing.config.userSelectedCadence){
   var range=result.snapshot&&result.snapshot.range||{start:0,end:duration},scopeStart=range.start,scopeEnd=range.end;
+  var steady=steadyGrid(grid.map(function(x){return x.time;}),Number(result.beatInterval)||60/Math.max(40,Number(result.tempo)||120),duration,frame,result.snapshot&&result.snapshot.clips||null);
+  grid=steady.map(function(t){return {time:t};});map=gridTempoMap(steady);result.beatFirst.tempo_map=map;result.beatFirst.steady_grid=steady;
   var at=scopeStart,previous=scopeStart,di=0,drops=(result.structure&&result.structure.events||[]).map(function(e){var raw=Number(e.drop_time);return {time:frame>0?Math.round(raw/frame)*frame:raw,confidence:Number(e.confidence_score)||0};}).filter(function(e){
    // A drop cut closer than 4 beats to Mark In/Out leaves an edge shot the 4-beat guard can never merge
    // (no neighbour on the edge side, locked drop camera on the other), which blocked Apply for the whole edit.
@@ -55,6 +122,9 @@ function apply(result,pacing,duration,maxPoints){duration=Number(duration)||0;en
    if(isDrop){snapped=drops[di].time;next=snapped;gi=nearestGrid(snapped);}
    // Never leave a sub-4-beat tail before Mark Out/sequence end: the last shot simply runs longer.
    if(snapped>=scopeEnd||beatDistance(map,snapped,scopeEnd,result.tempo)<3.75)break;
+   // A regular cut under 4 beats before the next drop leaves a pre-drop shot that must contrast with the drop camera and
+   // cannot be merged (both neighbours are the drop camera), which blocked Apply. The previous shot runs on to the drop.
+   if(!isDrop&&di<drops.length&&drops[di].time>snapped&&beatDistance(map,snapped,drops[di].time,result.tempo)<3.75){at=next;continue;}
    if(snapped>previous){meta.push({time:snapped,reason:isDrop?'Drop impact':'Selected pace '+cadence+' beats',beats_per_cut:cadence,strength:isDrop?1000+drops[di].confidence:0});previous=snapped;}
    at=next;if(isDrop)di++;if(meta.length>100000)throw Error('Sequence exceeds 100,000 cadence cuts. Split the sequence before editing.');
   }
@@ -72,5 +142,5 @@ function guardHold(choice,it,music,state){state=state||{};state.forced=state.for
  var map=music&&music.beat_first&&music.beat_first.tempo_map||[],bpm=Number(music&&music.estimated_bpm)||120,n=beatDistance(map,Number(it.start)||0,Number(it.end)||0,bpm),held=cam===state.last?(state.held||0)+n:n;if(held>8.2&&choice.structureLock!=='drop-force'&&choice.structureLock!=='drop'){var alt=pool.filter(function(x){return x!==cam;});if(alt.length){cam=alt[0];choice.camera=cam;choice.reason='Auto camera flow: changed angle at an existing music decision point after a long hold.';choice.structureLock='';state.forced++;held=n;}}
  state.last=cam;state.held=held;return choice;}
 function validateHold(choices,intervals,music,report){if(!choices||!intervals||choices.length!==intervals.length)throw Error('Camera plan is incomplete.');if(report){report.forced=0;report.warnings=[];}return true;}
-root.RPBeatFirst={guardHold:guardHold,validateHold:validateHold,enrich:enrich,apply:apply,offsetBeats:offsetBeats,beatDistance:beatDistance,tempoMap:tempoMap,bpmAt:bpmAt};
+root.RPBeatFirst={steadyGrid:steadyGrid,coverageSplits:coverageSplits,guardHold:guardHold,validateHold:validateHold,enrich:enrich,apply:apply,offsetBeats:offsetBeats,beatDistance:beatDistance,tempoMap:tempoMap,bpmAt:bpmAt};
 }(typeof window!=='undefined'?window:globalThis));

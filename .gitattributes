@@ -1,0 +1,3 @@
+# cmd.exe needs CRLF line endings in batch files; keep them CRLF in every checkout (the release ZIP hashes the checked-out bytes).
+*.bat text eol=crlf
+*.cmd text eol=crlf

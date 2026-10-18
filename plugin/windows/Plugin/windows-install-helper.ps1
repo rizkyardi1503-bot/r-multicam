@@ -1,6 +1,6 @@
 ﻿param([Parameter(Mandatory=$true)][string]$Config)
 $ErrorActionPreference = 'Stop'
-$cfg = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
+$cfg = Get-Content -LiteralPath $Config -Raw -Encoding UTF8 | ConvertFrom-Json
 $logPath = [string]$cfg.log
 function Test-CurrentAttempt {
     try { return ([IO.File]::ReadAllText([string]$cfg.attemptFile).Trim() -eq [string]$cfg.attempt) } catch { return $false }

@@ -7,3 +7,20 @@ html,body{height:100%;overflow:hidden}body{display:flex;flex-direction:column;pa
 
 #compactEditRules .pacingGrid{grid-template-columns:repeat(4,minmax(0,1fr))}
 #compactDashboard>.toolcard{margin:6px 0}#compactDashboard>.toolcard small{font-size:10px}#compactDashboard>.toolcard>summary{padding:8px 9px}.backupRow{display:flex;align-items:flex-start;gap:6px;margin:7px 0 2px;font-size:10px;line-height:1.35;color:#a8b19f;min-width:0}.backupRow input{flex:0 0 auto;width:auto;margin:1px 0 0}
+
+/* Workflow steps 1-5: numbered cards in working order; optional tools under "More". */
+#workflowStatus{margin:0 0 4px}
+.step{background:#1c1f24;border:1px solid #343943;border-radius:9px;margin:0 0 9px;padding:9px 10px 10px}
+.stephead{display:flex;align-items:center;gap:8px}
+.stepnum{flex:0 0 22px;height:22px;border-radius:50%;background:#caff69;color:#18200f;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center}
+.steptitle{font-size:13px;font-weight:700;color:#edf0f4;flex:1;min-width:0}
+.steptitle em{font-style:normal;font-size:8px;letter-spacing:.6px;color:#caff69;border:1px solid #718f3c;border-radius:999px;padding:1px 5px;margin-left:4px;vertical-align:2px}
+.stephead .badge{margin-left:auto;flex:0 0 auto}
+.stepdesc{margin:5px 0 8px 30px;font-size:10px;color:#9aa3ae;line-height:1.4}
+.stepbody>.main{width:100%;margin:6px 0 2px}
+.stepbody>.support,.stepbody>.toolcard,.stepbody #step3Review>.support{margin:7px 0 0}
+.stepbody .mi-stats{margin:0 0 6px}
+.stepbody #compactEditRules{margin:0 0 4px}
+.stepbody .backupRow{margin:8px 0 2px}
+#step2Body .toolbody{padding:0}
+.moreheading{margin:14px 0 4px;font-size:10px;font-weight:700;letter-spacing:1px;color:#7e8794;text-transform:uppercase;border-top:1px solid #343943;padding-top:9px}

@@ -2,7 +2,7 @@
 set -euo pipefail
 BASE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$BASE/Plugin"
-VERSION="2.3.11.6"
+VERSION="2.3.11.7"
 say_line(){ printf '%s\n' "$*"; }
 fail(){ say_line "ERROR: $*"; exit 1; }
 # macOS privacy protection (TCC) can block Terminal from reading Downloads/Desktop/Documents. Report that instead of "missing" or "damaged" files.
@@ -12,7 +12,18 @@ ls "$BASE" >/dev/null 2>&1 || blocked
 
 # Match Premiere by its app bundle path (the process name is truncated and includes the year, so pgrep -x never matched it).
 # Other Adobe apps (Photoshop, After Effects) run their own CEPHtmlEngine and must not block installation.
-if pgrep -f '/Adobe Premiere Pro[^/]*\.app/Contents/(MacOS/|.*CEPHtmlEngine)' >/dev/null 2>&1; then fail "Close Adobe Premiere Pro, then run this installer again."; fi
+premiere_running(){ pgrep -f '/Adobe Premiere Pro[^/]*\.app/Contents/(MacOS/|.*CEPHtmlEngine)' >/dev/null 2>&1; }
+# Premiere can take a while to quit (older update helpers start this installer as soon as the panel closes): wait up to 60 s.
+if premiere_running; then
+  say_line "Adobe Premiere Pro is still running. Save your project and quit Premiere; installation continues when it has closed (waiting up to 60 seconds)..."
+  waited=0
+  while premiere_running && [ "$waited" -lt 60 ]; do sleep 2; waited=$((waited + 2)); done
+  if premiere_running; then
+    [ -z "${RP_AUTO_UPDATE:-}" ] || fail "Adobe Premiere Pro is still running. Quit Premiere completely, then click Update again."
+    fail "Adobe Premiere Pro is still running. Save your project, quit Premiere completely, then run Install-macOS.command again."
+  fi
+  say_line "Adobe Premiere Pro has closed. Continuing installation."
+fi
 MANIFEST="$SRC/CSXS/manifest.xml"
 [ -f "$MANIFEST" ] || fail "Plugin manifest is missing."
 grep -q "ExtensionBundleVersion=\"$VERSION\"" "$MANIFEST" || fail "Plugin version mismatch."

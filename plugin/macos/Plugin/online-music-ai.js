@@ -16,10 +16,12 @@ function secureStore(req){
   var r=req('child_process').spawnSync(exe,['-NoProfile','-NonInteractive','-Command',script],{input:input,encoding:'utf8',windowsHide:true,timeout:5000,maxBuffer:16384});
   if(r.error||r.status!==0||!r.stdout)throw failure('secure_storage_unavailable');return r.stdout.trim();
  }
- function macRun(args,allowMissing){var r=req('child_process').spawnSync('/usr/bin/security',args,{encoding:'utf8',timeout:5000,maxBuffer:16384});if(r.error)throw failure('secure_storage_unavailable');if(r.status!==0){if(allowMissing)return '';throw failure('secure_storage_unavailable');}return String(r.stdout||'').trim();}
+ function macRun(args,allowMissing,input){var r=req('child_process').spawnSync('/usr/bin/security',args,{input:input,encoding:'utf8',timeout:5000,maxBuffer:16384});if(r.error)throw failure('secure_storage_unavailable');if(r.status!==0){if(allowMissing)return '';throw failure('secure_storage_unavailable');}return String(r.stdout||'').trim();}
  if(platform==='darwin')return {
   read:function(){return macRun(['find-generic-password','-s',SERVICE,'-a',ACCOUNT,'-w'],true);},
-  write:function(key){macRun(['add-generic-password','-U','-s',SERVICE,'-a',ACCOUNT,'-w',String(key)],false);},
+  // The secret goes to `security -i` on stdin, never argv (visible in ps); read-back verifies the write.
+  write:function(key){key=String(key);if(!/^[!-~]+$/.test(key))throw failure('secure_storage_unavailable');function q(v){return '"'+v.replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"';}
+   macRun(['-i'],false,'add-generic-password -U -s '+q(SERVICE)+' -a '+q(ACCOUNT)+' -w '+q(key)+'\n');if(macRun(['find-generic-password','-s',SERVICE,'-a',ACCOUNT,'-w'],true)!==key){macRun(['delete-generic-password','-s',SERVICE,'-a',ACCOUNT],true);throw failure('secure_storage_unavailable');}},
   remove:function(){macRun(['delete-generic-password','-s',SERVICE,'-a',ACCOUNT],true);}
  };
  if(platform==='win32')return {
@@ -34,12 +36,12 @@ function create(deps){
  function prefs(){try{var s=storage||root.localStorage;return JSON.parse(s.getItem('rp.onlineMusic.v14')||'{}');}catch(e){return {};}}
  function envKey(){try{return String((deps.env||req('process').env).OPENAI_API_KEY||'').trim();}catch(e){return '';}}
  function key(){if(!loaded){loaded=true;try{sessionKey=store.read()||'';remembered=!!sessionKey;}catch(e){storageWarning='Saved key unavailable; enter it again or use OPENAI_API_KEY.';}}return sessionKey||envKey();}
- function settings(){var p=prefs(),k=key();return {mode:p.mode==='off'?'off':'auto',model:typeof p.model==='string'&&/^[a-zA-Z0-9._:-]{1,100}$/.test(p.model)?p.model:DEFAULT_MODEL,maxRequests:[1,4,8,16].indexOf(Number(p.maxRequests))>=0?Number(p.maxRequests):8,hasKey:!!k,keySource:sessionKey?(remembered?(function(){try{return req('process').platform==='darwin'?'macOS Keychain':'encrypted Windows storage';}catch(e){return 'secure storage';}})():'this session'):(k?'OPENAI_API_KEY':'none'),remembered:remembered,warning:storageWarning};}
+ function settings(){var p=prefs(),k=key();return {mode:p.mode==='auto'?'auto':'off',model:typeof p.model==='string'&&/^[a-zA-Z0-9._:-]{1,100}$/.test(p.model)?p.model:DEFAULT_MODEL,maxRequests:[1,4,8,16].indexOf(Number(p.maxRequests))>=0?Number(p.maxRequests):8,hasKey:!!k,keySource:sessionKey?(remembered?(function(){try{return req('process').platform==='darwin'?'macOS Keychain':'encrypted Windows storage';}catch(e){return 'secure storage';}})():'this session'):(k?'OPENAI_API_KEY':'none'),remembered:remembered,warning:storageWarning};}
  function save(options){options=options||{};var p=settings(),model=String(options.model||p.model).trim();if(!/^[a-zA-Z0-9._:-]{1,100}$/.test(model))throw failure('invalid_model');
   if(options.key!==undefined&&String(options.key).trim()){var k=String(options.key).trim();if(k.length>2048||/[\s\r\n]/.test(k))throw failure('invalid_key_format');sessionKey=k;loaded=true;remembered=false;storageWarning='';
    try{if(options.remember){store.write(k);remembered=true;}else store.remove();}catch(e){storageWarning='Key is usable for this session; secure storage update failed.';}
   }
-  var config={mode:options.mode==='off'?'off':'auto',model:model,maxRequests:[1,4,8,16].indexOf(Number(options.maxRequests))>=0?Number(options.maxRequests):p.maxRequests};
+  var config={mode:(options.mode||p.mode)==='auto'?'auto':'off',model:model,maxRequests:[1,4,8,16].indexOf(Number(options.maxRequests))>=0?Number(options.maxRequests):p.maxRequests};
   try{(storage||root.localStorage).setItem('rp.onlineMusic.v14',JSON.stringify(config));}catch(e){throw failure('settings_storage_unavailable');}
   blocked=null;return settings();
  }

@@ -67,8 +67,10 @@ api.analyze=async function(feature,options){
   // Octave ambiguity is resolved only when a nearby previous tempo has nearly
   // equal evidence. A strong genuine tempo change is not forcibly smoothed away.
   var octaveCandidates=[lag/2,lag,lag*2],previousAt=Math.round(previousPeriod);
-  if(previousAt>=25&&previousAt<=150&&Math.abs(Math.log(lag/previousPeriod))>.4&&correlations[previousAt]>=quality*.94){lag=previousAt;quality=correlations[lag];}
-  if(quality<.30&&previousAt>=25&&previousAt<=150&&correlations[previousAt]>=.12){lag=previousAt;quality=correlations[lag];}
+  // Only a previous tempo that is not slower is kept: a beat repeating every 0.46 s also correlates almost as well at
+  // 0.92 s, so holding a slower previous period locked a third of a 130 BPM set at 65 BPM (Best Drop windows doubled).
+  if(previousAt>=25&&previousAt<=150&&previousAt<lag&&Math.abs(Math.log(lag/previousPeriod))>.4&&correlations[previousAt]>=quality*.94){lag=previousAt;quality=correlations[lag];}
+  if(quality<.30&&previousAt>=25&&previousAt<=150&&previousAt<=lag*1.1&&correlations[previousAt]>=.12){lag=previousAt;quality=correlations[lag];}
   if(quality<.12)continue;
   var lm=correlations[lag-1],lc=correlations[lag],lp=correlations[lag+1],den=lm-2*lc+lp;
   var delta=isFinite(den)&&den<-.000001?Math.max(-.5,Math.min(.5,.5*(lm-lp)/den)):0,period=lag+delta;

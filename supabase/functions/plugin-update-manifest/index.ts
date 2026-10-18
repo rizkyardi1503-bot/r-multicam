@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.2";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.6",
-    download: base + "?platform=windows&version=2.3.11.6",
-    sha256: "a9e4d30a8d61ee189ccf3aad60ed024af1cc6899c7eb98413d8c2074960d44e0"
+    version: "2.3.11.7",
+    download: base + "?platform=windows&version=2.3.11.7",
+    sha256: "efc6e69306a75f4aa95070f15b111ae8a630206d1c7488406862ded4002c326e"
   },
   macos: {
-    version: "2.3.11.6",
-    download: base + "?platform=macos&version=2.3.11.6",
-    sha256: "5d85b5604f2ee13f239fefc42c046635e9fa983d5408015914dbecce56da2692"
+    version: "2.3.11.7",
+    download: base + "?platform=macos&version=2.3.11.7",
+    sha256: "a2f700e50cd52d784bfcdcd1e1247b01991c1d210f075b2fb4e937d2e469f534"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.6 PUBLIC Windows and macOS: new Sync to Master Music (beta, lifetime) places every camera clip on the master music and builds a new synced sequence; faster beat-drop detection; much faster removal of unused camera pieces on long sets; optional backup copy before Apply; tidier panel. Also: Camera Roles steer the cut (no wide after wide), 4-beat cuts kept at 25/30 fps, faster long-set analysis, sequence In/Out respected, reliable Stop/Continue. Optional update: save and close Premiere before installing.",
+    release_notes: "v2.3.11.7 PUBLIC Windows and macOS: drone and FPV clips sync by camera clock in Sync Cameras to Music (beta, lifetime) with remembered corrections; Cut Pace 2/4/6/8 counts real beats; no blocked Apply near drops; camera switch where footage ends; tempo no longer locks at half speed; update and installer fixes. Optional update: v2.3.11.2 and newer keep working. Save and close Premiere before installing.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

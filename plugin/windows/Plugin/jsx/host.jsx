@@ -1,4 +1,4 @@
-/* ES3 ExtendScript. v2.3.11.6 single-pass low-memory timeline engine. */
+/* ES3 ExtendScript. v2.3.11.7 single-pass low-memory timeline engine. */
 var rp_job=null;
 var RP_LOW_MEMORY=true;
 var rp_stepRanges=null;
@@ -10,11 +10,12 @@ function rp_encode(v){
  if(typeof v==='boolean')return String(v);
  var a=[],k;if(v instanceof Array){for(k=0;k<v.length;k++)a.push(rp_encode(v[k]));return '['+a.join(',')+']';}for(k in v)if(v.hasOwnProperty(k))a.push(rp_encode(k)+':'+rp_encode(v[k]));return '{'+a.join(',')+'}';
 }
-var rp_license_until=0;
-function rp_licenseProof(expires){return rp_digest('RPROJECT-LICENSE-2.1.12|'+String(expires)+'|host-gate-v1');}
-function rp_authorize(expires,proof){
- try{var now=new Date().getTime(),x=Number(expires);if(!isFinite(x)||x<=now||x>now+180000)throw Error('Online account session is invalid or expired.');if(String(proof)!==rp_licenseProof(Math.floor(x)))throw Error('Online account session proof is invalid.');rp_license_until=Math.floor(x);return {ok:true,expires:rp_license_until};}
- catch(e){rp_license_until=0;return {ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:'Online account verification is required to continue.'};}
+var rp_license_until=0,rp_license_tier='';
+// A lifetime session carries its tier in the proof; a session without it is a trial session (same proof as before).
+function rp_licenseProof(expires,tier){return rp_digest('RPROJECT-LICENSE-2.1.12|'+String(expires)+'|'+(tier==='lifetime'?'lifetime|':'')+'host-gate-v1');}
+function rp_authorize(expires,proof,tier){
+ try{var now=new Date().getTime(),x=Number(expires);if(!isFinite(x)||x<=now||x>now+180000)throw Error('Online account session is invalid or expired.');if(String(proof)!==rp_licenseProof(Math.floor(x),tier))throw Error('Online account session proof is invalid.');rp_license_until=Math.floor(x);rp_license_tier=tier==='lifetime'?'lifetime':'trial';return {ok:true,expires:rp_license_until};}
+ catch(e){rp_license_until=0;rp_license_tier='';return {ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:'Online account verification is required to continue.'};}
 }
 function rp_licenseDenied(){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:'Online account verification is required to continue using R Project Multicam AI.'});}
 function rp_requireLicense(){if(!(rp_license_until>new Date().getTime()))throw Error('Online account verification is required to continue using R Project Multicam AI.');}
@@ -49,11 +50,11 @@ function rp_manual(s){
 }
 function rp_getActiveInfo(){
  try{var s=app.project.activeSequence,marks={points:[],ignored:0};if(s){try{marks=rp_manual(s);}catch(me){marks={points:[],ignored:0};}}
- return rp_encode({ok:true,version:'2.3.11.6',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:''});}
+ return rp_encode({ok:true,version:'2.3.11.7',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:'',syncPendingID:rp_syncBusy()?rp_syncJob.id:''});}
  catch(e){return rp_encode({ok:false,message:String(e)});}
 }
 function rp_ping(){
- try{return rp_encode({ok:true,version:'2.3.11.6',host:'R Project Multicam',sequence:!!(app&&app.project&&app.project.activeSequence)});}
+ try{return rp_encode({ok:true,version:'2.3.11.7',host:'R Project Multicam',sequence:!!(app&&app.project&&app.project.activeSequence)});}
  catch(e){return rp_encode({ok:false,message:'ExtendScript host is not ready: '+String(e)});}
 }
 function rp_state(){
@@ -288,7 +289,7 @@ function rp_parseInternalPoints(csv,frame,duration){
  if(out.length>100000)throw Error('Maximum 100,000 internal edit points per AI plan. The AI pacing plan is too dense for this sequence.');
  return out;
 }
-/* v2.3.11.6 Keep Clips registry: camera pieces disabled by an Apply · Keep Clips job stay
+/* v2.3.11.7 Keep Clips registry: camera pieces disabled by an Apply · Keep Clips job stay
    available for re-planning; pieces the user disabled are still treated as unavailable. */
 var rp_pluginDisabled={};
 function rp_pdRecord(seqID,track,clip){
@@ -456,14 +457,15 @@ function rp_resumeSaved(projectPath,sequenceID,a1Signature,pointsCsv,choicesCsv,
   if(rp_job&&rp_job.status==='running')throw Error('Another process is already active.');
   var s=app.project.activeSequence;if(!s)throw Error('Open the sequence you want to continue.');
   if(String(app.project.path)!==String(projectPath))throw Error('This checkpoint belongs to a different Premiere project. Open the saved project first.');
-  // v2.3.11.6: a checkpoint is bound to the sequence it was started in. A backup clone has the same
+  // v2.3.11.7: a checkpoint is bound to the sequence it was started in. A backup clone has the same
   // A1 and camera media, so media identity alone could resume cuts/deletes in the wrong sequence.
   if(String(sequenceID||'')&&String(s.sequenceID)!==String(sequenceID))throw Error('This saved job belongs to a different sequence. Open the sequence the job was started in, then continue. Nothing was changed.');
   var a1=rp_a1Snapshot();if(String(a1.signature)!==String(a1Signature))throw Error('A1 does not match the saved job. Resume stopped before any timeline change.');
   var duration=rp_seqDuration(s),frame=rp_frame(s),tol=Math.max(frame*2,.08);
   if(savedDuration&&Math.abs(Number(duration)-Number(savedDuration))>tol)throw Error('Sequence duration does not match the saved job. Resume stopped safely.');
   var points=rp_parseInternalPoints(pointsCsv,a1.frame,a1.duration),choices=rp_parseChoices(choicesCsv,String(savedKind)==='cut'?0:points.length+1),enabled=[],parts=String(enabledCsv||'').split(','),seen={},ei;
-  for(ei=0;ei<parts.length;ei++){if(!parts[ei].length)continue;var et=Number(parts[ei]);if(!isFinite(et)||et!==Math.floor(et)||et<0||seen['v'+et])continue;seen['v'+et]=true;if(et>=s.videoTracks.numTracks)continue;var etr=s.videoTracks[et];if(!etr||(etr.isLocked&&etr.isLocked())||(etr.isMuted&&etr.isMuted())||!etr.clips.numItems)continue;enabled.push(et);}
+  // A stopped delete job may already have emptied a camera track: keep it so the camera signature still matches.
+  for(ei=0;ei<parts.length;ei++){if(!parts[ei].length)continue;var et=Number(parts[ei]);if(!isFinite(et)||et!==Math.floor(et)||et<0||seen['v'+et])continue;seen['v'+et]=true;if(et>=s.videoTracks.numTracks)continue;var etr=s.videoTracks[et];if(!etr||(etr.isLocked&&etr.isLocked())||(etr.isMuted&&etr.isMuted())||(!etr.clips.numItems&&!(Number(removed)>0)))continue;enabled.push(et);}
   if(!enabled.length)throw Error('Saved camera selection has no usable footage in this sequence. Enable at least one unlocked camera track and generate a new plan.');
   var currentCamSig=rp_cameraMediaSignature(s,enabled),savedCamSig=String(cameraMediaSignature||'');
   if(!savedCamSig&&String(s.sequenceID)!==String(sequenceID))throw Error('Legacy checkpoint has no camera identity. Open the original sequence.');
@@ -517,7 +519,7 @@ function rp_finishPrepare(j){
  j.phase=j.kind==='angle'?'angle':'delete';j.done=0;j.total=j.tasks.length;j.task=0;
  j.message=j.kind==='delete'?'Protected cleanup map ready. Removing unused camera pieces in batches.':'Camera map ready.';
 }
-/* v2.3.11.6 batch cleanup: losers are resolved and guarded first, the whole batch is selected and unlinked with ONE
+/* v2.3.11.7 batch cleanup: losers are resolved and guarded first, the whole batch is selected and unlinked with ONE
    unlinkSelection, then each piece is re-resolved (identity checked) and removed. One selection save/restore per batch
    instead of per piece: on long sets the per-piece select/unlink/restore round trip dominated cleanup time. */
 var RP_DELETE_BATCH=12;
@@ -1012,7 +1014,7 @@ function rp_getA1(){
 }
 function rp_a1Begin(signature,total){
  try{
-  if(rp_syncBusy())throw Error('Sync to Master Music is running. Wait for it to finish or click Stop.');
+  if(rp_syncBusy())throw Error('Sync Cameras to Music is running. Wait for it to finish or click Stop.');
   if(rp_job&&rp_job.status==='running'){
    if(rp_job.kind==='a1'){rp_job.status='stopped';rp_job.message='Previous marker process reset.';}
    else throw Error('A process is already active.');
@@ -1047,7 +1049,7 @@ function rp_a1Upload(id,csv){
 }
 function rp_a1DirectApply(signature,csv){
  try{
-  if(rp_syncBusy())throw Error('Sync to Master Music is running. Wait for it to finish or click Stop.');
+  if(rp_syncBusy())throw Error('Sync Cameras to Music is running. Wait for it to finish or click Stop.');
   if(rp_job&&rp_job.status==='running'){
    if(rp_job.kind==='a1'){rp_job.status='stopped';rp_job.message='Previous marker process reset.';}
    else throw Error('A process is already active.');
@@ -1104,7 +1106,7 @@ function rp_syncBusy(){return !!(rp_syncJob&&rp_syncJob.status==='running');}
 // sequence duration, which legitimately grows when a camera keeps rolling after the music ends.
 function rp_syncA1Key(){var a=rp_a1Snapshot();return 'SYNCA1:'+rp_digest(rp_encode({frame:Math.round(Number(a.frame)*1000000)/1000000,clips:a.clips}));}
 function rp_syncSequenceById(id){for(var k=0;k<app.project.sequences.numSequences;k++){var q=app.project.sequences[k];if(String(q.sequenceID)===String(id))return q;}return null;}
-var RP_SYNC_LABEL_CHECK=7,RP_SYNC_LABEL_REVIEW=6; // Premiere label indices: 7 Mango (check), 6 Rose (review)
+var RP_SYNC_LABEL_CHECK=7,RP_SYNC_LABEL_REVIEW=6,RP_SYNC_LABEL_CLOCK=3; // Premiere label indices: 7 Mango (check), 6 Rose (review), 3 Lavender (drone clock)
 function rp_syncProjectItems(root,depth,path,bins,wanted,found){
  if(depth>12)return;
  for(var i=0;i<root.children.numItems;i++){
@@ -1133,8 +1135,12 @@ function rp_syncSources(){
   return rp_encode({ok:true,projectPath:String(app.project.path),sequence:{id:String(s.sequenceID),name:String(s.name),frame:a1.frame,duration:a1.duration,a1:a1.clips,a1Signature:a1.signature},tracks:tracks,bins:bins});
  }catch(e){return rp_encode({ok:false,message:String(e)});}
 }
+/** Project-item In/Out for a placement. Premiere converts seconds to its tick clock and rounds DOWN to a whole frame, and
+    the conversion can land a hair under an exact frame boundary (155.100 s became 155.067 s at 30 fps). 1 ms above the
+    boundary always lands on the intended frame, whether Premiere floors or rounds; In and Out move together. */
+function rp_syncSetMarks(item,inSec,outSec){var e=0.001;item.setInPoint(Number(inSec)+e,4);item.setOutPoint(Number(outSec)+e,4);}
 function rp_syncTime(seconds){var t=new Time();t.ticks=String(Math.round(Number(seconds)*254016000000));return t;}
-/** rowsCsv rows "camera,nodeId,sourceIn,sourceOut,start,flag" joined by ';'. camera 1..n (0 = review); flag h|m|r. */
+/** rowsCsv rows "camera,nodeId,sourceIn,sourceOut,start,flag" joined by ';'. camera 1..n (0 = review); flag h|m|r|c (c = drone placed by its camera clock). */
 function rp_syncParseRows(rowsCsv,cameraCount,frame){
  var rows=[],parts=String(rowsCsv||'').split(';'),i;
  for(i=0;i<parts.length;i++){
@@ -1143,12 +1149,15 @@ function rp_syncParseRows(rowsCsv,cameraCount,frame){
   if(!(cam>=0&&cam<=cameraCount&&cam===Math.floor(cam)))throw Error('Invalid camera in sync plan row '+(i+1)+'.');
   if(!/^[A-Za-z0-9._:-]{1,64}$/.test(node))throw Error('Invalid project item in sync plan row '+(i+1)+'.');
   if(!isFinite(a)||!isFinite(b)||!isFinite(start)||b<=a||a<0)throw Error('Invalid timing in sync plan row '+(i+1)+'.');
-  if(flag!=='h'&&flag!=='m'&&flag!=='r')throw Error('Invalid confidence in sync plan row '+(i+1)+'.');
+  if(flag!=='h'&&flag!=='m'&&flag!=='r'&&flag!=='c')throw Error('Invalid confidence in sync plan row '+(i+1)+'.');
   // A clip that starts before the music is trimmed at the head; times are frame-exact.
   if(start<0){a-=start;start=0;}if(b-a<frame/2)continue;
-  // Snap the start to the frame grid and shift the source range by the same amount, so sync stays exact.
-  var snapped=Math.round(start/frame)*frame;if(a+snapped-start<0)snapped=Math.ceil(start/frame-1e-9)*frame;a+=snapped-start;b+=snapped-start;start=snapped;
-  rows.push({camera:cam,nodeId:node,sourceIn:a,sourceOut:b,start:start,flag:flag});
+  // Premiere rounds a project item's In/Out to whole frames: put the source In/Out on the frame grid (never
+  // earlier/later than planned), then place at the timeline frame nearest to where that source frame belongs.
+  // The sync error stays within half a frame, as before.
+  var offset=start-a,a1=Math.ceil(a/frame-1e-6)*frame,b1=Math.floor(b/frame+1e-6)*frame,s1=Math.round((a1+offset)/frame)*frame;
+  if(s1<0){a1+=frame;s1+=frame;}if(b1-a1<frame/2)continue;
+  rows.push({camera:cam,nodeId:node,sourceIn:Math.round(a1*1e6)/1e6,sourceOut:Math.round(b1*1e6)/1e6,start:Math.round(s1*1e6)/1e6,flag:flag});
  }
  if(!rows.length)throw Error('The sync plan has no clips to place.');
  // Review clips from different cameras can overlap in time and overwriteClip would cut one with the other:
@@ -1169,13 +1178,16 @@ function rp_syncEnsureTracks(s,videoNeeded,audioNeeded){
  if(s.videoTracks.numTracks<videoNeeded||s.audioTracks.numTracks<audioNeeded)throw Error('Premiere did not add the tracks the synced sequence needs ('+videoNeeded+' video, '+audioNeeded+' audio).');
 }
 function rp_syncClearTrack(tr){for(var c=tr.clips.numItems-1;c>=0;c--)tr.clips[c].remove(false,false);if(tr.clips.numItems)throw Error('Could not clear a track in the synced sequence.');}
-function rp_syncBegin(name,cameraCount,rowsCsv){
+function rp_syncBegin(name,cameraCount,rowsCsv,expectSequenceID,expectA1){
  var copy=null,originalID='';
  try{
   if(rp_syncBusy())throw Error('A sync is already running.');
   if(rp_job&&rp_job.status==='running')throw Error('A process is already active. Click Stop first.');
   var s=app.project.activeSequence;if(!s)throw Error('Open the sequence with the master music on A1 first.');
   var a1=rp_a1Snapshot(),a1Key=rp_syncA1Key(),frame=Number(a1.frame),cams=Number(cameraCount);
+  // The plan only fits the sequence (and A1 master) it was analyzed on.
+  if(expectSequenceID&&String(s.sequenceID)!==String(expectSequenceID))throw Error('The open sequence is not the one that was analyzed. Open that sequence, or click 1. Find camera sources and 2. Analyze sync again here.');
+  if(expectA1&&String(a1.signature)!==String(expectA1))throw Error('A1 (the master music) changed since the analysis. Click 1. Find camera sources and 2. Analyze sync again.');
   if(!(cams>=1&&cams<=60&&cams===Math.floor(cams)))throw Error('Choose between 1 and 60 cameras.');
   var rows=rp_syncParseRows(rowsCsv,cams,frame),i,lanes=rows.reviewLanes||0,wanted={},found={};
   for(i=0;i<rows.length;i++)wanted[rows[i].nodeId]=true;
@@ -1196,7 +1208,7 @@ function rp_syncBegin(name,cameraCount,rowsCsv){
   if(rp_syncA1Key()!==a1Key)throw Error('The A1 master changed while preparing the synced sequence.');
   var a1Locked=false;try{a1Locked=!!live.audioTracks[0].isLocked();live.audioTracks[0].setLocked(1);}catch(lockError){}
   rp_syncJob={id:'sync'+new Date().getTime(),status:'running',licensed:true,licensedAt:new Date().getTime(),originalID:originalID,sequenceID:String(copy.sequenceID),sequenceName:String(copy.name),
-   a1Key:a1Key,a1WasLocked:a1Locked,frame:frame,rows:rows,items:found,next:0,placed:0,checks:0,review:0,reviewTrack:reviewTrack,reviewLanes:lanes,cameraCount:cams,message:'Placing camera clips'};
+   a1Key:a1Key,a1WasLocked:a1Locked,frame:frame,rows:rows,items:found,next:0,placed:0,checks:0,review:0,clock:0,reviewTrack:reviewTrack,reviewLanes:lanes,cameraCount:cams,message:'Placing camera clips'};
   return rp_syncState();
  }catch(e){
   // Never leave a half-built copy behind: delete it and go back to the original sequence.
@@ -1204,7 +1216,7 @@ function rp_syncBegin(name,cameraCount,rowsCsv){
   return rp_encode({ok:false,status:'error',message:String(e)});
  }
 }
-function rp_syncState(){var j=rp_syncJob;if(!j)return rp_encode({ok:true,status:'idle'});return rp_encode({ok:j.status!=='error',status:j.status,id:j.id,sequenceID:j.sequenceID,sequenceName:j.sequenceName,done:j.next,total:j.rows.length,placed:j.placed,checks:j.checks,review:j.review,message:j.message});}
+function rp_syncState(){var j=rp_syncJob;if(!j)return rp_encode({ok:true,status:'idle'});return rp_encode({ok:j.status!=='error',status:j.status,id:j.id,sequenceID:j.sequenceID,sequenceName:j.sequenceName,done:j.next,total:j.rows.length,placed:j.placed,checks:j.checks,review:j.review,clock:j.clock||0,message:j.message});}
 function rp_syncFindPlaced(tr,nodeId,start,frame){for(var c=0;c<tr.clips.numItems;c++){var it=tr.clips[c];if(Math.abs(rp_seconds(it.start)-start)<=frame/4&&it.projectItem&&String(it.projectItem.nodeId)===nodeId)return it;}return null;}
 // Put a project item's In/Out back exactly: clear it, and only set it again if the cleared value differs
 // (so a clip that had no marks does not suddenly show In/Out marks in the Source Monitor).
@@ -1215,25 +1227,32 @@ function rp_syncRestoreMark(item,which,old){
   item['set'+which+'Point'](Number(old.seconds),4);
  }catch(restoreError){}
 }
+/** Frame duration of a clip's own media (seconds), or `fallback` when Premiere cannot tell (stills, audio, old versions). */
+function rp_syncMediaFrame(item,fallback){try{var fi=item.getFootageInterpretation(),r=fi&&Number(fi.frameRate);if(r>1&&r<1000)return 1/r;}catch(e){}return fallback;}
 function rp_syncPlace(j,row){
  var s=app.project.activeSequence,item=j.items[row.nodeId],track=row.camera===0?j.reviewTrack+row.lane:row.camera,tr=s.videoTracks[track];
+ // Mixed frame rates (e.g. 25 fps media in a 29.97 sequence): Premiere starts a clip on the media's own frames and
+ // reports its In rounded to sequence frames. Put In/Out on the media grid and the start where that source frame
+ // belongs, so the sync stays within half a timeline frame; the In read back may then differ by one timeline frame.
+ var f=j.frame,mf=rp_syncMediaFrame(item,f),mixed=Math.abs(mf-f)>1e-6,sIn=row.sourceIn,sOut=row.sourceOut,start=row.start;
+ if(mixed){var zero=row.start-row.sourceIn,a2=Math.ceil(row.sourceIn/mf-1e-6)*mf,b2=Math.floor(row.sourceOut/mf+1e-6)*mf;
+  if(b2-a2>=f/2){sIn=a2;sOut=b2;start=Math.max(0,Math.round((a2+zero)/f)*f);}}
  if(!tr)throw Error('Synced sequence track V'+(track+1)+' is missing.');
  // Place exactly sourceIn..sourceOut: set the project item's In/Out for the overwrite, then restore them.
  var oldIn=null,oldOut=null;try{oldIn=item.getInPoint(4);oldOut=item.getOutPoint(4);}catch(e){}
  try{
-  item.setInPoint(row.sourceIn,4);item.setOutPoint(row.sourceOut,4);
-  tr.overwriteClip(item,rp_syncTime(row.start));
+  rp_syncSetMarks(item,sIn,sOut);
+  tr.overwriteClip(item,rp_syncTime(start));
  }finally{rp_syncRestoreMark(item,'In',oldIn);rp_syncRestoreMark(item,'Out',oldOut);}
- var placed=rp_syncFindPlaced(tr,row.nodeId,row.start,j.frame);
- if(!placed)throw Error('Premiere did not place '+item.name+' at '+row.start.toFixed(3)+' s.');
- // The placed piece must be the planned source range (Premiere may include the Out frame: +1 frame allowed).
- var gotIn=rp_seconds(placed.inPoint),gotLen=rp_seconds(placed.end)-rp_seconds(placed.start),wantLen=row.sourceOut-row.sourceIn;
- if(Math.abs(gotIn-row.sourceIn)>j.frame/2||gotLen<wantLen-j.frame/2||gotLen>wantLen+j.frame*1.5)throw Error('Premiere placed '+item.name+' with a different In/Out than planned.');
- if(row.flag!=='h'){
-  var tag=row.flag==='r'?'[REVIEW] ':'[CHECK] ';try{if(String(placed.name).indexOf(tag)!==0)placed.name=tag+placed.name;}catch(nameError){}
-  try{placed.setColorLabel(row.flag==='r'?RP_SYNC_LABEL_REVIEW:RP_SYNC_LABEL_CHECK);}catch(labelError){}
- }
- if(row.flag==='r')j.review++;else if(row.flag==='m')j.checks++;
+ var placed=rp_syncFindPlaced(tr,row.nodeId,start,f);
+ if(!placed)throw Error('Premiere did not place '+item.name+' at '+start.toFixed(3)+' s.');
+ // The placed piece must start at the planned source In (that is what keeps it in sync). Premiere may include the
+ // Out frame (+1 frame), and it ends the clip at the last video frame, which can be up to a second earlier than the
+ // container length FFmpeg reports (audio running longer): a shorter tail does not move the sync.
+ var gotIn=rp_seconds(placed.inPoint),gotLen=rp_seconds(placed.end)-rp_seconds(placed.start),wantLen=sOut-sIn,fmt=function(v){return (Math.abs(v)<5e-4?0:v).toFixed(3);};
+ if(Math.abs(gotIn-sIn)>(mixed?f*1.01:f/2)||gotLen<wantLen-Math.max(1,f*2)||gotLen>wantLen+Math.max(f,mf)*1.5)throw Error('Premiere placed '+item.name+' with a different In/Out than planned (In '+fmt(gotIn)+' s, planned '+fmt(sIn)+' s; length '+fmt(gotLen)+' s, planned '+fmt(wantLen)+' s).');
+ if(row.flag!=='h')rp_syncTag(placed,row.flag);
+ if(row.flag==='r')j.review++;else if(row.flag==='m')j.checks++;else if(row.flag==='c')j.clock++;
  j.placed++;
 }
 // On every exit (done, error, stop), on the synced sequence itself: camera audio muted, review lanes switched off
@@ -1247,7 +1266,7 @@ function rp_syncSecure(j){
 }
 function rp_syncFinish(j){
  var reviewOff=rp_syncSecure(j);
- j.status='done';j.message='Synced sequence ready: '+j.placed+' clips placed'+(j.checks?', '+j.checks+' marked [CHECK]':'')+(j.review?', '+j.review+' on the muted Review track':'')+'.'+(reviewOff?'':' Switch off the Review tracks (eye icon) before Run Multicam.');
+ j.status='done';j.message='Synced sequence ready: '+j.placed+' clips placed'+(j.checks?', '+j.checks+' marked [CHECK]':'')+(j.clock?', '+j.clock+' drone clips placed by camera clock [CLOCK]':'')+(j.review?', '+j.review+' on the muted Review track':'')+'.'+(reviewOff?'':' Switch off the Review tracks (eye icon) before Run Multicam.');
 }
 function rp_syncStep(id){
  var j=rp_syncJob;if(!j||String(j.id)!==String(id))return rp_encode({ok:false,status:'error',message:'No sync job to continue.'});
@@ -1265,12 +1284,92 @@ function rp_syncStep(id){
  }catch(e){j.status='error';j.message=String(e)+(/original sequence is unchanged/.test(String(e))?'':' The synced sequence "'+j.sequenceName+'" is incomplete: delete it and sync again. The original sequence is unchanged.');try{rp_syncSecure(j);}catch(secureError){}}
  return rp_syncState();
 }
+function rp_syncTag(placed,flag){
+ var tag=flag==='r'?'[REVIEW] ':flag==='c'?'[CLOCK] ':'[CHECK] ';try{if(String(placed.name).indexOf(tag)!==0)placed.name=tag+placed.name;}catch(nameError){}
+ try{placed.setColorLabel(flag==='r'?RP_SYNC_LABEL_REVIEW:flag==='c'?RP_SYNC_LABEL_CLOCK:RP_SYNC_LABEL_CHECK);}catch(labelError){}
+}
+/** The open sequence and its A1 master fingerprint (the panel checks it before analyzing and building). */
+function rp_syncActive(){try{var s=app.project.activeSequence;if(!s)throw Error('Open the sequence with the master music on A1 first.');var a1=rp_a1Snapshot();return rp_encode({ok:true,sequenceID:String(s.sequenceID),name:String(s.name),a1Signature:a1.signature});}catch(e){return rp_encode({ok:false,message:String(e)});}}
+/** The one video clip selected in the active sequence: track, project item and position (drone flight correction). */
+function rp_syncSelected(){
+ try{
+  var s=app.project.activeSequence;if(!s)throw Error('Open the synced sequence first.');
+  var found=[],v,c,tr,it;
+  for(v=0;v<s.videoTracks.numTracks;v++){tr=s.videoTracks[v];for(c=0;c<tr.clips.numItems;c++){it=tr.clips[c];var on=false;try{on=!!it.isSelected();}catch(e){}if(on)found.push({track:v,nodeId:String(it.projectItem?it.projectItem.nodeId:''),start:rp_seconds(it.start),inPoint:rp_seconds(it.inPoint),name:String(it.name)});}}
+  if(found.length!==1)throw Error(found.length?'Select only one drone clip.':'Select the drone clip you moved into place.');
+  var x=found[0];return rp_encode({ok:true,sequenceID:String(s.sequenceID),track:x.track,nodeId:x.nodeId,start:x.start,inPoint:x.inPoint,name:x.name});
+ }catch(e){return rp_encode({ok:false,message:String(e)});}
+}
+/** Move drone clips on one track of the synced sequence. clipsCsv lists "nodeId@zero" or "nodeId@zero@target": zero is where
+    the panel believes the file's time 0 sits (start - In; it only picks the right piece when a file is used twice),
+    target is an absolute new file-zero position. Without targets every clip moves by `delta` from where it really is.
+    Everything is checked before the timeline changes (clip still there, nothing overlapped that is not moving). A clip
+    pushed before 00:00 is trimmed at the head instead (as the build does); one that would disappear is refused.
+    Each clip is re-placed with its source range, name and label. If Premiere fails half way, the clips not yet moved
+    go back where they were. Returns the new start and In of every moved clip, in the order given. */
+function rp_syncShiftDrone(sequenceID,track,clipsCsv,delta){
+ var tr=null,frame=0;
+ // Declared outside the try block (function declarations inside blocks are not ES3).
+ function put(m,start,inP,len){
+   var item=m.item,oldIn=null,oldOut=null;try{oldIn=item.getInPoint(4);oldOut=item.getOutPoint(4);}catch(e){}
+   try{rp_syncSetMarks(item,inP,inP+len);tr.overwriteClip(item,rp_syncTime(start));}
+   finally{rp_syncRestoreMark(item,'In',oldIn);rp_syncRestoreMark(item,'Out',oldOut);}
+   var placed=rp_syncFindPlaced(tr,m.node,start,frame);if(!placed)return null;
+   // Premiere may include the Out frame: keep the length, so repeated nudges never grow a clip.
+   if(rp_seconds(placed.end)-rp_seconds(placed.start)>len+frame/2){try{placed.end=rp_syncTime(start+len);}catch(e){}}
+   try{placed.name=m.name;}catch(e){}
+   var lab=m.label!==null&&m.label!==undefined?m.label:(/^\[CLOCK\] /.test(m.name)?RP_SYNC_LABEL_CLOCK:null);if(lab!==null){try{placed.setColorLabel(lab);}catch(e){}}
+   return placed;
+  }
+ try{
+  if(rp_syncBusy()||(rp_job&&rp_job.status==='running'))throw Error('A process is already active. Click Stop first.');
+  var s=app.project.activeSequence;if(!s||String(s.sequenceID)!==String(sequenceID))throw Error('Open the synced sequence to correct its drone clips.');
+  var tn=Number(track);tr=s.videoTracks[tn];if(!tr)throw Error('Drone track V'+(tn+1)+' is missing.');
+  frame=Number(s.timebase)/254016000000;if(!(frame>0))frame=1/25;
+  var d=Math.round(Number(delta)/frame)*frame;if(!isFinite(d))throw Error('Invalid shift.');
+  var asks=[],parts=String(clipsCsv||'').split(','),i,c,k;
+  for(i=0;i<parts.length;i++){var at=parts[i].split('@');if((at.length===2||at.length===3)&&/^[A-Za-z0-9._:-]{1,64}$/.test(at[0])&&isFinite(Number(at[1]))&&(at.length===2||isFinite(Number(at[2]))))asks.push({i:asks.length,node:at[0],zero:Number(at[1]),target:at.length===3?Number(at[2]):null});}
+  if(!asks.length)throw Error('No drone clips to move.');
+  // Match every requested clip to one piece on the track: same project item, nearest file-zero position (start - In).
+  // A head trim (a neighbour dragged over it) or an Undo since the last move does not change which piece it is.
+  var pieces=[];for(c=0;c<tr.clips.numItems;c++){var it=tr.clips[c];pieces.push({index:c,clip:it,node:String(it.projectItem?it.projectItem.nodeId:''),item:it.projectItem,start:rp_seconds(it.start),end:rp_seconds(it.end),inP:rp_seconds(it.inPoint),name:String(it.name),taken:false});}
+  var moving=[],missing=0;
+  for(i=0;i<asks.length;i++){var best=null,bd=0;for(k=0;k<pieces.length;k++){var pc=pieces[k];if(pc.taken||pc.node!==asks[i].node)continue;var dist=Math.abs((pc.start-pc.inP)-asks[i].zero);if(!best||dist<bd){best=pc;bd=dist;}}
+   // A clip the user deleted (or the host never placed) is skipped; the others stay correctable.
+   if(!best){missing++;continue;}best.taken=true;best.ask=asks[i];moving.push(best);}
+  if(!moving.length)throw Error('The drone clips are no longer on V'+(tn+1)+'. Build the synced sequence again.');
+  // Each clip's own move: to its target, or by delta. Snapped to the frame grid.
+  var any=false;for(i=0;i<moving.length;i++){var mv=moving[i],want=mv.ask.target===null?d:mv.ask.target-(mv.start-mv.inP);mv.d=Math.round(want/frame)*frame;if(Math.abs(mv.d)>=frame/4)any=true;}
+  if(!any){var same=[];for(i=0;i<asks.length;i++)same.push(null);for(i=0;i<moving.length;i++)same[moving[i].ask.i]={start:moving[i].start,inPoint:moving[i].inP};return rp_encode({ok:true,moved:0,missing:missing,delta:0,clips:same});}
+  // Plan: new start, In and length for every moving clip; check against the clips that stay.
+  for(i=0;i<moving.length;i++){var m=moving[i],len=m.end-m.start;m.label=null;try{m.label=m.clip.getColorLabel();}catch(e){}
+   m.ns=m.start+m.d;m.nIn=m.inP;m.nLen=len;
+   if(m.ns<0){m.nIn=Math.round((m.inP-m.ns)/frame)*frame;m.nLen=len-(m.nIn-m.inP);m.ns=0;if(m.nLen<frame)throw Error(m.name+' would move entirely before the start of the sequence.');}
+   for(k=0;k<pieces.length;k++){var st=pieces[k];if(st.taken)continue;if(Math.min(m.ns+m.nLen,st.end)-Math.max(m.ns,st.start)>frame/4)throw Error(m.name+' would overlap '+st.name+' on V'+(tn+1)+'.');}}
+  // Clips moving to different targets must not land on each other either.
+  for(i=0;i<moving.length;i++)for(k=i+1;k<moving.length;k++){var ma=moving[i],mb=moving[k];if(Math.min(ma.ns+ma.nLen,mb.ns+mb.nLen)-Math.max(ma.ns,mb.ns)>frame/4)throw Error(ma.name+' would overlap '+mb.name+' on V'+(tn+1)+'.');}
+  // Remove from the end of the track backwards, re-reading each clip by index (no stale references after a removal).
+  var order=moving.slice().sort(function(x,y){return y.index-x.index;});
+  for(i=0;i<order.length;i++){var live=tr.clips[order[i].index];if(!live||String(live.projectItem?live.projectItem.nodeId:'')!==order[i].node)throw Error('The drone track changed while moving clips. Use Undo (Ctrl/Cmd+Z) to go back.');live.remove(false,false);}
+  var out=[],done=0,failed=null;for(i=0;i<asks.length;i++)out.push(null);
+  for(i=0;i<moving.length;i++){m=moving[i];var placed=null;try{placed=put(m,m.ns,m.nIn,m.nLen);}catch(e){placed=null;}
+   if(!placed){failed=m;break;}out[m.ask.i]={start:rp_seconds(placed.start),inPoint:rp_seconds(placed.inPoint)};done++;}
+  if(failed){
+   // Put the clips that were not moved yet back where they were; report what happened.
+   for(k=i;k<moving.length;k++){try{put(moving[k],moving[k].start,moving[k].inP,moving[k].end-moving[k].start);}catch(e){}}
+   throw Error('Premiere did not place '+failed.name+'. '+done+' of '+moving.length+' drone clips moved; the rest were put back. Use Undo (Ctrl/Cmd+Z) to undo the moved ones, then Build again.');
+  }
+  return rp_encode({ok:true,moved:done,missing:missing,delta:Math.round(d*1e6)/1e6,clips:out});
+ }catch(e){return rp_encode({ok:false,message:String(e)});}
+}
 function rp_syncStop(id){var j=rp_syncJob;if(j&&String(j.id)===String(id)&&j.status==='running'){j.status='stopped';j.message='Sync stopped after '+j.placed+' clips. Delete the synced sequence or run sync again.';try{rp_syncSecure(j);}catch(e){}}return rp_syncState();}
 function rp_syncGuardStep(fn){return function(id){try{var j=rp_syncJob;if(!(j&&j.licensed&&j.status==='running'&&String(j.id)===String(id)&&new Date().getTime()-Number(j.licensedAt||0)<86400000))rp_requireLicense();return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
 
 /* Commercial host gate: public entry points refuse work without a short-lived licensed session. */
+// Sync to Master Music (cameras, drone, FPV) is a lifetime-only feature: trial sessions are refused here too.
+function rp_guardLifetime(fn){return function(){try{rp_requireLicense();if(rp_license_tier!=='lifetime')return rp_encode({ok:false,status:'error',code:'LIFETIME_REQUIRED',message:'Sync Cameras to Music is available with the lifetime license only.'});return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
 function rp_guardLicensed(fn){return function(){try{rp_requireLicense();var out=fn.apply(this,arguments);if(rp_job&&rp_job.status==='running'){rp_job.licensed=true;rp_job.licensedAt=new Date().getTime();}return out;}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
-/* v2.3.11.6: a job started under a valid session may run to completion (its own step/upload calls only)
+/* v2.3.11.7: a job started under a valid session may run to completion (its own step/upload calls only)
    if the trial/session ends mid-job. Every new job, plan, resume or analysis still needs a live session. */
 function rp_jobContinuation(id){var j=rp_job;return !!(j&&j.licensed&&j.status==='running'&&String(j.id)===String(id)&&new Date().getTime()-Number(j.licensedAt||0)<86400000);}
 function rp_guardJob(fn){return function(id){try{if(!rp_jobContinuation(id))rp_requireLicense();return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
@@ -1295,6 +1394,9 @@ rp_a1Begin=rp_guardLicensed(rp_a1Begin);
 rp_a1Upload=rp_guardJob(rp_a1Upload);
 rp_a1DirectApply=rp_guardLicensed(rp_a1DirectApply);
 rp_a1Step=rp_guardJob(rp_a1Step);
-rp_syncSources=rp_guardLicensed(rp_syncSources);
-rp_syncBegin=rp_guardLicensed(rp_syncBegin);
+rp_syncSources=rp_guardLifetime(rp_syncSources);
+rp_syncBegin=rp_guardLifetime(rp_syncBegin);
 rp_syncStep=rp_syncGuardStep(rp_syncStep);
+rp_syncSelected=rp_guardLifetime(rp_syncSelected);
+rp_syncActive=rp_guardLifetime(rp_syncActive);
+rp_syncShiftDrone=rp_guardLifetime(rp_syncShiftDrone);

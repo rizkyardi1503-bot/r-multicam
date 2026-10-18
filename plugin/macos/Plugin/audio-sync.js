@@ -230,7 +230,7 @@ function probe(ffmpeg,file,state){
    state.process=null;if(state.cancelled)return reject(Error('Sync stopped.'));
    if(/No such file|Invalid data found|does not exist/i.test(text))return reject(Error('Cannot read media: '+file));
    var lines=text.split(/\r?\n/),video=false;for(var i=0;i<lines.length;i++)if(/Stream #.*Video:/.test(lines[i])&&!/attached pic/.test(lines[i]))video=true;
-   var out={file:file,duration:null,created:null,hasAudio:/Stream #.*Audio:/.test(text),hasVideo:video};
+   var out={file:file,duration:null,created:null,hasAudio:/Stream #.*Audio:/.test(text),hasVideo:video,make:root.RPDroneSync&&root.RPDroneSync.makeFromProbe?root.RPDroneSync.makeFromProbe(text):'',model:root.RPDroneSync&&root.RPDroneSync.modelFromProbe?root.RPDroneSync.modelFromProbe(text):'',serial:root.RPDroneSync&&root.RPDroneSync.serialFromProbe?root.RPDroneSync.serialFromProbe(text):''};
    var d=/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(text);if(d)out.duration=Number(d[1])*3600+Number(d[2])*60+Number(d[3]);
    var c=/creation_time\s*:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/.exec(text);if(c){var ms=Date.parse(/Z$/.test(c[1])?c[1]:c[1]+'Z');if(isFinite(ms))out.created=ms/1000;}
    if(!out.duration)return reject(Error('Could not read the duration of '+file));
