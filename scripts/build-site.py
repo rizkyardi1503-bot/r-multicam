@@ -67,6 +67,7 @@ FOOTER_EN = [
     ('Learn', [
         ('/guides/music-driven-multicam-editing/', 'Music-driven editing guide'),
         ('/guides/install-multicam-ai/', 'Installation guide'),
+        ('/cut-to-the-beat-premiere-pro/', 'Cut to the beat in Premiere Pro'),
         ('/quick-start/', 'Quick start'),
         ('/compatibility/', 'Compatibility'),
         ('/help/', 'Help center'),
@@ -93,6 +94,7 @@ FOOTER_ID = [
     ('Belajar', [
         ('/id/guides/music-driven-multicam-editing/', 'Panduan editing mengikuti musik'),
         ('/id/guides/install-multicam-ai/', 'Panduan instalasi'),
+        ('/id/cut-to-the-beat-premiere-pro/', 'Cut sesuai beat di Premiere Pro'),
         ('/id/quick-start/', 'Mulai cepat'),
         ('/id/compatibility/', 'Kompatibilitas'),
         ('/id/help/', 'Pusat bantuan'),
@@ -107,6 +109,9 @@ FOOTER_ID = [
         ('/id/license/', 'Lisensi software'),
     ]),
 ]
+SOCIAL_IMAGE = ORIGIN + '/social-card.jpg'
+SOCIAL_ALT = {'en': 'R Project Multicam AI — music-driven multicam editing in Premiere Pro',
+              'id': 'R Project Multicam AI — edit multicam mengikuti musik di Premiere Pro'}
 CONTACT = [
     ('mailto:rizkyardi1503@gmail.com', 'Email support', False),
     ('https://wa.me/6282233161680', 'WhatsApp support ↗', True),
@@ -224,6 +229,9 @@ def lang_switch(path: str, lang: str) -> str:
     if not (target.is_file() if other.endswith('.html') else (target / 'index.html').is_file()):
         other = '/' if lang == 'id' else '/id/'
     en_href, id_href = (other, path) if lang == 'id' else (path, other)
+    # The 404 page is served for any missing URL: both switches go to the home pages, never to /404.html itself.
+    if path.endswith('/404.html'):
+        en_href, id_href = '/', '/id/'
     label = 'Pilih bahasa' if lang == 'id' else 'Choose language'
     def item(code, href, text, hl):
         cur = ' aria-current="true"' if code == lang else ''
@@ -367,6 +375,47 @@ def lang_block(rel: str, path: str, lang: str, router: str) -> str:
             f'<script>{router}</script>')
 
 
+def social_meta(html: str, lang: str) -> str:
+    """Default Open Graph / Twitter / theme-color tags for indexable pages. Only missing tags are added,
+    so pages keep their own wording; defaults come from <title>, the meta description and the canonical URL."""
+    robots = re.search(r'<meta name="robots" content="([^"]*)">', html)
+    if not robots or 'noindex' in robots.group(1):
+        return html
+
+    def meta(attr, key):
+        m = re.search(rf'<meta {attr}="{re.escape(key)}" content="([^"]*)">', html)
+        return m.group(1) if m else None
+    title = re.search(r'<title>(.*?)</title>', html, re.S)
+    title = esc(htmllib.unescape(title.group(1).strip())) if title else None
+    desc = meta('name', 'description')
+    canonical = re.search(r'<link rel="canonical" href="([^"]*)">', html)
+    want = [
+        ('property', 'og:type', 'website'),
+        ('property', 'og:site_name', 'R Project Multicam AI'),
+        ('property', 'og:locale', 'id_ID' if lang == 'id' else 'en_US'),
+        ('property', 'og:title', title),
+        ('property', 'og:description', desc),
+        ('property', 'og:url', canonical.group(1) if canonical else None),
+        ('property', 'og:image', SOCIAL_IMAGE),
+        ('property', 'og:image:width', '1200'),
+        ('property', 'og:image:height', '630'),
+        ('property', 'og:image:alt', SOCIAL_ALT['id' if lang == 'id' else 'en']),
+        ('name', 'twitter:card', 'summary_large_image'),
+        ('name', 'twitter:title', meta('property', 'og:title') or title),
+        ('name', 'twitter:description', meta('property', 'og:description') or desc),
+        ('name', 'twitter:image', SOCIAL_IMAGE),
+        ('name', 'theme-color', '#070911'),
+    ]
+    add = ''.join(f'<meta {a}="{k}" content="{v}">' for a, k, v in want if v and meta(a, k) is None)
+    if not add:
+        return html
+    last = None
+    for last in re.finditer(r'<meta (?:property|name)="(?:og|twitter):[^"]*" content="[^"]*">', html):
+        pass
+    at = (last or robots).end()
+    return html[:at] + add + html[at:]
+
+
 def process_page(rel: str, html: str, versions: dict) -> str:
     path = page_path(rel)
     lang = (re.search(r'<html[^>]*\blang="([^"]+)"', html) or [None, 'en'])[1]
@@ -382,6 +431,7 @@ def process_page(rel: str, html: str, versions: dict) -> str:
     block = lang_block(rel, path, lang, versions['router'])
     if block:
         html = re.sub(r'(<meta charset="[^"]*">)', lambda m: m.group(1) + f'<!--rp:lang-->{block}<!--/rp:lang-->', html, count=1)
+    html = social_meta(html, lang)
 
     # 1. Stylesheets -> one bundle at the position of the first old link.
     link_re = re.compile(r'<link rel="stylesheet" href="/?([a-z0-9-]+\.css)(\?[^"]*)?">')
