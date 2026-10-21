@@ -5,11 +5,11 @@ async function analyticsTest(){
  assert.equal(events[0].event_name,'page_view');assert.match(events[0].visitor_id,/^[0-9a-f-]{36}$/);console.log('PASS analytics survives blocked storage');
 }
 async function portalTest(open=true){
- const els=new Map();const elem=()=>({hidden:false,value:'',textContent:'',dataset:{},classList:{toggle(){}},setAttribute(){},removeAttribute(){},replaceChildren(){},appendChild(){},remove(){},checkValidity(){return true},click(){},style:{}});
+ const els=new Map();const elem=()=>({hidden:false,value:'',textContent:'',dataset:{},classList:{toggle(){}},setAttribute(){},removeAttribute(){},replaceChildren(){},appendChild(){},remove(){},checkValidity(){return true},click(){},scrollIntoView(){},style:{}});
  const el=id=>{if(!els.has(id))els.set(id,elem());return els.get(id)};let restoredToken='saved';let mode='normal';let downloads=0;let checkoutCalls=0;
  const portal=elem();portal.querySelector=q=>el(q.replace(/^#/,''));portal.querySelectorAll=()=>[];portal.showModal=()=>{portal.open=true};portal.close=()=>{portal.open=false};
  class TestURL extends URL{};TestURL.createObjectURL=()=>{downloads++;return 'blob:test'};TestURL.revokeObjectURL=()=>{};
- const w={RP_CONFIG:{supabaseUrl:'https://api.test',supabasePublishableKey:'public',checkoutOpen:open},location:{pathname:'/',search:''},addEventListener(){}};
+ const w={RP_CONFIG:{supabaseUrl:'https://api.test',supabasePublishableKey:'public',checkoutOpen:open},location:{pathname:'/',search:'',assigned:null,assign(u){this.assigned=u}},addEventListener(){}};
  const ctx={window:w,document:{createElement:t=>t==='dialog'?portal:elem(),body:{appendChild(){}},querySelectorAll:()=>[]},localStorage:{getItem:()=>null,setItem(){},removeItem(){restoredToken=null}},URL:TestURL,URLSearchParams,AbortSignal,Uint8Array,Date,setTimeout(){},fetch:async(u,o)=>{
   if(u.includes('/auth/v1/user'))return{ok:true,json:async()=>({id:'user1',email:'person@example.com'})};
   if(u.includes('/rest/v1/plugin_profiles'))return{ok:true,json:async()=>[{license_status:'trial',plugin_version:'2.3.11.0'}]};
@@ -24,9 +24,10 @@ async function portalTest(open=true){
   mode='normal';await w.test.downloadRelease('windows');assert.equal(downloads,1);console.log('PASS checkout closed: Buy/Check payment hidden, no payment request, downloads still work');return;}
  mode='amount';await assert.rejects(w.test.purchase(),/invalid payment amount/);assert(el('checkout-confirm').hidden);
  mode='evil';await assert.rejects(w.test.purchase(),/unexpected checkout/);assert(el('checkout-confirm').hidden);
- mode='normal';await w.test.purchase();assert.equal(el('checkout-link').href,'https://app.midtrans.com/snap/test');assert(!el('checkout-confirm').hidden);
+ assert.equal(w.location.assigned,null,'rejected checkouts never leave the site');
+ mode='normal';await w.test.purchase();assert.equal(el('checkout-link').href,'https://app.midtrans.com/snap/test');assert(!el('checkout-confirm').hidden);assert.equal(w.location.assigned,'https://app.midtrans.com/snap/test','buyer goes straight to Midtrans');
  mode='badzip';await assert.rejects(w.test.downloadRelease('windows'),/invalid installer/);assert.equal(downloads,0);
  mode='normal';await w.test.downloadRelease('windows');assert.equal(downloads,1);
- console.log('PASS future installed version, invalid amount, hostile checkout host, ZIP validation and valid download');
+ console.log('PASS future installed version, invalid amount, hostile checkout host, straight to Midtrans, ZIP validation and valid download');
 }
 (async()=>{await analyticsTest();await portalTest(true);await portalTest(false)})().catch(e=>{console.error(e);process.exit(1)});
