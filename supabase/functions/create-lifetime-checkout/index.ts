@@ -17,8 +17,10 @@ const cors = {
   "access-control-allow-methods": "POST, OPTIONS"
 };
 
-const LIFETIME_IDR = 3575000;
-const LIFETIME_USD_REFERENCE = 200;
+// One price for every country: Rp2.000.000 (all Midtrans methods). The USD figure is only a rough reference for the
+// Premiere panel's confirm dialog (it prints "US$" + display_price_usd); the amount charged is always the IDR price.
+const LIFETIME_IDR = 2000000;
+const LIFETIME_USD_REFERENCE = 120;
 const REUSE_MS = 23 * 3600 * 1000;
 // Public webhook address (SUPABASE_URL inside a function is the API gateway and may not be the public host).
 const WEBHOOK_URL = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/midtrans-lifetime-webhook";

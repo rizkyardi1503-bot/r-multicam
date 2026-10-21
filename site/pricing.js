@@ -1,11 +1,12 @@
 'use strict';
 (() => {
  let currency='USD',country=null;
- const prices={IDR:'Rp3.575.000',USD:'US$200'};
+ // One price for every country (charged in IDR); the country is still detected for analytics/UI.
+ const prices={IDR:'Rp2.000.000',USD:'Rp2.000.000'};
  function label(){return prices[currency];}
  function apply(){
   document.querySelectorAll('[data-rp-price]').forEach(node=>{if(node.textContent!==label())node.textContent=label();});
-  document.querySelectorAll('[data-rp-currency-caption]').forEach(node=>{const text=currency+' · one-time';if(node.textContent!==text)node.textContent=text;});
+  document.querySelectorAll('[data-rp-currency-caption]').forEach(node=>{const text='IDR · one-time';if(node.textContent!==text)node.textContent=text;});
  }
  window.RPPrice={label,apply,get currency(){return currency;},get country(){return country;}};
  // Read only the country code, never log or persist the IP/trace response.

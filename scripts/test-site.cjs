@@ -4,13 +4,13 @@ async function analyticsTest(){
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../site/analytics.js'),'utf8'),{window:w,crypto:webcrypto,localStorage:undefined,sessionStorage:undefined,URL,URLSearchParams,location:{search:'',pathname:'/'},document:{referrer:'',title:'Test',querySelectorAll:()=>[],getElementById:()=>null},fetch:async(u,o)=>{events.push(JSON.parse(o.body));return{};}});
  assert.equal(events[0].event_name,'page_view');assert.match(events[0].visitor_id,/^[0-9a-f-]{36}$/);console.log('PASS analytics survives blocked storage');
 }
-async function portalTest(open=true){
+async function portalTest(open=true,phone=false){
  const els=new Map();const elem=()=>({hidden:false,value:'',textContent:'',dataset:{},classList:{toggle(){}},setAttribute(){},removeAttribute(){},replaceChildren(){},appendChild(){},remove(){},checkValidity(){return true},click(){},scrollIntoView(){},style:{}});
  const el=id=>{if(!els.has(id))els.set(id,elem());return els.get(id)};let restoredToken='saved';let mode='normal';let downloads=0;let checkoutCalls=0;
  const portal=elem();portal.querySelector=q=>el(q.replace(/^#/,''));portal.querySelectorAll=()=>[];portal.showModal=()=>{portal.open=true};portal.close=()=>{portal.open=false};
  class TestURL extends URL{};TestURL.createObjectURL=()=>{downloads++;return 'blob:test'};TestURL.revokeObjectURL=()=>{};
- const w={RP_CONFIG:{supabaseUrl:'https://api.test',supabasePublishableKey:'public',checkoutOpen:open},location:{pathname:'/',search:'',assigned:null,assign(u){this.assigned=u}},addEventListener(){}};
- const ctx={window:w,document:{createElement:t=>t==='dialog'?portal:elem(),body:{appendChild(){}},querySelectorAll:()=>[]},localStorage:{getItem:()=>null,setItem(){},removeItem(){restoredToken=null}},URL:TestURL,URLSearchParams,AbortSignal,Uint8Array,Date,setTimeout(){},fetch:async(u,o)=>{
+ const w={RP_CONFIG:{supabaseUrl:'https://api.test',supabasePublishableKey:'public',checkoutOpen:open},location:{origin:'https://r-multicam.pages.dev',pathname:'/',search:'',assigned:null,assign(u){this.assigned=u}},addEventListener(){}};
+ const ctx={...(phone?{navigator:{userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Instagram',platform:'iPhone',maxTouchPoints:5}}:{}),window:w,document:{createElement:t=>t==='dialog'?portal:elem(),body:{appendChild(){}},querySelectorAll:()=>[]},localStorage:{getItem:()=>null,setItem(){},removeItem(){restoredToken=null}},URL:TestURL,URLSearchParams,AbortSignal,Uint8Array,Date,setTimeout(){},fetch:async(u,o)=>{
   if(u.includes('/auth/v1/user'))return{ok:true,json:async()=>({id:'user1',email:'person@example.com'})};
   if(u.includes('/rest/v1/plugin_profiles'))return{ok:true,json:async()=>[{license_status:'trial',plugin_version:'2.3.11.0'}]};
   if(u.includes('/rest/v1/plugin_payment_orders'))return{ok:true,json:async()=>[]};
@@ -19,7 +19,9 @@ async function portalTest(open=true){
   throw Error('Unexpected request '+u);
  }};
  let source=fs.readFileSync(path.join(__dirname,'../site/portal.js'),'utf8').replace(' bootstrap().catch(error=>say(friendly(error),true));',' window.test={acceptSession,purchase,downloadRelease};');
- vm.runInNewContext(source,ctx);await w.test.acceptSession({access_token:'access',refresh_token:'refresh',expires_in:3600});assert(!el('version-summary').textContent.includes('Update available'));
+ vm.runInNewContext(source,ctx);
+ if(phone){assert(!el('phone-handoff').hidden,'phone sees the send-to-laptop box');const wa=decodeURIComponent(el('handoff-whatsapp').href);assert(wa.startsWith('https://wa.me/?text='));assert.match(wa,/utm_source=handoff&utm_medium=whatsapp&utm_campaign=mobile_to_desktop/);const mail=decodeURIComponent(el('handoff-email').href);assert(mail.startsWith('mailto:?subject='),mail);assert(mail.includes('&body=')&&mail.includes('utm_medium=email'),mail);console.log('PASS phone visitors can send the link to WhatsApp/email');return;}
+ assert.equal(el('handoff-whatsapp').href,undefined,'desktop never sets up the phone box');await w.test.acceptSession({access_token:'access',refresh_token:'refresh',expires_in:3600});assert(!el('version-summary').textContent.includes('Update available'));
  if(!open){await w.test.purchase();assert.equal(checkoutCalls,0,'closed checkout never calls the payment function');assert(el('account-purchase').hidden,'buy button hidden');assert(el('check-payment').hidden,'check payment hidden');
   mode='normal';await w.test.downloadRelease('windows');assert.equal(downloads,1);console.log('PASS checkout closed: Buy/Check payment hidden, no payment request, downloads still work');return;}
  mode='amount';await assert.rejects(w.test.purchase(),/invalid payment amount/);assert(el('checkout-confirm').hidden);
@@ -30,4 +32,4 @@ async function portalTest(open=true){
  mode='normal';await w.test.downloadRelease('windows');assert.equal(downloads,1);
  console.log('PASS future installed version, invalid amount, hostile checkout host, straight to Midtrans, ZIP validation and valid download');
 }
-(async()=>{await analyticsTest();await portalTest(true);await portalTest(false)})().catch(e=>{console.error(e);process.exit(1)});
+(async()=>{await analyticsTest();await portalTest(true);await portalTest(false);await portalTest(true,true)})().catch(e=>{console.error(e);process.exit(1)});
