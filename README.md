@@ -34,7 +34,7 @@ Every page exists in English (`site/...`) and Indonesian (`site/id/...`).
 - The build adds hreflang alternates, the EN/ID switch, Indonesian links, and a bilingual sitemap.
 - Visitors from Indonesia (or with an Indonesian browser) are sent from English pages to the Indonesian version; a choice made with the EN/ID switch is remembered. Crawlers, login callbacks and download links are never redirected (`src/i18n/lang-router.js`).
 - Text rendered by scripts (account, checkout, demo) is translated on `/id/` pages from `src/i18n/id.json`. Add new UI strings there.
-- Prices follow location, not language: Indonesia shows IDR, everywhere else USD (`site/pricing.js`).
+- One lifetime price, Rp2.000.000, in every country. `site/pricing.js` shows the previous list price struck through before it (Rp3.575.000 for Indonesia, US$200 elsewhere, by location, not language).
 
 ## Plugin releases
 
