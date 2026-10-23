@@ -20,7 +20,9 @@ Edit stylesheets in `src/css/` (never `site/site.css` or `site/home.css` directl
 python3 scripts/build-site.py
 ```
 
-This bundles and minifies the CSS (`home.css` for the homepage, `site.css` for all other pages), applies the shared header, footer, table of contents and breadcrumb data to every content page, and updates `sitemap.xml` dates for changed pages. CI fails if the build output is out of date. The 3D/motion layer lives in `site/motion3d.mjs`. Existing direct-upload project and domain are retained.
+This bundles and minifies the CSS (`home.css` for the homepage, `site.css` for all other pages), applies the shared header, footer, table of contents and breadcrumb data to every content page, and updates `sitemap.xml` dates for changed pages. CI fails if the build output is out of date. The light motion layer (header state and one-time section reveal, no WebGL) lives in `site/motion.mjs`. Existing direct-upload project and domain are retained.
+
+CI also runs `python3 scripts/check-weight.py` (Python 3 standard library only) as a page weight budget. For the two homepages (`site/index.html`, `site/id/index.html`): HTML at most 70 KB, linked CSS at most 45 KB, same-origin scripts at most 120 KB combined, no `<canvas>`, and no `<video>` that autoplays, preloads more than `metadata`, or is larger than 3.2 MB (use the `-lite` files in `site/media/`). The CSS bundles may not use `backdrop-filter`, infinite animations, `mix-blend-mode` or a `blur()` of 20px or more; top-level scripts may not use three.js, WebGL, `getContext(` or a CDN; and no page may load an external script except `static.cloudflareinsights.com`. Run it locally from the repository root after `python3 scripts/build-site.py`.
 
 Reference: https://developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration/
 

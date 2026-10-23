@@ -9,10 +9,6 @@
   "Open customer portal": "Buka portal pelanggan",
   "Account required to download": "Perlu akun untuk mengunduh",
   "Sign in or create a free R Project account first. After your email is confirmed, sign in to download the Windows or macOS installer.": "Masuk atau buat akun R Project gratis terlebih dahulu. Setelah email kamu terkonfirmasi, masuk untuk mengunduh installer Windows atau macOS.",
-  "SIDE ANGLE": "SUDUT SAMPING",
-  "DETAIL SHOT": "SHOT DETAIL",
-  "Play illustration": "Putar ilustrasi",
-  "Pause illustration": "Jeda ilustrasi",
   "IDR · one-time": "IDR · sekali bayar",
   "USD · one-time": "USD · sekali bayar",
   "This plugin runs in Adobe Premiere Pro desktop on Windows or macOS, not on a phone, tablet or Linux. You can browse the website here; use a supported desktop to install.": "Plugin ini berjalan di Adobe Premiere Pro versi desktop di Windows atau macOS, bukan di ponsel, tablet, atau Linux. Kamu bisa menjelajahi website di sini; gunakan komputer desktop yang didukung untuk menginstal.",
@@ -175,38 +171,9 @@
   "Create an account or sign in to buy a lifetime license.": "Buat akun atau masuk untuk membeli lisensi lifetime.",
   "Sign in with the email and password you used when creating your account.": "Masuk dengan email dan kata sandi yang kamu gunakan saat membuat akun.",
   "Signed out in another tab. Sign in again to continue.": "Kamu keluar di tab lain. Masuk lagi untuk melanjutkan.",
-  "Camera rhythm": "Ritme kamera",
-  "Every 2 beats · fast": "Setiap 2 beat · cepat",
-  "Every 4 beats · balanced": "Setiap 4 beat · seimbang",
-  "Every 8 beats · relaxed": "Setiap 8 beat · santai",
-  "Main-drop angle · beat 9": "Sudut main drop · beat 9",
   "Auto": "Otomatis",
-  "Active cameras · keep at least one": "Kamera aktif · sisakan minimal satu",
-  "Direct your first multicam edit.": "Arahkan edit multicam pertamamu.",
   "Analyze": "Analisis",
-  "Camera plan": "Rencana kamera",
   "Apply": "Terapkan",
-  "Replay your edit": "Putar ulang edit kamu",
-  "Play your edit": "Putar edit kamu",
-  "Preview complete. Change the rhythm or drop camera to create another edit.": "Preview selesai. Ubah ritme atau kamera drop untuk membuat edit lain.",
-  "1. Analyze sample →": "1. Analisis sampel →",
-  "Start with the music.": "Mulai dari musik.",
-  "Ready. Try the sample without an account.": "Siap. Coba sampelnya tanpa akun.",
-  "Review your camera plan.": "Tinjau rencana kamera kamu.",
-  "Your drop camera is disabled. Auto selected an enabled angle instead.": "Kamera drop kamu nonaktif. Mode otomatis memilih sudut lain yang aktif.",
-  "Plan ready. The drop at beat 9 uses your chosen angle; same-camera intervals stay continuous.": "Rencana siap. Drop di beat 9 memakai sudut pilihanmu; interval dengan kamera yang sama tetap menyambung.",
-  "2. Generate camera plan →": "2. Buat rencana kamera →",
-  "You are the director.": "Kamu sutradaranya.",
-  "Choose 2, 4 or 8-beat pacing. Pick a main-drop camera and enable the angles you want, then generate your plan.": "Pilih tempo 2, 4 atau 8 beat. Pilih kamera main drop dan aktifkan sudut yang kamu mau, lalu buat rencanamu.",
-  "Prepared map ready. Set your cameras and generate a plan.": "Peta siap. Atur kamera kamu dan buat rencana.",
-  "Create another edit ↺": "Buat edit lain ↺",
-  "Play the edit you designed.": "Putar edit yang kamu rancang.",
-  "Pause preview": "Jeda preview",
-  "Keep at least one camera enabled.": "Biarkan minimal satu kamera aktif.",
-  "2. Regenerate camera plan →": "2. Buat ulang rencana kamera →",
-  "Settings changed.": "Pengaturan berubah.",
-  "Generate a new camera plan to apply your new rhythm and angles.": "Buat rencana kamera baru untuk menerapkan ritme dan sudut barumu.",
-  "Settings changed. Generate a new plan to preview the difference.": "Pengaturan berubah. Buat rencana baru untuk melihat perbedaannya.",
   "Affiliate management": "Manajemen afiliasi",
   "My affiliate dashboard": "Dashboard afiliasi saya",
   "Manage partners, approvals and payout requests.": "Kelola partner, persetujuan, dan permintaan pencairan.",
@@ -273,21 +240,6 @@
   "rejected": "ditolak",
   "Back from Midtrans. If you completed the payment, click Check payment to confirm it and activate your license.": "Kembali dari Midtrans. Jika kamu sudah menyelesaikan pembayaran, klik Cek pembayaran untuk mengonfirmasi dan mengaktifkan lisensi kamu.",
   "Back from Midtrans. Sign in with the account you used for checkout, then click Check payment to confirm your payment.": "Kembali dari Midtrans. Masuk dengan akun yang kamu pakai saat checkout, lalu klik Cek pembayaran untuk mengonfirmasi pembayaran kamu.",
-  "Beat grid of the real set: 16 beats, drop on beat 9": "Grid beat dari set asli: 16 beat, drop di beat 9",
-  "Real footage of Druva at Wild Ones Atlas · 4 synced cameras and the real music (127 BPM, drop on beat 9, analyzed in advance). Your edit is assembled live in this browser from your settings; nothing is uploaded and no Premiere timeline is edited.": "Footage asli Druva di Wild Ones Atlas · 4 kamera yang sinkron dan musik aslinya (127 BPM, drop di beat 9, sudah dianalisis sebelumnya). Edit kamu dirakit langsung di browser ini dari pengaturanmu; tidak ada yang diunggah dan tidak ada timeline Premiere yang diedit.",
-  "Use 4 real synced cameras from a Druva DJ set, choose your camera rhythm and watch your own edit play with the music.": "Pakai 4 kamera asli yang sinkron dari DJ set Druva, pilih ritme kamera, dan tonton editmu diputar bersama musiknya.",
-  "Real footage and music · edit assembled live in your browser · no account or upload required": "Footage dan musik asli · edit dirakit langsung di browsermu · tanpa akun atau unggahan",
-  "16 beats · 127 BPM · real set": "16 beat · 127 BPM · set asli",
-  "Real set · 127 BPM · drop at beat 9": "Set asli · 127 BPM · drop di beat 9",
-  "Analyze a real 8-second moment from the set, then choose which cameras tell the story. The music map was analyzed in advance from the real track.": "Analisis momen asli 8 detik dari set ini, lalu pilih kamera mana yang bercerita. Peta musiknya sudah dianalisis sebelumnya dari track aslinya.",
-  "3. Apply edit →": "3. Terapkan edit →",
-  "Colored segments show your selected angles. Click a segment to preview it. Apply the edit when you are happy.": "Segmen berwarna menunjukkan sudut pilihanmu. Klik segmen untuk melihat preview-nya. Terapkan edit jika sudah puas.",
-  "Reveal the music map.": "Tampilkan peta musik.",
-  "This moment has 16 beats at 127 BPM with the real drop on beat 9, measured from the set's master audio. Nothing is uploaded.": "Momen ini berisi 16 beat pada 127 BPM dengan drop asli di beat 9, diukur dari audio master set ini. Tidak ada yang diunggah.",
-  "Real drop · beat 9": "Drop asli · beat 9",
-  "Your settings drive this preview with the real music. Watch the cameras change on the beat and at the drop.": "Pengaturanmu menggerakkan preview ini bersama musik aslinya. Lihat kamera berganti tepat di beat dan saat drop.",
-  "Playing your edit · real footage and music.": "Memutar editmu · footage dan musik asli.",
-  "The video could not start. Tap Play again.": "Video tidak bisa diputar. Ketuk Putar lagi.",
   "Booth cam": "Kamera booth",
   "Stage & lasers": "Panggung & laser",
   "Crowd": "Penonton"
@@ -304,10 +256,6 @@
   [
    "^You can check your current license by signing in to the Multicam AI panel inside Premiere\\. The website customer portal is not available yet\\.$",
    "Kamu bisa mengecek lisensi saat ini dengan masuk ke panel Multicam AI di dalam Premiere. Portal pelanggan di website belum tersedia."
-  ],
-  [
-   "^(\\d+) BEATS / CUT$",
-   "$1 BEAT / CUT"
   ],
   [
    "^Mac v(\\S+) enables Low Memory mode automatically on Macs with 12 GiB RAM or less\\. Start with proxies and a short duplicate sequence\\. Native M1/Premiere memory reduction is not yet measured; a large 4K project may still exceed memory\\. Test the trial before buying\\.$",
@@ -450,34 +398,6 @@
    "dibuat · $1"
   ],
   [
-   "^(wide|dj|detail|crowd) camera sample of a fictional DJ performance$",
-   "sampel kamera $1 dari pertunjukan DJ fiktif"
-  ],
-  [
-   "^Camera (\\d+), beats (\\d+) to (\\d+)$",
-   "Kamera $1, beat $2 sampai $3"
-  ],
-  [
-   "^Beat (\\d+)$",
-   "Beat $1"
-  ],
-  [
-   "^BEAT (\\d+) / 16 · DROP$",
-   "BEAT $1 / 16 · DROP"
-  ],
-  [
-   "^Revealing beat grid… (\\d+)%$",
-   "Menampilkan grid beat… $1%"
-  ],
-  [
-   "^127 BPM · (\\d+)-beat rhythm · (\\d+) continuous camera segments$",
-   "127 BPM · ritme $1 beat · $2 segmen kamera berkelanjutan"
-  ],
-  [
-   "^Edit applied: (\\d+) continuous segments\\. Unused intervals hidden; source media unchanged\\.$",
-   "Edit diterapkan: $1 segmen berkelanjutan. Interval yang tidak dipakai disembunyikan; media sumber tidak berubah."
-  ],
-  [
    "^(\\d+) awaiting approval · (\\d+) approved · (\\d+) total$",
    "$1 menunggu persetujuan · $2 disetujui · total $3"
   ],
@@ -492,10 +412,6 @@
   [
    "^Transfer reference: (.+)$",
    "Referensi transfer: $1"
-  ],
-  [
-   "^CAM (\\d) · (WIDE|DJ|BOOTH|CROWD) · real footage of Druva at Wild Ones Atlas$",
-   "CAM $1 · $2 · footage asli Druva di Wild Ones Atlas"
   ],
   [
    "^shot (\\d+) of (\\d+)$",

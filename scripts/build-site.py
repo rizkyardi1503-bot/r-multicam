@@ -21,19 +21,17 @@ import json
 import pathlib
 import re
 import sys
+from html.parser import HTMLParser
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SITE = ROOT / 'site'
 CSS_SRC = ROOT / 'src' / 'css'
 ORIGIN = 'https://r-multicam.pages.dev'
 
-BUNDLES = {
-    'home.css': ['styles.css', 'reference-layout.css', 'practice.css', 'elegance.css', 'conversion.css', 'theme.css', 'motion3d.css', 'promo.css'],
-    'site.css': ['styles.css', 'practice.css', 'elegance.css', 'conversion.css', 'theme.css', 'motion3d.css'],
-}
+BUNDLES = {'home.css': ['base.css', 'home-page.css'], 'site.css': ['base.css', 'pages.css']}
 SOURCE_CSS = {name for files in BUNDLES.values() for name in files} | set(BUNDLES)
 FONTS = ['/fonts/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2', '/fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2']
-MOTION = '/motion3d.mjs'
+MOTION = '/motion.mjs'
 
 # Pages that keep their own header/footer (custom layouts or account flows).
 KEEP_LAYOUT = {'index.html', 'start/index.html', 'auth/confirmed/index.html', 'id/index.html', 'id/start/index.html'}
@@ -210,7 +208,8 @@ def header_html(path: str, lang: str, existing: str) -> str:
         actions = f'<div class="header-account-actions"><a class="button small" href="{pricing}">{cta} <span>↗</span></a></div>'
     label = 'Navigasi utama' if lang == 'id' else 'Main navigation'
     home = '/id/' if lang == 'id' else '/'
-    return (f'<header class="rp-header"><a class="brand" href="{home}"><span class="mark">R</span>'
+    home_label = 'Beranda R Project' if lang == 'id' else 'R Project home'
+    return (f'<header class="rp-header"><a class="brand" href="{home}" aria-label="{home_label}"><span class="mark">R</span>'
             f'<span>R Project <small>Multicam AI</small></span></a>'
             f'<nav aria-label="{label}">{"".join(links)}</nav>{lang_switch(path, lang)}{actions}</header>')
 
@@ -267,6 +266,55 @@ def slugify(text: str) -> str:
     return re.sub(r'[\s-]+', '-', text).strip('-')[:60] or 'section'
 
 
+VOID_TAGS = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'}
+
+
+class _OpenTags(HTMLParser):
+    """Walks the markup up to `stop` (a character offset) and keeps the stack of open elements."""
+
+    def __init__(self, text: str, stop: int):
+        super().__init__(convert_charrefs=False)
+        self.lines = [0]  # offset of each line start; getpos() counts lines by '\n'
+        for line in text.split('\n'):
+            self.lines.append(self.lines[-1] + len(line) + 1)
+        self.stop, self.stack, self.done = stop, [], False
+
+    def pos(self) -> int:
+        line, col = self.getpos()
+        return self.lines[line - 1] + col
+
+    def handle_starttag(self, tag, attrs):
+        if self.done or self.pos() >= self.stop:
+            self.done = True
+            return
+        if tag not in VOID_TAGS:
+            self.stack.append((tag, (dict(attrs).get('class') or '').split(), self.pos()))
+
+    def handle_startendtag(self, tag, attrs):
+        if self.pos() >= self.stop:
+            self.done = True
+
+    def handle_endtag(self, tag):
+        if self.done or self.pos() >= self.stop:
+            self.done = True
+            return
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i][0] == tag:
+                del self.stack[i:]
+                break
+
+
+def toc_container_start(body: str, h2_at: int):
+    """Offset of the outermost .support-grid / .step-list (div or ol) that is still open at the first <h2>."""
+    p = _OpenTags(body, h2_at)
+    p.feed(body)
+    p.close()
+    for tag, classes, start in p.stack:
+        if tag in ('div', 'ol') and {'support-grid', 'step-list'} & set(classes):
+            return start
+    return None
+
+
 def add_toc(html: str, lang: str) -> str:
     m = re.search(r'(<main\b[^>]*>)(.*?)(</main>)', html, re.S)
     if not m:
@@ -298,7 +346,12 @@ def add_toc(html: str, lang: str) -> str:
     lis = ''.join(f'<li><a href="#{hid}">{esc(text)}</a></li>' for hid, text in items)
     toc = f'<!--rp:toc--><nav class="rp-toc" aria-label="{title}"><p>{title}</p><ol>{lis}</ol></nav><!--/rp:toc-->'
     first = re.search(r'<section\b[^>]*>\s*<h2|<h2[\s>]', body)
-    body = body[:first.start()] + toc + body[first.start():]
+    at = first.start()
+    # A first heading inside a card grid or step list gets the TOC before that container instead.
+    container = toc_container_start(body, re.search(r'<h2[\s>]', body).start())
+    if container is not None:
+        at = min(at, container)
+    body = body[:at] + toc + body[at:]
     return html[:m.start(2)] + body + html[m.end(2):]
 
 
@@ -459,10 +512,10 @@ def process_page(rel: str, html: str, versions: dict) -> str:
     html = html.replace(tag, preloads + tag, 1)
 
     # 3. Motion layer (+ Indonesian UI translator on /id/ pages).
-    html = re.sub(r'<script type="module" src="/motion3d\.mjs(\?[^"]*)?"></script>', '', html)
+    html = re.sub(r'<script type="module" src="/motion(?:3d)?\.mjs(\?[^"]*)?"></script>', '', html)
     html = re.sub(r'<script src="/i18n-id\.js(\?[^"]*)?" defer></script>', '', html)
     extra = f'<script src="/i18n-id.js?v={versions["i18n-id.js"]}" defer></script>' if rel.startswith('id/') else ''
-    html = html.replace('</head>', f'{extra}<script type="module" src="{MOTION}?v={versions["motion3d.mjs"]}"></script></head>', 1)
+    html = html.replace('</head>', f'{extra}<script type="module" src="{MOTION}?v={versions["motion.mjs"]}"></script></head>', 1)
 
     if rel.startswith('id/'):
         html = localize_links(html)
@@ -475,8 +528,7 @@ def process_page(rel: str, html: str, versions: dict) -> str:
         if rel == 'id/index.html':
             # Keep old deep links (/id/#mulai-cepat, /id/#kompatibilitas) working.
             html = re.sub(r'<!--rp:anchors-->.*?<!--/rp:anchors-->', '', html, flags=re.S)
-            html = html.replace('<section class="wrap section" id="downloads"', '<!--rp:anchors--><span id="kompatibilitas"></span><!--/rp:anchors--><section class="wrap section" id="downloads"', 1)
-            html = re.sub(r'(<section[^>]*id="start-checklist")', r'<!--rp:anchors--><span id="mulai-cepat"></span><!--/rp:anchors-->\1', html, count=1)
+            html = html.replace('<section class="wrap section" id="downloads"', '<!--rp:anchors--><span id="kompatibilitas"></span><span id="mulai-cepat"></span><!--/rp:anchors--><section class="wrap section" id="downloads"', 1)
         return html
 
     # 4. Shared header (+ skip link), main landmark id, shared footer.
@@ -535,14 +587,13 @@ def build_sitemaps(changed_pages):
     return xml, '\n'.join(txt) + '\n'
 
 
-def with_csp(headers: str, router: str, motion_src: str) -> str:
+def with_csp(headers: str, router: str) -> str:
     """Content-Security-Policy for every page, derived from what the site loads: the inline language router
-    (by hash), three.js for motion3d.mjs, Supabase (config.js) and the Cloudflare Web Analytics beacon."""
+    (by hash), Supabase (config.js) and the Cloudflare Web Analytics beacon."""
     router_hash = 'sha256-' + base64.b64encode(hashlib.sha256(router.encode('utf-8')).digest()).decode()
-    three = re.search(r"THREE_URL = '(https://[^']+/)[^/']+'", motion_src).group(1)
     supabase = re.search(r"supabaseUrl: '(https://[^']+)'", (SITE / 'config.js').read_text()).group(1)
     csp = ("default-src 'self'; "
-           f"script-src 'self' '{router_hash}' {three} https://static.cloudflareinsights.com; "
+           f"script-src 'self' '{router_hash}' https://static.cloudflareinsights.com; "
            "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://developers.google.com/static/identity/images/; "
            "font-src 'self'; media-src 'self'; "
            f"connect-src 'self' {supabase} https://cloudflareinsights.com; "
@@ -556,9 +607,9 @@ def with_csp(headers: str, router: str, motion_src: str) -> str:
 def build(check=False):
     changed = []
     css = build_bundles()
-    motion_src = (SITE / 'motion3d.mjs').read_text()
+    motion_src = (SITE / 'motion.mjs').read_text()
     versions = {name: version(text) for name, text in css.items()}
-    versions['motion3d.mjs'] = version(motion_src)
+    versions['motion.mjs'] = version(motion_src)
     router = (I18N_SRC / 'lang-router.js').read_text()
     router = re.sub(r'^\s*//.*$', '', router, flags=re.M)
     router = re.sub(r'\n\s*', '\n', router).strip()
@@ -590,7 +641,7 @@ def build(check=False):
             changed_pages.append(page_path(rel))
 
     outputs[SITE / 'sitemap.xml'], outputs[SITE / 'sitemap.txt'] = build_sitemaps(changed_pages)
-    outputs[SITE / '_headers'] = with_csp((SITE / '_headers').read_text(), router, motion_src)
+    outputs[SITE / '_headers'] = with_csp((SITE / '_headers').read_text(), router)
 
     for f, text in outputs.items():
         cur = f.read_text() if f.exists() else None

@@ -9,8 +9,10 @@ function message(title, body, url, label) {
  link.hidden = !valid; if(valid) {link.href = valid; link.textContent = label; link.rel = 'noopener noreferrer';link.target = '_blank';} else link.removeAttribute('href');
  notice.showModal();
 }
+if (notice) {
 document.querySelector('#close-notice').onclick = () => notice.close();
 document.querySelector('#notice-done').onclick = () => notice.close();
+// Fallback handlers; portal.js replaces them with the account dialog once it has loaded.
 if (config.checkoutOpen !== true) document.querySelectorAll('[data-buy]').forEach(button => { button.hidden = true; });
 document.querySelectorAll('[data-buy]').forEach(button => button.onclick = () => {
  const url = safeUrl(config.paymentUrl);
@@ -20,38 +22,45 @@ document.querySelectorAll('[data-account]').forEach(button => button.onclick = (
 document.querySelectorAll('[data-download]').forEach(button => button.onclick = () => {
  message('Account required to download', 'Sign in or create a free R Project account first. After your email is confirmed, sign in to download the Windows or macOS installer.', null);
 });
-const waveform = document.querySelector('#waveform');
-for(let i=0;i<72;i++){const bar=document.createElement('span');bar.style.height=(18+Math.abs(Math.sin(i*1.3)*Math.cos(i*.37))*75)+'%';waveform.appendChild(bar);}
-let timer=null, beat=0;
-const play=document.querySelector('#play-demo'), pace=document.querySelector('#pacing');
-function render(){const camera=[0,2,1,3][Math.floor(beat/Number(pace.value))%4];document.querySelector('#camera-number').textContent=String(camera+1).padStart(2,'0');document.querySelector('#camera-role').textContent=['WIDE SHOT','CLOSE-UP','SIDE ANGLE','DETAIL SHOT'][camera];document.querySelector('#beat-counter').textContent=String(Math.floor(beat/4)+1).padStart(2,'0')+' : '+String(beat%4+1).padStart(2,'0');document.querySelector('#playhead').style.left=(7+beat/16*90)+'%';}
-play.onclick=()=>{if(timer){clearInterval(timer);timer=null;play.textContent='Play illustration';}else{play.textContent='Pause illustration';timer=setInterval(()=>{beat=(beat+1)%16;render();},400);}};
-pace.onchange=()=>{document.querySelector('#pace-label').textContent=pace.value+' BEATS / CUT';render();};
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&timer){clearInterval(timer);timer=null;play.textContent='Play illustration';}});
-render();
+}
 
-// Homepage edit showcase: tap for sound (restarts from the top), pause when off-screen, no autoplay with reduced
-// motion. The shot timeline follows the video: playhead, highlighted shot and angle; tapping a shot seeks to it.
+// Hero edit: the video never autoplays from markup (preload="none"). It plays muted only while it is on screen,
+// and not at all with reduced motion or Save-Data (the poster stays and native controls appear).
+// Without IntersectionObserver it counts as always visible and shows native controls. A pause by the user
+// sticks: scrolling back or returning to the tab does not restart it until they ask again.
+// The shot timeline follows the video; tapping a shot seeks to it; the sound button restarts with sound.
 (()=>{
- const fig=document.querySelector('.edit-show'),v=fig&&fig.querySelector('.promo-video'),b=fig&&fig.querySelector('.promo-sound');if(!v)return;
- const still=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;if(still){v.removeAttribute('autoplay');v.pause();v.controls=true;}
- if(b)b.addEventListener('click',()=>{const on=v.muted;v.muted=!on;if(on){v.currentTime=0;v.play().catch(()=>{});}b.setAttribute('aria-pressed',String(on));b.querySelector('.promo-sound-on').hidden=on;b.querySelector('.promo-sound-off').hidden=!on;window.RP_ANALYTICS?.track('demo_started',{label:on?'promo_video_sound_on':'promo_video_sound_off'});});
- if(!still&&'IntersectionObserver' in window)new IntersectionObserver((es)=>es.forEach((e)=>{if(e.isIntersecting)v.play().catch(()=>{});else v.pause();}),{threshold:.2}).observe(v);
- const shots=[...fig.querySelectorAll('.edit-shot')],head=fig.querySelector('.edit-head-line'),track=fig.querySelector('.edit-track'),now=fig.querySelector('[data-edit-now]'),count=fig.querySelector('[data-edit-count]'),legend=[...fig.querySelectorAll('.edit-legend li')];
- let labels={};try{labels=JSON.parse(fig.dataset.labels||'{}');}catch(e){}
- const end=Number(shots[shots.length-1]?.dataset.end)||v.duration||1;let cur=-1;
- const draw=()=>{const t=v.currentTime||0;head.style.transform='translateX('+(track.clientWidth*Math.min(1,t/end))+'px)';const i=shots.findIndex((s)=>t>=+s.dataset.start&&t<+s.dataset.end);if(i>=0&&i!==cur){cur=i;const a=shots[i].dataset.angle;shots.forEach((s,k)=>s.classList.toggle('is-on',k===i));legend.forEach((l)=>l.classList.toggle('is-on',l.dataset.angle===a));now.textContent=labels[a]||a;count.textContent=fig.dataset.shotWord+' '+(i+1)+' '+fig.dataset.ofWord+' '+shots.length;}};
- const loop=()=>{draw();if(!v.paused)requestAnimationFrame(loop);};
- v.addEventListener('play',()=>requestAnimationFrame(loop));v.addEventListener('seeked',draw);v.addEventListener('timeupdate',draw);draw();if(!v.paused)requestAnimationFrame(loop);
- shots.forEach((s,i)=>s.addEventListener('click',()=>{v.currentTime=+s.dataset.start+0.02;v.play().catch(()=>{});draw();window.RP_ANALYTICS?.track('demo_started',{label:'edit_show_shot_'+(i+1)});}));
+ const fig=document.querySelector('.edit-show'),v=fig&&fig.querySelector('.promo-video'),b=fig&&fig.querySelector('.promo-sound'),panel=document.querySelector('.edit-panel');if(!v)return;
+ const still=(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)||!!(navigator.connection&&navigator.connection.saveData);
+ const io='IntersectionObserver' in window;
+ let visible=!io,wanted=!still,selfPause=false;
+ const play=()=>{if(v.preload==='none')v.preload='auto';const p=v.play();if(p)p.catch(()=>{});};
+ const pause=()=>{if(!v.paused){selfPause=true;v.pause();}};
+ if(still||!io)v.controls=true;
+ v.addEventListener('pause',()=>{if(selfPause){selfPause=false;return;}if(visible&&!document.hidden&&!v.ended)wanted=false;});
+ if(io)new IntersectionObserver((es)=>es.forEach((e)=>{visible=e.isIntersecting;if(visible&&wanted)play();else if(!visible)pause();}),{threshold:.25}).observe(v);
+ else if(wanted)play();
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();else if(visible&&wanted)play();});
+ if(b)b.addEventListener('click',()=>{const on=v.muted;v.muted=!on;wanted=true;if(on){v.currentTime=0;play();}b.setAttribute('aria-pressed',String(on));window.RP_ANALYTICS?.track('demo_started',{label:on?'promo_video_sound_on':'promo_video_sound_off'});});
+ if(!panel)return;
+ const shots=[...panel.querySelectorAll('.edit-shot')],head=panel.querySelector('.edit-head-line'),track=panel.querySelector('.edit-track'),now=panel.querySelector('[data-edit-now]'),count=panel.querySelector('[data-edit-count]'),legend=[...panel.querySelectorAll('.edit-legend li')];
+ let labels={};try{labels=JSON.parse(panel.dataset.labels||'{}');}catch(e){}
+ const end=Number(shots[shots.length-1]?.dataset.end)||1;let cur=-1,width=track.clientWidth;
+ addEventListener('resize',()=>{width=track.clientWidth;draw();},{passive:true});
+ const draw=()=>{const t=v.currentTime||0;head.style.transform='translateX('+(width*Math.min(1,t/end))+'px)';const i=shots.findIndex((s)=>t>=+s.dataset.start&&t<+s.dataset.end);if(i>=0&&i!==cur){cur=i;const a=shots[i].dataset.angle;shots.forEach((s,k)=>{s.classList.toggle('is-on',k===i);if(k===i)s.setAttribute('aria-current','true');else s.removeAttribute('aria-current');});legend.forEach((l)=>l.classList.toggle('is-on',l.dataset.angle===a));now.textContent=labels[a]||a;count.textContent=panel.dataset.shotWord+' '+(i+1)+' '+panel.dataset.ofWord+' '+shots.length;}};
+ // One rAF per frame only while the video is actually playing (it is paused off-screen).
+ const loop=()=>{draw();if(!v.paused&&!v.ended)requestAnimationFrame(loop);};
+ v.addEventListener('play',()=>requestAnimationFrame(loop));v.addEventListener('seeked',draw);
+ shots.forEach((s,i)=>s.addEventListener('click',()=>{wanted=true;v.currentTime=+s.dataset.start+0.02;play();draw();window.RP_ANALYTICS?.track('demo_started',{label:'edit_show_shot_'+(i+1)});}));
+ draw();
 })();
 
-// "How it works" walkthrough video: chapter buttons seek and play; the current chapter lights up while it plays.
+// "How it works" walkthrough video (never autoplays): chapter buttons seek and play; the current chapter lights up.
 (()=>{
  const v=document.querySelector('.how-video-player');if(!v)return;
  const bs=[...document.querySelectorAll('.how-chapters button')],ts=bs.map((b)=>Number(b.dataset.t)||0);
- const mark=()=>{const t=v.currentTime||0;let k=0;ts.forEach((s,i)=>{if(t>=s)k=i;});bs.forEach((b,i)=>b.classList.toggle('is-on',(t>0||!v.paused)&&i===k));};
+ const mark=()=>{const t=v.currentTime||0;let k=0;ts.forEach((s,i)=>{if(t>=s)k=i;});bs.forEach((b,i)=>{const on=(t>0||!v.paused)&&i===k;b.classList.toggle('is-on',on);if(on)b.setAttribute('aria-current','true');else b.removeAttribute('aria-current');});};
  v.addEventListener('timeupdate',mark);v.addEventListener('seeked',mark);
  v.addEventListener('play',()=>window.RP_ANALYTICS?.track('demo_started',{label:'how_it_works_video'}),{once:true});
- bs.forEach((b,i)=>b.addEventListener('click',()=>{const go=()=>{v.currentTime=ts[i];v.play().catch(()=>{});mark();};if(v.readyState>=1)go();else{v.preload='auto';v.addEventListener('loadedmetadata',go,{once:true});v.load();}}));
+ bs.forEach((b,i)=>b.addEventListener('click',()=>{const go=()=>{v.currentTime=ts[i];const p=v.play();if(p)p.catch(()=>{});mark();};if(v.readyState>=1)go();else{v.preload='auto';v.addEventListener('loadedmetadata',go,{once:true});v.load();}}));
 })();

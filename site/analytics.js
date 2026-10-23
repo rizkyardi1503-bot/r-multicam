@@ -65,24 +65,16 @@
     }));
   });
 
-  const demoButton=document.getElementById('practice-next');
-  if(demoButton){
-    let demoSent=false;
-    demoButton.addEventListener('click',()=>{
-      if(demoSent)return;
-      demoSent=true;
-      track('demo_started',{label:'interactive_practice'});
-    });
-  }
-
-  const pricing=document.getElementById('pricing');
-  if(pricing && 'IntersectionObserver' in window){
+  // pricing_view: the first #pricing price card that is at least half on screen (the whole #pricing section
+  // is taller than a phone screen, so it is never 35% visible there).
+  const priceCards=[...document.querySelectorAll('#pricing [data-rp-price]')].map(el=>el.closest?.('.card')||el);
+  if(priceCards.length && 'IntersectionObserver' in window){
     let sent=false;
     const observer=new IntersectionObserver(entries=>{
-      if(!sent && entries.some(e=>e.isIntersecting&&e.intersectionRatio>=0.35)){
+      if(!sent && entries.some(e=>e.isIntersecting&&e.intersectionRatio>=0.5)){
         sent=true;track('pricing_view');observer.disconnect();
       }
-    },{threshold:[0.35]});
-    observer.observe(pricing);
+    },{threshold:[0.5]});
+    new Set(priceCards).forEach(card=>observer.observe(card));
   }
 })();
