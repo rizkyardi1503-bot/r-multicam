@@ -287,7 +287,10 @@
   "Real drop · beat 9": "Drop asli · beat 9",
   "Your settings drive this preview with the real music. Watch the cameras change on the beat and at the drop.": "Pengaturanmu menggerakkan preview ini bersama musik aslinya. Lihat kamera berganti tepat di beat dan saat drop.",
   "Playing your edit · real footage and music.": "Memutar editmu · footage dan musik asli.",
-  "The video could not start. Tap Play again.": "Video tidak bisa diputar. Ketuk Putar lagi."
+  "The video could not start. Tap Play again.": "Video tidak bisa diputar. Ketuk Putar lagi.",
+  "Booth cam": "Kamera booth",
+  "Stage & lasers": "Panggung & laser",
+  "Crowd": "Penonton"
  },
  "patterns": [
   [
@@ -493,6 +496,10 @@
   [
    "^CAM (\\d) · (WIDE|DJ|BOOTH|CROWD) · real footage of Druva at Wild Ones Atlas$",
    "CAM $1 · $2 · footage asli Druva di Wild Ones Atlas"
+  ],
+  [
+   "^shot (\\d+) of (\\d+)$",
+   "shot $1 dari $2"
   ]
  ]
 }
