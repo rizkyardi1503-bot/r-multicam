@@ -29,3 +29,19 @@ play.onclick=()=>{if(timer){clearInterval(timer);timer=null;play.textContent='Pl
 pace.onchange=()=>{document.querySelector('#pace-label').textContent=pace.value+' BEATS / CUT';render();};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&timer){clearInterval(timer);timer=null;play.textContent='Play illustration';}});
 render();
+
+// Homepage edit showcase: tap for sound (restarts from the top), pause when off-screen, no autoplay with reduced
+// motion. The shot timeline follows the video: playhead, highlighted shot and angle; tapping a shot seeks to it.
+(()=>{
+ const fig=document.querySelector('.edit-show'),v=fig&&fig.querySelector('.promo-video'),b=fig&&fig.querySelector('.promo-sound');if(!v)return;
+ const still=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;if(still){v.removeAttribute('autoplay');v.pause();v.controls=true;}
+ if(b)b.addEventListener('click',()=>{const on=v.muted;v.muted=!on;if(on){v.currentTime=0;v.play().catch(()=>{});}b.setAttribute('aria-pressed',String(on));b.querySelector('.promo-sound-on').hidden=on;b.querySelector('.promo-sound-off').hidden=!on;window.RP_ANALYTICS?.track('demo_started',{label:on?'promo_video_sound_on':'promo_video_sound_off'});});
+ if(!still&&'IntersectionObserver' in window)new IntersectionObserver((es)=>es.forEach((e)=>{if(e.isIntersecting)v.play().catch(()=>{});else v.pause();}),{threshold:.2}).observe(v);
+ const shots=[...fig.querySelectorAll('.edit-shot')],head=fig.querySelector('.edit-head-line'),track=fig.querySelector('.edit-track'),now=fig.querySelector('[data-edit-now]'),count=fig.querySelector('[data-edit-count]'),legend=[...fig.querySelectorAll('.edit-legend li')];
+ let labels={};try{labels=JSON.parse(fig.dataset.labels||'{}');}catch(e){}
+ const end=Number(shots[shots.length-1]?.dataset.end)||v.duration||1;let cur=-1;
+ const draw=()=>{const t=v.currentTime||0;head.style.transform='translateX('+(track.clientWidth*Math.min(1,t/end))+'px)';const i=shots.findIndex((s)=>t>=+s.dataset.start&&t<+s.dataset.end);if(i>=0&&i!==cur){cur=i;const a=shots[i].dataset.angle;shots.forEach((s,k)=>s.classList.toggle('is-on',k===i));legend.forEach((l)=>l.classList.toggle('is-on',l.dataset.angle===a));now.textContent=labels[a]||a;count.textContent=fig.dataset.shotWord+' '+(i+1)+' '+fig.dataset.ofWord+' '+shots.length;}};
+ const loop=()=>{draw();if(!v.paused)requestAnimationFrame(loop);};
+ v.addEventListener('play',()=>requestAnimationFrame(loop));v.addEventListener('seeked',draw);v.addEventListener('timeupdate',draw);draw();if(!v.paused)requestAnimationFrame(loop);
+ shots.forEach((s,i)=>s.addEventListener('click',()=>{v.currentTime=+s.dataset.start+0.02;v.play().catch(()=>{});draw();window.RP_ANALYTICS?.track('demo_started',{label:'edit_show_shot_'+(i+1)});}));
+})();

@@ -28,7 +28,7 @@ CSS_SRC = ROOT / 'src' / 'css'
 ORIGIN = 'https://r-multicam.pages.dev'
 
 BUNDLES = {
-    'home.css': ['styles.css', 'reference-layout.css', 'practice.css', 'elegance.css', 'conversion.css', 'theme.css', 'motion3d.css'],
+    'home.css': ['styles.css', 'reference-layout.css', 'practice.css', 'elegance.css', 'conversion.css', 'theme.css', 'motion3d.css', 'promo.css'],
     'site.css': ['styles.css', 'practice.css', 'elegance.css', 'conversion.css', 'theme.css', 'motion3d.css'],
 }
 SOURCE_CSS = {name for files in BUNDLES.values() for name in files} | set(BUNDLES)
