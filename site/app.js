@@ -45,3 +45,13 @@ render();
  v.addEventListener('play',()=>requestAnimationFrame(loop));v.addEventListener('seeked',draw);v.addEventListener('timeupdate',draw);draw();if(!v.paused)requestAnimationFrame(loop);
  shots.forEach((s,i)=>s.addEventListener('click',()=>{v.currentTime=+s.dataset.start+0.02;v.play().catch(()=>{});draw();window.RP_ANALYTICS?.track('demo_started',{label:'edit_show_shot_'+(i+1)});}));
 })();
+
+// "How it works" walkthrough video: chapter buttons seek and play; the current chapter lights up while it plays.
+(()=>{
+ const v=document.querySelector('.how-video-player');if(!v)return;
+ const bs=[...document.querySelectorAll('.how-chapters button')],ts=bs.map((b)=>Number(b.dataset.t)||0);
+ const mark=()=>{const t=v.currentTime||0;let k=0;ts.forEach((s,i)=>{if(t>=s)k=i;});bs.forEach((b,i)=>b.classList.toggle('is-on',(t>0||!v.paused)&&i===k));};
+ v.addEventListener('timeupdate',mark);v.addEventListener('seeked',mark);
+ v.addEventListener('play',()=>window.RP_ANALYTICS?.track('demo_started',{label:'how_it_works_video'}),{once:true});
+ bs.forEach((b,i)=>b.addEventListener('click',()=>{const go=()=>{v.currentTime=ts[i];v.play().catch(()=>{});mark();};if(v.readyState>=1)go();else{v.preload='auto';v.addEventListener('loadedmetadata',go,{once:true});v.load();}}));
+})();
