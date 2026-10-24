@@ -57,10 +57,25 @@ async function analyze(sources,cameras,ffmpeg,state,progress,deps){
  var R=S(),probe=deps.probe||R.probe,decode=deps.decode||R.decodeEnvelope,seq=sources.sequence,frame=Number(seq.frame);
  var total=cameras.reduce(function(n,c){return n+c.clips.length;},0)+(seq.a1||[]).length,done=0;
  function tick(msg){progress(Math.min(.98,done/Math.max(1,total)),msg);}
+ // Read-ahead: the FFmpeg probe/decode jobs run one at a time in the original order (one reader: parallel readers
+ // made a hard disk ~1.5x slower) but no longer wait for the sync work below, so the next camera decodes while the
+ // previous one is matched. At most AHEAD jobs are held ahead of use (memory). Same jobs, same order, same results.
+ var AHEAD=6,jobs=[],started=0,used=0,chain=Promise.resolve(),probes={};
+ function pump(){while(started<jobs.length&&started<used+AHEAD){var j=jobs[started++];j.promise=chain=chain.then(j.run,j.run);j.promise.catch(function(){});}}
+ function take(i){used=i+1;pump();return jobs[i].promise;}
+ function add(run){jobs.push({run:function(){if(state.cancelled)throw Error('Sync stopped.');return run();}});}
+ function probeOnce(file){return probes[file]||(probes[file]=Promise.resolve(probe(ffmpeg,file,state)).then(null,function(e){delete probes[file];throw e;}));}
+ seq.a1.forEach(function(c1){add(function(){return decode(ffmpeg,c1.file,c1.input,c1.end-c1.start,state);});});
+ cameras.forEach(function(cam){cam.clips.forEach(function(c){add(function(){return probeOnce(c.file).then(function(p){
+  var sourceIn=Number(c.sourceIn)||0,sourceOut=c.sourceOut==null||c.sourceOut>p.duration?p.duration:c.sourceOut,len=sourceOut-sourceIn;
+  if(!(len>frame)||!p.hasAudio)return {p:p};var ex=R.excerptFor(len);
+  return Promise.resolve(decode(ffmpeg,c.file,sourceIn+ex.excerptStart,ex.excerptSeconds,state)).then(function(env){
+   if(!(len>LONG_CLIP))return {p:p,env:env};var endStart=sourceIn+len-ex.excerptSeconds-Math.min(30,len*.05);
+   return Promise.resolve(decode(ffmpeg,c.file,endStart,ex.excerptSeconds,state)).then(function(endEnv){return {p:p,env:env,endEnv:endEnv,endStart:endStart};});});});});});});
  // 1. Master on the sequence timeline, from the A1 clips as placed (In point + timeline start).
- var parts=[];
- for(var a=0;a<seq.a1.length;a++){check(state);var c1=seq.a1[a];tick('Reading the A1 master '+(a+1)+'/'+seq.a1.length);parts.push({start:c1.start,env:await decode(ffmpeg,c1.file,c1.input,c1.end-c1.start,state)});done++;}
- var master=R.prepareMaster(R.masterFromClips(parts,Number(seq.duration))),probes={},results=[];
+ var parts=[],jobAt=0;
+ for(var a=0;a<seq.a1.length;a++){check(state);var c1=seq.a1[a];tick('Reading the A1 master '+(a+1)+'/'+seq.a1.length);parts.push({start:c1.start,env:await take(jobAt++)});done++;}
+ var master=R.prepareMaster(R.masterFromClips(parts,Number(seq.duration))),results=[];
  // 2. Cameras.
  for(var k=0;k<cameras.length;k++){
   var cam=cameras[k],clips=[],rows=[],silent=[],make='',model='',serial='';
@@ -68,13 +83,13 @@ async function analyze(sources,cameras,ffmpeg,state,progress,deps){
    check(state);var c=cam.clips[i],row={camera:k+1,cameraName:cam.name,nodeId:c.nodeId,name:c.name,file:c.file,sourceIn:Number(c.sourceIn)||0,sourceOut:c.sourceOut,status:'excluded',reason:''};rows.push(row);
    tick('Syncing '+cam.name+': '+c.name);
    try{
-    var p=probes[c.file]||(probes[c.file]=await probe(ffmpeg,c.file,state));if(!make&&p.make)make=p.make;if(!model&&p.model)model=p.model;if(!serial&&p.serial)serial=p.serial;
+    var got=await take(jobAt++),p=got.p;if(!make&&p.make)make=p.make;if(!model&&p.model)model=p.model;if(!serial&&p.serial)serial=p.serial;
     if(row.sourceOut==null||row.sourceOut>p.duration)row.sourceOut=p.duration;
     var len=row.sourceOut-row.sourceIn;
     if(!(len>frame)){row.reason='clip is empty';done++;continue;}
     if(!p.hasAudio){row.reason='no audio to sync';if(p.hasVideo!==false)silent.push({row:row,id:String(i),name:c.name,fileName:base(c.file),created:p.created,sourceIn:row.sourceIn,duration:row.sourceOut});done++;continue;}
-    var ex=R.excerptFor(len),entry={id:String(i),name:c.name,fileName:base(c.file),duration:len,mediaDuration:p.duration,sourceIn:row.sourceIn,created:p.created,excerptStart:row.sourceIn+ex.excerptStart,env:await decode(ffmpeg,c.file,row.sourceIn+ex.excerptStart,ex.excerptSeconds,state)};
-    if(len>LONG_CLIP){var endStart=row.sourceIn+len-ex.excerptSeconds-Math.min(30,len*.05);entry.endExcerptStart=endStart;entry.endEnv=await decode(ffmpeg,c.file,endStart,ex.excerptSeconds,state);}
+    var ex=R.excerptFor(len),entry={id:String(i),name:c.name,fileName:base(c.file),duration:len,mediaDuration:p.duration,sourceIn:row.sourceIn,created:p.created,excerptStart:row.sourceIn+ex.excerptStart,env:got.env};
+    if(len>LONG_CLIP){entry.endExcerptStart=got.endStart;entry.endEnv=got.endEnv;}
     clips.push(entry);row.entry=i;
    }catch(e){if(state.cancelled)throw e;row.reason=String(e.message||e);}
    done++;
