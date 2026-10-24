@@ -1,16 +1,16 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const latest: Record<string, string> = { windows: "2.3.11.8", macos: "2.3.11.8" };
+const latest: Record<string, string> = { windows: "2.3.11.9", macos: "2.3.11.9" };
 const releases: Record<string, { windows?: string; macos?: string }> = {
   // The previous release stays downloadable: a panel that checked before a release switch still asks for it
   // (with that release's checksum); it installs it and finds the newer version on its next check.
-  "2.3.11.7": {
-    windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/25750823107ccca578d25c3e5391d0e31747414b/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.7-PUBLIC.zip",
-    macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/25750823107ccca578d25c3e5391d0e31747414b/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.7-PUBLIC.zip"
-  },
   "2.3.11.8": {
     windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/249c11973e230e0a791a4d6bc351c9713629a5bc/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.8-PUBLIC.zip",
     macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/249c11973e230e0a791a4d6bc351c9713629a5bc/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.8-PUBLIC.zip"
+  },
+  "2.3.11.9": {
+    windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/0000000000000000000000000000000000000000/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.9-PUBLIC.zip",
+    macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/0000000000000000000000000000000000000000/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.9-PUBLIC.zip"
   }
 };
 

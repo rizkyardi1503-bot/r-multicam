@@ -1,14 +1,14 @@
 {
   "product_id": "rproject.multicam.ai",
   "product_name": "R Project Multicam AI",
-  "version": "2.3.11.8",
+  "version": "2.3.11.9",
   "trial_days": 7,
   "seller_name": "R Project",
   "release_channel": "public",
   "account_auth_required": true,
   "purchase_mode": "midtrans-checkout",
   "purchase_url": "https://r-multicam.pages.dev/#pricing",
-  "lifetime_price_idr": 3575000,
+  "lifetime_price_idr": 2000000,
   "lifetime_price_usd_display": 200,
   "price_note": "Indonesia is shown IDR; other countries are shown USD. Midtrans charges the verified IDR amount.",
   "support_url": "https://wa.me/6282233161680"

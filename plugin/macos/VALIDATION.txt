@@ -1,3 +1,12 @@
+v2.3.11.9 PUBLIC validation — 2026-10-25
+- Release tests on Windows: release/manifest/download chain, public archive inventory (test-public-23119.py),
+  token refresh before plugin_entitlement/heartbeat on Windows and macOS copies (fails on v2.3.11.8 code),
+  signed-entitlement grace harness, payment/checkout function tests, website tests.
+- FFmpeg selection: a broken saved path falls back to the working tools FFmpeg (checked on Windows).
+- macOS installer: bash -n syntax check and archive attributes (LF, executable bit) only.
+- Not verified natively: macOS Premiere panel, macOS installer FFmpeg download and Keychain on Apple hardware
+  (Apple Silicon and Intel); a real paid Midtrans transaction; V19 engine on a full live Premiere edit.
+
 v2.3.11.8 PUBLIC validation — 2026-10-18
 - Panel checkout (real panel.js, sync-ui.js and license.js in a fake DOM, mocked account service) on Windows
   and macOS copies: Buy/Check Payment hidden for lifetime accounts and shown for trials; a declined confirm

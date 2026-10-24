@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.2";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.8",
-    download: base + "?platform=windows&version=2.3.11.8",
-    sha256: "46d9afc799509848566aa93fbda5542be55d668cdcf4e70c63bce0db71261889"
+    version: "2.3.11.9",
+    download: base + "?platform=windows&version=2.3.11.9",
+    sha256: "624b32dd9b529284bde334b767e86e389f23e8d6da0c35325d1c07f3b3a6d35a"
   },
   macos: {
-    version: "2.3.11.8",
-    download: base + "?platform=macos&version=2.3.11.8",
-    sha256: "6b8bc09e4194882d6de61aa9c99d88c2d73dd7572c166e8aed26deab5bb7e23d"
+    version: "2.3.11.9",
+    download: base + "?platform=macos&version=2.3.11.9",
+    sha256: "bb064c2b385fd8d8af40b04517fac91f9168dc45a4c738d76d2b3db1a3b4a5a0"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.8 PUBLIC Windows and macOS: Buy Lifetime and Check Payment are back in the panel (online checkout through Midtrans is open again). Includes everything from v2.3.11.7. Optional update: v2.3.11.2 and newer keep working. Save and close Premiere before installing.",
+    release_notes: "v2.3.11.9 PUBLIC Windows and macOS: music engine V19 (one continuous beat chain), visual quality checks in the AI director, Rp prices in the panel, sign-in renewed before it expires, macOS FFmpeg fix. Optional update: v2.3.11.2 and newer keep working. Save and close Premiere before installing.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

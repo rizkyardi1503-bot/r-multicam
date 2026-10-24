@@ -1,3 +1,18 @@
+v2.3.11.9 PUBLIC — Music engine V19
+New in this release:
+- Music engine V19: a new beat tracker follows one continuous beat chain through the whole song, so cuts stay
+  on the beat on long DJ sets and tempo changes.
+- Visual quality: the AI director scores each camera for brightness, sharpness and shake (keyframes only,
+  cached) and avoids dark, blurry or shaky moments.
+- Prices in the panel now match the website: Lifetime Rp2.000.000 one-time.
+- The panel renews its sign-in shortly before it expires, so license checks no longer fail first and retry.
+- Settings > FFmpeg: a saved FFmpeg that no longer runs is skipped and a working one is used.
+- macOS installer: always installs the pinned, verified FFmpeg 9.0.2. An existing Homebrew FFmpeg is only used
+  as a fallback, in place, and is no longer copied (a copy stopped working after "brew upgrade"). Apple Silicon
+  is detected even when Terminal runs under Rosetta.
+- Optional update: v2.3.11.2 and newer keep working. Delivered through Check Update. Save and close
+  Premiere before installing.
+
 v2.3.11.8 PUBLIC — Buy Lifetime in the panel
 New in this release:
 - Online lifetime checkout is open again: Buy Lifetime and Check Payment are back in the panel (account bar and
