@@ -173,6 +173,7 @@ code, kbd {
 .button.small { min-height: 38px; padding: 8px 14px; font-size: 14px; }
 .button.full, .full { width: 100%; }
 .button:disabled:hover { transform: none; }
+.button.coming-soon:disabled { cursor: default; }
 .text-button {
   padding: 0;
   border: 0;

@@ -3,9 +3,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const browserOrigins = new Set(["https://r-multicam.pages.dev","http://127.0.0.1:8765"]);
 const filenames: Record<string, string> = {
   windows: "R-Project-Multicam-AI-Windows-v2.3.11.8-PUBLIC.zip",
-  macos: "R-Project-Multicam-AI-macOS-v2.3.11.8-PUBLIC.zip",
-  davinci: "R-Project-Multicam-AI-DaVinci-Windows-v1.0.0.zip"
+  macos: "R-Project-Multicam-AI-macOS-v2.3.11.8-PUBLIC.zip"
 };
+// DaVinci Resolve is "coming soon" on the website; its zip stays in the bucket but is not served yet.
 // Installers are served only from the private plugin-installers bucket, after sign-in.
 
 function corsHeaders(req: Request) {
@@ -41,8 +41,9 @@ Deno.serve(async (req: Request) => {
   }
 
   const platform = (new URL(req.url).searchParams.get("platform") || "").toLowerCase();
-  if (platform !== "windows" && platform !== "macos" && platform !== "davinci") {
-    return new Response("Choose windows, macos or davinci.", { status: 400, headers: cors });
+  if (platform === "davinci") return new Response("DaVinci Resolve is coming soon.", { status: 404, headers: cors });
+  if (platform !== "windows" && platform !== "macos") {
+    return new Response("Choose windows or macos.", { status: 400, headers: cors });
   }
 
   const filename = filenames[platform];

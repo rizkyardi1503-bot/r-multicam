@@ -375,7 +375,7 @@ main.social-start .lead { margin-bottom: 26px; font-size: 17.5px; }
 main.social-start .button.full { display: flex; min-height: 52px; font-size: 16px; }
 main.social-start .download-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0 14px; }
 main.social-start .download-grid .button { min-height: 48px; white-space: normal; }
-main.social-start .download-grid [data-download="davinci"] { grid-column: 1 / -1; }
+main.social-start .download-grid .coming-soon { grid-column: 1 / -1; }
 main.social-start .social-preview { width: 100%; margin: 28px 0; border: 1px solid var(--rp-line-strong); border-radius: var(--rp-radius); }
 main.social-start section,
 main.social-start details {
