@@ -26,7 +26,7 @@
  <div id="google-auth"><button id="google-signin" class="button full" type="button" style="display:flex;align-items:center;justify-content:center;gap:12px;background:#fff;color:#1f1f1f;border:1px solid #747775;border-radius:999px;min-height:44px;font-size:14px;font-weight:500;letter-spacing:0;text-transform:none"><img src="https://developers.google.com/static/identity/images/g-logo.png" width="20" height="20" alt="" aria-hidden="true" style="width:20px;height:20px;flex:0 0 20px;object-fit:contain"><span>Continue with Google</span></button><p class="subtle">Or use email and password below. Use the same email as your existing account.</p></div>
  <form id="login-form"><label for="account-email">Email</label><input id="account-email" type="email" autocomplete="username" required><label for="account-password">Password</label><input id="account-password" type="password" autocomplete="current-password" required><div id="confirm-password-group" hidden><label for="account-confirm-password">Confirm password</label><input id="account-confirm-password" type="password" autocomplete="new-password"></div><button id="auth-submit" class="button full" type="submit">Sign in</button></form>
  <div id="email-help"><button class="text-button" id="resend-confirmation" type="button">Resend confirmation email</button><button class="text-button" id="forgot-password" type="button">Forgot password?</button></div>
- <div id="account-details" hidden><p id="signed-in-email"></p><div class="license-box"><span class="eyebrow">ACCOUNT OVERVIEW</span><strong id="account-summary"></strong><p id="trial-summary"></p><p id="version-summary"></p></div><div class="license-box"><span class="eyebrow">LICENSE STATUS</span><strong id="license-state"></strong><p id="license-detail"></p></div><h3>Use an affiliate code</h3><label for="promo-code">Affiliate code · save 10% on lifetime access</label><input id="promo-code" type="text" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Enter your affiliate code" aria-describedby="promo-code-help"><div id="promo-code-help" class="subtle"><p><strong>How to use it:</strong></p><ol><li>Enter the code you received from an approved affiliate.</li><li>Click <strong>Buy lifetime</strong> below.</li><li>Midtrans opens with the discounted amount. Check it before you pay.</li></ol><p>The code is checked when your order is created. Remove it to pay the standard price. Only one code can be used per order.</p></div><div class="actions"><button class="button" id="account-purchase">Buy lifetime · <b data-rp-price style="font:inherit">Rp2.000.000</b></button><button class="button secondary" id="check-payment">Check payment</button><button class="button secondary" id="refresh-license">Refresh license</button></div><div id="checkout-confirm" hidden><h3>Your checkout is ready</h3><p id="checkout-amount"></p><p id="checkout-rate" class="subtle"></p><p class="subtle">If Midtrans did not open automatically, tap the button below to pay.</p><a class="button" id="checkout-link" rel="noopener noreferrer">Open Midtrans checkout</a><p class="subtle">The standard lifetime price is fixed at Rp2.000.000. Approved affiliate codes can reduce the amount before the order is created.</p><p class="subtle">After paying, return here and click Check payment. Your license is activated only after server verification.</p></div><div id="google-plugin-help" hidden><p class="subtle">Plugin v2.3.11.2 and newer include Continue with Google. Email/password remains optional for this same account. Never enter your Google password in the plugin.</p><button id="google-password-email" class="button secondary" type="button">Set up plugin password by email</button></div><h3>Your active plugin</h3><div id="device-details" class="license-box"></div><h3>Downloads & help</h3><div class="actions"><button class="button secondary" id="download-windows" type="button">Download Windows</button><button class="button secondary" id="download-macos" type="button">Download macOS</button><a class="button secondary" href="/help/">Open help center</a><a class="button secondary" href="/releases/">Release notes</a></div><button class="button secondary" id="account-affiliate" type="button">Affiliate dashboard</button><section id="affiliate-dashboard" hidden></section><h3>Recent orders</h3><div id="orders-list"></div><button class="text-button" id="account-signout">Sign out of website</button></div>
+ <div id="account-details" hidden><p id="signed-in-email"></p><div class="license-box"><span class="eyebrow">ACCOUNT OVERVIEW</span><strong id="account-summary"></strong><p id="trial-summary"></p><p id="version-summary"></p></div><div class="license-box"><span class="eyebrow">LICENSE STATUS</span><strong id="license-state"></strong><p id="license-detail"></p></div><h3>Use an affiliate code</h3><label for="promo-code">Affiliate code · save 10% on lifetime access</label><input id="promo-code" type="text" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Enter your affiliate code" aria-describedby="promo-code-help"><div id="promo-code-help" class="subtle"><p><strong>How to use it:</strong></p><ol><li>Enter the code you received from an approved affiliate.</li><li>Click <strong>Buy lifetime</strong> below.</li><li>Midtrans opens with the discounted amount. Check it before you pay.</li></ol><p>The code is checked when your order is created. Remove it to pay the standard price. Only one code can be used per order.</p></div><div class="actions"><button class="button" id="account-purchase">Buy lifetime · <b data-rp-price style="font:inherit">Rp2.000.000</b></button><button class="button secondary" id="check-payment">Check payment</button><button class="button secondary" id="refresh-license">Refresh license</button></div><div id="checkout-confirm" hidden><h3>Your checkout is ready</h3><p id="checkout-amount"></p><p id="checkout-rate" class="subtle"></p><p class="subtle">If Midtrans did not open automatically, tap the button below to pay.</p><a class="button" id="checkout-link" rel="noopener noreferrer">Open Midtrans checkout</a><p class="subtle">The standard lifetime price is fixed at Rp2.000.000. Approved affiliate codes can reduce the amount before the order is created.</p><p class="subtle">After paying, return here and click Check payment. Your license is activated only after server verification.</p></div><div id="google-plugin-help" hidden><p class="subtle">Plugin v2.3.11.2 and newer include Continue with Google. Email/password remains optional for this same account. Never enter your Google password in the plugin.</p><button id="google-password-email" class="button secondary" type="button">Set up plugin password by email</button></div><h3>Your active plugin</h3><div id="device-details" class="license-box"></div><h3>Downloads & help</h3><div class="actions"><button class="button secondary" id="download-windows" type="button">Download Windows</button><button class="button secondary" id="download-macos" type="button">Download macOS</button><button class="button secondary" id="download-davinci" type="button">Download DaVinci Resolve</button><a class="button secondary" href="/help/">Open help center</a><a class="button secondary" href="/releases/">Release notes</a></div><button class="button secondary" id="account-affiliate" type="button">Affiliate dashboard</button><section id="affiliate-dashboard" hidden></section><h3>Recent orders</h3><div id="orders-list"></div><button class="text-button" id="account-signout">Sign out of website</button></div>
  <p id="account-message" role="status" aria-live="polite"></p>`;
  document.body.appendChild(portal);
  const el=id=>portal.querySelector('#'+id);
@@ -67,8 +67,11 @@
   if(!refreshFlight){const current=generation;refreshFlight=request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:session.refresh_token}}).then(next=>{if(current!==generation)throw Error('Session changed. Please sign in again.');session={...next,expires_at:Date.now()/1000+(next.expires_in||3600)};persistSession();return session.access_token;}).finally(()=>{refreshFlight=null;});}return refreshFlight;
  }
  async function authed(path,options={}){return request(path,{...options,token:await token()});}
+ // DaVinci Resolve (Windows) is a separate installer for the same account and license.
+ const isPlatform=p=>p==='windows'||p==='macos'||p==='davinci';
+ const platformLabel=p=>p==='macos'?'macOS':p==='davinci'?'DaVinci Resolve':'Windows';
  async function downloadRelease(platform){
-  if(platform!=='windows'&&platform!=='macos')throw Error('Choose Windows or macOS.');
+  if(!isPlatform(platform))throw Error('Choose Windows, macOS or DaVinci Resolve.');
   if(!user)throw Error('Sign in first.');
   const access=await token();
   window.RP_ANALYTICS?.track('download_requested',{platform},access);
@@ -83,12 +86,12 @@
   if(signature[0]!==0x50||signature[1]!==0x4b||signature[2]!==0x03||signature[3]!==0x04)throw Error('The server returned an invalid installer. Please try again or contact support.');
   const disposition=res.headers.get('content-disposition')||'';
   const match=/filename="?([^";]+)"?/i.exec(disposition);
-  const filename=match?.[1]||('R-Project-Multicam-AI-'+(platform==='macos'?'macOS':'Windows')+'-PUBLIC.zip');
+  const filename=match?.[1]||(platform==='davinci'?'R-Project-Multicam-AI-DaVinci-Windows.zip':'R-Project-Multicam-AI-'+(platform==='macos'?'macOS':'Windows')+'-PUBLIC.zip');
   const objectUrl=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=objectUrl;a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();a.remove();
   window.RP_ANALYTICS?.track('download_started',{platform,filename},access);
   setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
-  say((platform==='macos'?'macOS':'Windows')+' download started. Save your Premiere project and close Premiere before installing.');
+  say(platform==='davinci'?'DaVinci Resolve download started. Extract the ZIP, run Install-DaVinci.bat, then in DaVinci Resolve choose Workspace > Scripts > R Project Multicam AI.':(platform==='macos'?'macOS':'Windows')+' download started. Save your Premiere project and close Premiere before installing.');
  }
  function render(){document.querySelectorAll('[data-login]').forEach(b=>b.textContent=user?'My account':'Login');el('google-auth').hidden=!!user;el('google-plugin-help').hidden=!user?.identities?.some(identity=>identity.provider==='google');el('login-form').hidden=!!user;el('auth-options').hidden=!!user;el('email-help').hidden=!!user;el('auth-guide').hidden=!!user;el('account-details').hidden=!user;if(!user)return;el('signed-in-email').textContent='Signed in as '+user.email;
   const expired=profile?.license_status==='trial'&&profile?.trial_expires_at&&Date.parse(profile.trial_expires_at)<=Date.now();
@@ -161,7 +164,7 @@
   if(affiliateIntent&&affiliateUI)await affiliateUI.refresh();
   window.RP_ANALYTICS?.track('login_success',{method:'google'},session.access_token);
   say(pending.purchaseIntent?'Signed in with Google. Click Buy lifetime to continue to checkout.':'Signed in with Google. You can download the installer and manage your license. The Premiere plugin (v2.3.11.2 and newer) also supports Continue with Google.');
-  if(pending.downloadIntent==='windows'||pending.downloadIntent==='macos')await downloadRelease(pending.downloadIntent);
+  if(isPlatform(pending.downloadIntent))await downloadRelease(pending.downloadIntent);
  }
  el('google-signin').onclick=()=>run(startGoogle);
  el('google-password-email').onclick=()=>run(async()=>{if(!user?.email)throw Error('Sign in first.');el('account-email').value=user.email;await sendAccountEmail('recovery');});
@@ -206,6 +209,7 @@
   el('checkout-link').onclick=()=>window.RP_ANALYTICS?.track('checkout_opened',{},session?.access_token||null);
  el('download-windows').onclick=()=>run(()=>downloadRelease('windows'));
  el('download-macos').onclick=()=>run(()=>downloadRelease('macos'));
+ el('download-davinci').onclick=()=>run(()=>downloadRelease('davinci'));
  el('account-affiliate').onclick=()=>{affiliateIntent=true;run(async()=>{if(affiliateUI)await affiliateUI.refresh();else say('Open the affiliate program from the website homepage.');});};
  document.querySelectorAll('[data-affiliate]').forEach(b=>b.onclick=()=>{affiliateIntent=true;purchaseIntent=false;downloadIntent=null;show();if(user)run(()=>affiliateUI.refresh());else say('Create and confirm an account, then sign in to apply or manage your affiliate account.');});
  el('check-payment').onclick=()=>run(async()=>{const data=await authed('/functions/v1/check-lifetime-payment',{method:'POST',body:{}});await loadAccount();say(data.paid?'Payment verified. Refresh your license in the Premiere plugin.':data.status==='no_order'?'No payment order was found for this account.':'No completed payment was confirmed yet. Please check again after paying.');});
@@ -216,20 +220,20 @@
  document.querySelectorAll('[data-buy]').forEach(button=>{if(!checkoutOpen)button.hidden=true;});
  document.querySelectorAll('[data-buy]').forEach(button=>button.onclick=()=>{show();purchaseIntent=true;downloadIntent=null;if(user)run(purchase);else say('Create an account or sign in to buy a lifetime license.');});
  document.querySelectorAll('[data-download]').forEach(button=>button.onclick=()=>{
-  const platform=button.dataset.download==='macos'?'macos':'windows';
+  const platform=isPlatform(button.dataset.download)?button.dataset.download:'windows';
   purchaseIntent=false;
   if(user){downloadIntent=null;show();run(()=>downloadRelease(platform));}
-  else{downloadIntent=platform;show();setMode('signin');say('Sign in or create a free account to download the '+(platform==='macos'?'macOS':'Windows')+' installer. New accounts must confirm their email before signing in.');}
+  else{downloadIntent=platform;show();setMode('signin');say('Sign in or create a free account to download the '+platformLabel(platform)+' installer. New accounts must confirm their email before signing in.');}
  });
  async function bootstrap(){
   if(googleCallback){await run(finishGoogle);return;}
   busy=true;controls();let restored=false;try{restored=await restoreStoredSession();}finally{busy=false;controls();}
   const initialParams=new URLSearchParams(window.location.search);
   const initialDownload=initialParams.get('download');
-  if(initialDownload==='windows'||initialDownload==='macos'){
+  if(isPlatform(initialDownload)){
    purchaseIntent=false;
-   if(restored){downloadIntent=null;show();say('Signed in as '+user.email+'. Preparing your '+(initialDownload==='macos'?'macOS':'Windows')+' download…');run(()=>downloadRelease(initialDownload));}
-   else{downloadIntent=initialDownload;show();setMode('signin');say('Sign in or create a free account to download the '+(initialDownload==='macos'?'macOS':'Windows')+' installer. New accounts must confirm their email first.');}
+   if(restored){downloadIntent=null;show();say('Signed in as '+user.email+'. Preparing your '+platformLabel(initialDownload)+' download…');run(()=>downloadRelease(initialDownload));}
+   else{downloadIntent=initialDownload;show();setMode('signin');say('Sign in or create a free account to download the '+platformLabel(initialDownload)+' installer. New accounts must confirm their email first.');}
   }else if(initialParams.has('order_id')||initialParams.has('transaction_status')){
    // Returned from Midtrans: payment is never trusted from the URL; ask for a server check.
    for(const key of ['order_id','status_code','transaction_status'])initialParams.delete(key);

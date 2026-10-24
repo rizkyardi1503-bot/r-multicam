@@ -242,7 +242,10 @@
   "Back from Midtrans. Sign in with the account you used for checkout, then click Check payment to confirm your payment.": "Kembali dari Midtrans. Masuk dengan akun yang kamu pakai saat checkout, lalu klik Cek pembayaran untuk mengonfirmasi pembayaran kamu.",
   "Booth cam": "Kamera booth",
   "Stage & lasers": "Panggung & laser",
-  "Crowd": "Penonton"
+  "Crowd": "Penonton",
+  "Download DaVinci Resolve": "Unduh DaVinci Resolve",
+  "Choose Windows, macOS or DaVinci Resolve.": "Pilih Windows, macOS, atau DaVinci Resolve.",
+  "DaVinci Resolve download started. Extract the ZIP, run Install-DaVinci.bat, then in DaVinci Resolve choose Workspace > Scripts > R Project Multicam AI.": "Unduhan DaVinci Resolve dimulai. Ekstrak ZIP, jalankan Install-DaVinci.bat, lalu di DaVinci Resolve pilih Workspace > Scripts > R Project Multicam AI."
  },
  "patterns": [
   [
@@ -282,7 +285,7 @@
    "Unduhan $1 dimulai. Simpan proyek Premiere kamu dan tutup Premiere sebelum menginstal."
   ],
   [
-   "^Signed in as (\\S+@\\S+)\\. Preparing your (macOS|Windows) download…$",
+   "^Signed in as (\\S+@\\S+)\\. Preparing your (macOS|Windows|DaVinci Resolve) download…$",
    "Masuk sebagai $1. Menyiapkan unduhan $2 kamu…"
   ],
   [
@@ -338,11 +341,11 @@
    "Tunggu $1 detik sebelum meminta email lain."
   ],
   [
-   "^Sign in or create a free account to download the (macOS|Windows) installer\\. New accounts must confirm their email before signing in\\.$",
+   "^Sign in or create a free account to download the (macOS|Windows|DaVinci Resolve) installer\\. New accounts must confirm their email before signing in\\.$",
    "Masuk atau buat akun gratis untuk mengunduh installer $1. Akun baru harus mengonfirmasi email sebelum masuk."
   ],
   [
-   "^Sign in or create a free account to download the (macOS|Windows) installer\\. New accounts must confirm their email first\\.$",
+   "^Sign in or create a free account to download the (macOS|Windows|DaVinci Resolve) installer\\. New accounts must confirm their email first\\.$",
    "Masuk atau buat akun gratis untuk mengunduh installer $1. Akun baru harus mengonfirmasi email terlebih dahulu."
   ],
   [

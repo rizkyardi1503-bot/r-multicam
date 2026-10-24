@@ -3,12 +3,15 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const browserOrigins = new Set(["https://r-multicam.pages.dev","http://127.0.0.1:8765"]);
 const filenames: Record<string, string> = {
   windows: "R-Project-Multicam-AI-Windows-v2.3.11.8-PUBLIC.zip",
-  macos: "R-Project-Multicam-AI-macOS-v2.3.11.8-PUBLIC.zip"
+  macos: "R-Project-Multicam-AI-macOS-v2.3.11.8-PUBLIC.zip",
+  davinci: "R-Project-Multicam-AI-DaVinci-Windows-v1.0.0.zip"
 };
 const fallbackBase = "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/249c11973e230e0a791a4d6bc351c9713629a5bc/site/downloads/";
 const fallbackUrls: Record<string, string> = {
   windows: fallbackBase + filenames.windows,
-  macos: fallbackBase + filenames.macos
+  macos: fallbackBase + filenames.macos,
+  // DaVinci Resolve release: kept out of the public site, pinned to the commit that added it.
+  davinci: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/849777fa7b01c45819637fae667b9fb6e0750bf1/releases/davinci/" + filenames.davinci
 };
 
 function corsHeaders(req: Request) {
@@ -44,8 +47,8 @@ Deno.serve(async (req: Request) => {
   }
 
   const platform = (new URL(req.url).searchParams.get("platform") || "").toLowerCase();
-  if (platform !== "windows" && platform !== "macos") {
-    return new Response("Choose windows or macos.", { status: 400, headers: cors });
+  if (platform !== "windows" && platform !== "macos" && platform !== "davinci") {
+    return new Response("Choose windows, macos or davinci.", { status: 400, headers: cors });
   }
 
   const filename = filenames[platform];
