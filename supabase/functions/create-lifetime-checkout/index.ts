@@ -22,6 +22,8 @@ const cors = {
 const LIFETIME_IDR = 2000000;
 const LIFETIME_USD_REFERENCE = 120;
 const REUSE_MS = 23 * 3600 * 1000;
+// Midtrans statuses after which an order can no longer be paid.
+const FINAL = new Set(["expire", "cancel", "deny", "failure"]);
 // Public webhook address (SUPABASE_URL inside a function is the API gateway and may not be the public host).
 const WEBHOOK_URL = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/midtrans-lifetime-webhook";
 const b64 = (s: string) => btoa(s);
@@ -67,7 +69,10 @@ Deno.serve(async (req) => {
   if (profiles[0].license_status === "blocked") return json({ error: "This account is blocked. Contact support." }, 403);
   if (profiles[0].license_status === "lifetime") return json({ error: "Your lifetime license is already active." }, 409);
 
-  const input = await req.json().catch(() => ({}));
+  const input = (await req.json().catch(() => null)) || {};
+  // The panel sends no promo_code at all: it continues any payable open checkout (keeping that order's promo code).
+  // The website always sends promo_code ("" = standard price on purpose).
+  const keepOpen = !(input && typeof input === "object" && "promo_code" in input);
   const promo = typeof input.promo_code === "string" ? input.promo_code.trim().toUpperCase() : "";
   let affiliate: { user_id: string; code: string } | null = null;
   if (promo) {
@@ -81,7 +86,7 @@ Deno.serve(async (req) => {
   const discountPercent = affiliate ? 10 : 0;
   const grossAmount = Math.round(LIFETIME_IDR * (1 - discountPercent / 100));
 
-  const reply = (orderId: string, checkoutUrl: string, reused: boolean) => json({
+  const reply = (orderId: string, checkoutUrl: string, reused: boolean, amount = grossAmount, code: string | null = affiliate?.code || null) => json({
     order_id: orderId,
     checkout_url: checkoutUrl,
     reused,
@@ -89,25 +94,28 @@ Deno.serve(async (req) => {
     display_price_usd: LIFETIME_USD_REFERENCE,
     reference_price_usd: LIFETIME_USD_REFERENCE,
     charge_currency: "IDR",
-    gross_amount_idr: grossAmount,
-    discount_percent: discountPercent,
-    net_price_idr: grossAmount,
-    promo_code: affiliate?.code || null,
+    gross_amount_idr: amount,
+    discount_percent: code ? 10 : 0,
+    net_price_idr: amount,
+    promo_code: code,
     environment: "production"
   });
 
-  // Look at this customer's recent orders first.
+  // Look at this customer's unpaid orders first (newest 10).
   const recentQ = await rest("plugin_payment_orders?select=order_id,status,gross_amount_idr,affiliate_code,checkout_url,created_at,paid_at,lifetime_activated_at&user_id=eq." +
     encodeURIComponent(userId) + "&order=created_at.desc&limit=10");
   if (!recentQ.ok) return json({ error: "ORDER_LOOKUP_FAILED" }, 500);
   const recent: any[] = await recentQ.json();
-  const open = recent.filter((o) => !o.paid_at && (o.status === "created" || o.status === "pending") && Date.now() - Date.parse(o.created_at) < REUSE_MS);
+  const unpaid = recent.filter((o) => !o.paid_at && (o.status === "created" || o.status === "pending"));
 
-  // A payment that went through but was never recorded (missed webhook) activates instead of charging again.
-  for (const o of open) {
+  // Ask Midtrans about each one. A payment that went through but was never recorded (missed webhook) activates
+  // instead of charging again. o.mt: "pending" (payment started), "none" (Snap page never used), a final status, or
+  // "unknown" when Midtrans could not be reached.
+  for (const o of unpaid) {
     const mr = await fetch("https://api.midtrans.com/v2/" + encodeURIComponent(o.order_id) + "/status", { headers: midtransAuth, signal: AbortSignal.timeout(10000) }).catch(() => null);
-    if (!mr || !mr.ok) continue;
-    const m = await mr.json().catch(() => ({}));
+    const m = mr ? await mr.json().catch(() => ({})) : {};
+    if (!mr || (!mr.ok && mr.status !== 404)) { o.mt = "unknown"; continue; }
+    if (mr.status === 404 || String(m.status_code) === "404") { o.mt = "none"; continue; }
     const st = String(m.transaction_status || "");
     const fraud = m.fraud_status ? String(m.fraud_status).toLowerCase() : null;
     if ((st === "settlement" || st === "capture") && (!fraud || fraud === "accept") && String(m.status_code) === "200" && Number(m.gross_amount) === Number(o.gross_amount_idr)) {
@@ -117,13 +125,36 @@ Deno.serve(async (req) => {
       if (!a.ok || !b.ok) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: o.order_id }, 500);
       return json({ error: "Your payment was already received. Your lifetime license is now active.", activated: true }, 409);
     }
-    if (st === "pending") continue; // still payable (e.g. VA / QRIS waiting) – keep it re-usable
-    if (st && st !== "pending") o.status = st; // expired / cancelled / deny: not re-usable
+    // A card payment Midtrans is still reviewing (authorize, or capture/settlement held for a fraud challenge) is a
+    // payment in progress, like pending: continue it, never charge again. Other states (paid with a different amount,
+    // refunded...) stay "unknown" and block a new checkout until the owner looks at the order.
+    const reviewing = st === "authorize" || ((st === "capture" || st === "settlement") && fraud === "challenge");
+    o.mt = st === "pending" || reviewing ? "pending" : (FINAL.has(st) ? st : "unknown");
   }
 
-  const reusable = open.find((o) => o.checkout_url && (o.status === "created" || o.status === "pending") &&
-    Number(o.gross_amount_idr) === grossAmount && (o.affiliate_code || null) === (affiliate?.code || null));
-  if (reusable) return reply(reusable.order_id, reusable.checkout_url, true);
+  // Re-use an open checkout (still payable, less than 23 h old): same price and promo code, or any one when the panel
+  // asks without a promo code. A payment already started (bank transfer, QRIS) is always continued, never replaced.
+  const payable = (o: any) => o.checkout_url && (o.mt === "pending" || o.mt === "none") && Date.now() - Date.parse(o.created_at) < REUSE_MS;
+  const reusable = unpaid.find((o) => payable(o) && (o.mt === "pending" || keepOpen || (Number(o.gross_amount_idr) === grossAmount && (o.affiliate_code || null) === (affiliate?.code || null))));
+  if (reusable) return reply(reusable.order_id, reusable.checkout_url, true, Number(reusable.gross_amount_idr), reusable.affiliate_code || null);
+
+  // One open checkout per customer: other unpaid orders are closed before a new one is created (another price or
+  // promo code, or an old one). A started payment blocks instead of being cancelled. A Snap page that was never used
+  // cannot be revoked at Midtrans and stays payable until it expires (24 h); if both are paid, the webhook keeps the
+  // first activation and alerts the owner (purchase_duplicate) to refund the second.
+  const busy = (msg: string) => json({ error: msg, message: msg, code: "PREVIOUS_CHECKOUT_OPEN" }, 409);
+  for (const o of unpaid) {
+    if (o.mt === "unknown") return busy("The payment provider could not confirm your previous checkout. Please try again in a few minutes.");
+    if (o.mt === "pending") return busy("You already started a payment for your previous checkout. Finish it, or wait until it expires (up to 24 hours), then try again.");
+    const up = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(o.order_id) + "&paid_at=is.null&status=eq." + encodeURIComponent(o.status), {
+      method: "PATCH",
+      headers: { prefer: "return=representation" },
+      body: JSON.stringify({ status: o.mt === "none" ? "cancel" : o.mt, updated_at: new Date().toISOString() })
+    });
+    if (!up.ok) return json({ error: "ORDER_LOOKUP_FAILED" }, 500);
+    // Paid or started a moment ago (webhook in between): stop; the next attempt sees it.
+    if (!((await up.json().catch(() => [])) || []).length) return busy("Your previous checkout changed a moment ago. Please try again.");
+  }
 
   const orderId = ("RPRO-" + crypto.randomUUID()).slice(0, 50);
   const insert = await rest("plugin_payment_orders", {
@@ -137,6 +168,8 @@ Deno.serve(async (req) => {
       discount_percent: discountPercent, affiliate_commission_percent: affiliate ? 20 : 0, status: "created"
     })
   });
+  // 409: another request created this customer's open order a moment ago (unique index on open orders).
+  if (insert.status === 409) return busy("A checkout is already being prepared. Please wait a few seconds and try again.");
   if (!insert.ok) return json({ error: "ORDER_CREATE_FAILED" }, 500);
 
   // Every order notifies our webhook directly, whatever "Payment Notification URL" says in the Midtrans

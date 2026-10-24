@@ -36,6 +36,14 @@ Deno.serve(async (req) => {
   const rest = (path: string, init: RequestInit = {}) =>
     fetch(supabaseUrl + "/rest/v1/" + path, { ...init, headers: { ...headers, ...(init.headers || {}) }, signal: AbortSignal.timeout(10000) });
 
+  // An account already lifetime from another order: a further paid order is a duplicate payment. It is recorded as
+  // paid (not as the activation, so no affiliate commission), the first activation is kept and the owner is alerted,
+  // exactly like the webhook does.
+  const pq = await rest("plugin_profiles?select=license_status,lifetime_order_id&user_id=eq." + encodeURIComponent(userId));
+  if (!pq.ok) return json({ error: "ORDER_LOOKUP_FAILED" }, 500);
+  const prof = (await pq.json().catch(() => []))?.[0] || null;
+  const firstOrder: string | null = prof && prof.license_status === "lifetime" && prof.lifetime_order_id ? prof.lifetime_order_id : null;
+
   const oq = await rest("plugin_payment_orders?user_id=eq." + encodeURIComponent(userId) + "&select=*&order=created_at.desc&limit=10");
   if (!oq.ok) return json({ error: "ORDER_LOOKUP_FAILED" }, 500);
   const orders: any[] = await oq.json();
@@ -56,6 +64,7 @@ Deno.serve(async (req) => {
     const success = amountMatches && (status === "settlement" || status === "capture") && (!fraud || fraud.toLowerCase() === "accept") && String(m.status_code) === "200";
     const now = new Date().toISOString();
     if (status) lastStatus = status;
+    const duplicate = success && !!firstOrder && firstOrder !== order.order_id;
 
     if (!order.paid_at || success) {
       const up = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(order.order_id), {
@@ -66,11 +75,19 @@ Deno.serve(async (req) => {
           payment_type: m.payment_type || order.payment_type,
           fraud_status: fraud,
           paid_at: success ? (order.paid_at || now) : order.paid_at,
-          lifetime_activated_at: success ? (order.lifetime_activated_at || now) : order.lifetime_activated_at,
+          lifetime_activated_at: success && !duplicate ? (order.lifetime_activated_at || now) : order.lifetime_activated_at,
           updated_at: now
         })
       });
       if (!up.ok && success) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: order.order_id }, 500);
+    }
+
+    if (duplicate) {
+      if (!order.paid_at) {
+        const al = await rest("website_analytics_events", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ event_name: "purchase_duplicate", user_id: userId, path: "/", metadata: { order_id: order.order_id, first_order_id: firstOrder, gross_amount_idr: Number(order.gross_amount_idr) } }) }).catch(() => null);
+        if (!al || !al.ok) console.error("owner alert not stored", "purchase_duplicate", order.order_id, al ? al.status : "network");
+      }
+      continue; // the license already comes from the first order
     }
 
     if (success) {
@@ -85,5 +102,6 @@ Deno.serve(async (req) => {
       return json({ paid: true, activated: true, status, order_id: order.order_id });
     }
   }
+  if (firstOrder) return json({ paid: true, activated: true, status: "settlement", order_id: firstOrder });
   return json({ paid: false, status: lastStatus });
 });
