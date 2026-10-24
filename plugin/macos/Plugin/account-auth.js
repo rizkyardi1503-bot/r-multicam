@@ -10,7 +10,7 @@ var refreshFlight=null,authGeneration=0,verified=false,storageWarning='',session
 var GRACE_MS=72*3600000,CLOCK_SLACK_MS=300000,verifiedMeta=null,offline=false,offlineReason='',pendingLogin=null;
 /* Signed offline grace: once a real key is embedded, offline use needs an entitlement signed by plugin-entitlement-signed (Ed25519).
    SIGN_KEYS = {key_id: base64 of the raw 32-byte Ed25519 public key}. PLACEHOLDER = signing not deployed yet: unsigned grace as before. */
-var SIGN_KEYS={'PLACEHOLDER_KEY_ID':'PLACEHOLDER_ED25519_PUBLIC_KEY_BASE64'},SIGN_AUD='r-multicam-plugin-entitlement',SIGN_REFRESH_MS=3600000,signedEnt=null,signedCheck=null,signedFlight=null;
+var SIGN_KEYS={'k1-2026-10':'fULotW3Lu1EYyfk3ZkEOjgOI+H0mGvWf59SsDTq83lg='},SIGN_AUD='r-multicam-plugin-entitlement',SIGN_REFRESH_MS=3600000,signedEnt=null,signedCheck=null,signedFlight=null;
 var nfs=null,nos=null,ncrypto=null,npath=null,nproc=null;
 function nreq(n){try{if(global.cep_node&&global.cep_node.require)return global.cep_node.require(n);}catch(e){}try{if(typeof require==='function')return require(n);if(typeof global.require==='function')return global.require(n);}catch(e2){}return null;}
 function storageInit(){if(nfs&&nos&&ncrypto&&npath&&nproc)return;nfs=nreq('fs');nos=nreq('os');ncrypto=nreq('crypto');npath=nreq('path');nproc=nreq('process');}
