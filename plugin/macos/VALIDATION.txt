@@ -1,3 +1,8 @@
+v2.3.11.12 PUBLIC validation — 2026-10-25
+- Plugin files identical to v2.3.11.11 except the version strings; all release, archive, token-refresh, signing,
+  payment and website tests rerun.
+- The real check is on Apple hardware: from v2.3.11.11, Check Update installs v2.3.11.12 while Premiere stays open.
+
 v2.3.11.11 PUBLIC validation — 2026-10-25
 - macOS update helper simulated in bash (stubbed shasum/ditto/pgrep, Premiere always running) with SIGTERM and
   SIGHUP sent during the install: v2.3.11.10's helper reproduces "Update helper was stopped before the update

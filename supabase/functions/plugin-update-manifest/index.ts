@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.11";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.11",
-    download: base + "?platform=windows&version=2.3.11.11",
-    sha256: "eb3d932ea0a1c0f5e9e8f757e20dd5aaefb39c296cd888ceb5c6f2a958118da3"
+    version: "2.3.11.12",
+    download: base + "?platform=windows&version=2.3.11.12",
+    sha256: "e76fe66e4b372db6f5ecb3993572277e23e56fbf7de77f0f487ee26d32bdbfdc"
   },
   macos: {
-    version: "2.3.11.11",
-    download: base + "?platform=macos&version=2.3.11.11",
-    sha256: "6812f04bac0baa753d0d58f95fc1b2c0adf32e3ba3d400a10b952e26e6cd0aff"
+    version: "2.3.11.12",
+    download: base + "?platform=macos&version=2.3.11.12",
+    sha256: "cf4c4cea7cbdee280c147fa53ea537ccfb0d7ef30cdd7629aadad7b5e633aead"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.11 PUBLIC Windows and macOS, required update: the macOS in-panel update now installs while Premiere is open (restart Premiere afterwards). Includes v2.3.11.10: signed offline license, music engine V19, visual quality checks, faster analysis. If an older Mac panel says the update helper was stopped, install once from r-multicam.pages.dev.",
+    release_notes: "v2.3.11.12 PUBLIC Windows and macOS: update test release, same code as v2.3.11.11. On macOS the update installs while Premiere is open; restart Premiere afterwards. Optional for v2.3.11.11; earlier versions must update. If an older Mac panel says the update helper was stopped, install once from r-multicam.pages.dev.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
