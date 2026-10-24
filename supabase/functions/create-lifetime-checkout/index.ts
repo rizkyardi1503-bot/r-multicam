@@ -125,7 +125,11 @@ Deno.serve(async (req) => {
       if (!a.ok || !b.ok) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: o.order_id }, 500);
       return json({ error: "Your payment was already received. Your lifetime license is now active.", activated: true }, 409);
     }
-    o.mt = st === "pending" ? "pending" : (FINAL.has(st) ? st : "unknown");
+    // A card payment Midtrans is still reviewing (authorize, or capture/settlement held for a fraud challenge) is a
+    // payment in progress, like pending: continue it, never charge again. Other states (paid with a different amount,
+    // refunded...) stay "unknown" and block a new checkout until the owner looks at the order.
+    const reviewing = st === "authorize" || ((st === "capture" || st === "settlement") && fraud === "challenge");
+    o.mt = st === "pending" || reviewing ? "pending" : (FINAL.has(st) ? st : "unknown");
   }
 
   // Re-use an open checkout (still payable, less than 23 h old): same price and promo code, or any one when the panel

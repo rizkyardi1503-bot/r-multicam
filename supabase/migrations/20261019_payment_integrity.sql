@@ -6,6 +6,8 @@
 -- 4. At most one open (created/pending, unpaid) order per customer, so two clicks cannot create two payable orders.
 --    Older open orders are expired first: their Snap links expired 24 h after creation.
 
+BEGIN;
+
 alter table public.plugin_payment_orders drop constraint plugin_payment_orders_status_check;
 alter table public.plugin_payment_orders add constraint plugin_payment_orders_status_check check (status = any (array[
   'created','pending','authorize','capture','settlement','deny','cancel','expire','failure',
@@ -39,3 +41,5 @@ update public.plugin_payment_orders set status='expire', updated_at=now()
 
 create unique index if not exists plugin_payment_orders_one_open_per_user
  on public.plugin_payment_orders (user_id) where status in ('created','pending') and paid_at is null;
+
+COMMIT;

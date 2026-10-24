@@ -99,6 +99,10 @@ const notify = async (w, b) => {
   // Started more than 23 h ago (not re-used any more) and still pending: blocked until it expires.
   { const w = world({ orders: [order('A', { status: 'pending', created_at: new Date(Date.now() - 23.5 * hour).toISOString() })], mid: { A: { status_code: '201', transaction_status: 'pending', gross_amount: '2000000.00' } } });
     const r = await buy(w, ''); assert.equal(r.status, 409); assert.match(r.data.error, /already started a payment/); assert.equal(w.orders.length, 1); }
+  // Card payment still under review at Midtrans (authorize / fraud challenge): continued like pending, never 'could not confirm'.
+  for (const mid of [{ status_code: '201', transaction_status: 'authorize', gross_amount: '2000000.00' }, { status_code: '201', transaction_status: 'capture', fraud_status: 'challenge', gross_amount: '2000000.00' }]) {
+    const w = world({ orders: [order('A', { status: 'pending', created_at: new Date(Date.now() - 23.5 * hour).toISOString() })], mid: { A: mid } });
+    const r = await buy(w, ''); assert.equal(r.status, 409); assert.match(r.data.error, /already started a payment/); assert.equal(w.orders[0].status, 'pending'); assert.equal(w.orders.length, 1); }
   // Website removes the code on purpose ("" = standard price): unused discounted order closed, standard one created.
   { const w = world({ orders: [order('A', { gross_amount_idr: 1800000, affiliate_code: 'FRIEND' })] });
     const r = await buy(w, '');
