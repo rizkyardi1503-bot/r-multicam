@@ -5,16 +5,25 @@ function runtime(){
  var n=root.cep_node;if(!n)throw Error('CEP Node is unavailable. Reinstall and restart Premiere.');
  return {fs:n.require('fs'),path:n.require('path'),cp:n.require('child_process'),os:n.require('os'),Buffer:n.require('buffer').Buffer};
 }
+/* A candidate is used only if it actually runs: a saved path can point at a broken binary (for example an old copy of
+   Homebrew's ffmpeg after "brew upgrade"). The result is cached per path for this panel session. */
+var runsCache={};
+function runs(r,file){
+ if(!file||!r.fs.existsSync(file))return false;
+ if(runsCache.hasOwnProperty(file))return runsCache[file];
+ var ok=false;try{r.cp.execFileSync(file,['-version'],{windowsHide:true,timeout:15000,stdio:'ignore'});ok=true;}catch(e){ok=false;}
+ return (runsCache[file]=ok);
+}
 function executable(userPath){
  var r=runtime(),proc=root.cep_node.require('process'),env=proc.env||{},platform=proc.platform,candidate=userPath&&userPath.trim(),candidates=[];
- if(candidate&&r.fs.existsSync(candidate))return candidate;
+ if(candidate&&runs(r,candidate))return candidate;
  var base=platform==='darwin'?r.path.join(r.os.homedir(),'Library','Application Support','RProjectMulticam','tools'):r.path.join(env.LOCALAPPDATA||r.os.homedir(),'RProjectMulticam','tools');
  var saved=r.path.join(base,'ffmpeg-path.txt');
- if(r.fs.existsSync(saved)){candidate=r.fs.readFileSync(saved,'utf8').replace(/^\uFEFF/,'').trim();if(candidate&&r.fs.existsSync(candidate))return candidate;}
+ if(r.fs.existsSync(saved)){candidate=r.fs.readFileSync(saved,'utf8').replace(/^\uFEFF/,'').trim();if(candidate&&runs(r,candidate))return candidate;}
  if(platform==='darwin')candidates=[r.path.join(base,'ffmpeg'),'/opt/homebrew/bin/ffmpeg','/usr/local/bin/ffmpeg','/usr/bin/ffmpeg'];
  else if(platform==='win32')candidates=[r.path.join(base,'ffmpeg.exe')];
- for(var i=0;i<candidates.length;i++)if(r.fs.existsSync(candidates[i]))return candidates[i];
- try{var cmd=platform==='win32'?'where':'which',out=String(r.cp.execFileSync(cmd,['ffmpeg'],{encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','ignore']})).split(/\r?\n/)[0].trim();if(out&&r.fs.existsSync(out))return out;}catch(e){}
+ for(var i=0;i<candidates.length;i++)if(runs(r,candidates[i]))return candidates[i];
+ try{var cmd=platform==='win32'?'where':'which',out=String(r.cp.execFileSync(cmd,['ffmpeg'],{encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','ignore']})).split(/\r?\n/)[0].trim();if(out&&runs(r,out))return out;}catch(e){}
  throw Error('FFmpeg is unavailable. Install FFmpeg or choose the FFmpeg executable in Settings.');
 }
 function fingerprint(snapshot){

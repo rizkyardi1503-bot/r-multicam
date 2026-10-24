@@ -57,39 +57,52 @@ mkdir -p "$EXTROOT" "$BACKUP" "$TOOLS"
 if [ -z "${RP_AUTO_UPDATE:-}" ] && [ -z "${RP_INSTALL_TEST_ROOT:-}" ]; then rm -f "$SUPPORT/updater/attempt.txt" "$SUPPORT/updater/status.json" 2>/dev/null || true; fi
 
 # Preflight FFmpeg BEFORE changing the installed plugin.
+# The pinned static build (one exact release per architecture, verified before it runs) is always preferred. A Homebrew
+# ffmpeg is never copied into tools/ (a copy loads Homebrew's libraries and breaks after "brew upgrade"); it is only used
+# in place, and only when the pinned build cannot be downloaded.
 FF="$TOOLS/ffmpeg"
-if [ -x "$FF" ]; then
-  "$FF" -version >/dev/null 2>&1 || rm -f "$FF"
-fi
-if [ ! -x "$FF" ]; then
-  SYSFF="$(command -v ffmpeg 2>/dev/null || true)"
-  if [ -n "$SYSFF" ] && "$SYSFF" -version >/dev/null 2>&1; then
-    say_line "Using existing FFmpeg: $SYSFF"
-    cp "$SYSFF" "$FF"; chmod 755 "$FF"
-  fi
-fi
-if [ ! -x "$FF" ]; then
-  ARCH="$(uname -m)"
-  # FFmpeg is pinned to one exact release build per architecture and verified before it is executed.
-  case "$ARCH" in
-    arm64) FFARCH="arm64"; FFBUILD="1789931890_9.0.2"; FFSHA="c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924" ;;
-    x86_64) FFARCH="amd64"; FFBUILD="1789931006_9.0.2"; FFSHA="7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4" ;;
-    *) fail "Unsupported Mac architecture: $ARCH" ;;
-  esac
+MARK="$TOOLS/ffmpeg-build.txt"
+if [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = "1" ]; then ARCH="arm64"; else ARCH="$(uname -m)"; fi
+case "$ARCH" in
+  arm64) FFARCH="arm64"; FFBUILD="1789931890_9.0.2"; FFSHA="c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924" ;;
+  x86_64) FFARCH="amd64"; FFBUILD="1789931006_9.0.2"; FFSHA="7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4" ;;
+  *) fail "Unsupported Mac architecture: $ARCH" ;;
+esac
+# tools/ffmpeg counts as ours only when it carries the marker of this pinned build and still runs.
+if [ -x "$FF" ] && [ "$(cat "$MARK" 2>/dev/null)" = "$FFSHA" ] && "$FF" -version >/dev/null 2>&1; then
+  USEFF="$FF"
+else
+  USEFF=""
   say_line "Installing FFmpeg 9.0.2 for macOS $ARCH..."
   TMP="$(mktemp -d -t rproject-ffmpeg.XXXXXX)"; trap 'rm -rf "$TMP"' EXIT
   URL="https://ffmpeg.martin-riedl.de/download/macos/$FFARCH/$FFBUILD/ffmpeg.zip"
-  curl -fL --proto '=https' --retry 3 --connect-timeout 20 --speed-limit 1024 --speed-time 60 --max-time 1800 "$URL" -o "$TMP/ffmpeg.zip" || fail "Could not download FFmpeg. Check your internet connection and run this installer again."
-  FFACTUAL="$(shasum -a 256 "$TMP/ffmpeg.zip" | awk '{print $1}')"
-  [ "$FFACTUAL" = "$FFSHA" ] || fail "Downloaded FFmpeg failed its integrity check. Run this installer again, or install FFmpeg yourself (for example with Homebrew) and retry."
-  ditto -x -k "$TMP/ffmpeg.zip" "$TMP/unpacked"
-  CANDIDATE="$(find "$TMP/unpacked" -type f -name ffmpeg | head -n 1 || true)"
-  [ -n "$CANDIDATE" ] || fail "Downloaded FFmpeg package did not contain ffmpeg."
-  chmod 755 "$CANDIDATE"; "$CANDIDATE" -version >/dev/null 2>&1 || fail "Downloaded FFmpeg cannot run on this Mac."
-  cp "$CANDIDATE" "$FF"; chmod 755 "$FF"; rm -rf "$TMP"; trap - EXIT
+  if curl -fL --proto '=https' --retry 3 --connect-timeout 20 --speed-limit 1024 --speed-time 60 --max-time 1800 "$URL" -o "$TMP/ffmpeg.zip"; then
+    FFACTUAL="$(shasum -a 256 "$TMP/ffmpeg.zip" | awk '{print $1}')"
+    if [ "$FFACTUAL" = "$FFSHA" ]; then
+      ditto -x -k "$TMP/ffmpeg.zip" "$TMP/unpacked"
+      CANDIDATE="$(find "$TMP/unpacked" -type f -name ffmpeg | head -n 1 || true)"
+      if [ -n "$CANDIDATE" ]; then
+        chmod 755 "$CANDIDATE"
+        if "$CANDIDATE" -version >/dev/null 2>&1; then
+          rm -f "$FF"; cp "$CANDIDATE" "$FF"; chmod 755 "$FF"; xattr -d com.apple.quarantine "$FF" 2>/dev/null || true
+          printf '%s' "$FFSHA" > "$MARK"; USEFF="$FF"
+        else say_line "Downloaded FFmpeg cannot run on this Mac."; fi
+      else say_line "Downloaded FFmpeg package did not contain ffmpeg."; fi
+    else say_line "Downloaded FFmpeg failed its integrity check."; fi
+  else say_line "Could not download FFmpeg."; fi
+  rm -rf "$TMP"; trap - EXIT
+  if [ -z "$USEFF" ]; then
+    # Fallback: an FFmpeg that is already installed (for example Homebrew), used where it is, never copied.
+    for SYSFF in "$(command -v ffmpeg 2>/dev/null || true)" /opt/homebrew/bin/ffmpeg /usr/local/bin/ffmpeg; do
+      if [ -n "$SYSFF" ] && [ -x "$SYSFF" ] && "$SYSFF" -version >/dev/null 2>&1; then USEFF="$SYSFF"; say_line "Using existing FFmpeg: $SYSFF"; break; fi
+    done
+  fi
+  # A copied (non-pinned) ffmpeg left by an older installer is retired so the panel cannot pick it up.
+  if [ "$USEFF" != "$FF" ] && [ -e "$FF" ] && [ "$(cat "$MARK" 2>/dev/null)" != "$FFSHA" ]; then rm -f "$FF" "$MARK"; fi
+  [ -n "$USEFF" ] || fail "Could not install FFmpeg. Check your internet connection and run this installer again, or install FFmpeg yourself (for example with Homebrew) and retry."
 fi
-"$FF" -version >/dev/null 2>&1 || fail "FFmpeg cannot run on this Mac."
-printf '%s' "$FF" > "$TOOLS/ffmpeg-path.txt"
+"$USEFF" -version >/dev/null 2>&1 || fail "FFmpeg cannot run on this Mac."
+printf '%s' "$USEFF" > "$TOOLS/ffmpeg-path.txt"
 
 # Enable CEP legacy extension loading before the switch.
 for v in 9 10 11 12 13 14 15; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1 >/dev/null 2>&1 || true; done

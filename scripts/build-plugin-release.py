@@ -47,11 +47,13 @@ def package_version(src: pathlib.Path) -> str:
 
 def files_of(src: pathlib.Path):
     out = []
-    for f in sorted(src.rglob('*')):
+    # Sorted by the POSIX path so the SHA256SUMS order (and the ZIP) is identical on Windows and Linux. Hidden
+    # folders (.omc agent state, .git, .DS_Store files) never ship.
+    for f in sorted(src.rglob('*'), key=lambda p: p.relative_to(src).as_posix()):
         if not f.is_file():
             continue
         rel = f.relative_to(src).as_posix()
-        if rel.split('/')[0] in SKIP_DIRS or rel.startswith('SHA256SUMS'):
+        if rel.split('/')[0] in SKIP_DIRS or rel.startswith('SHA256SUMS') or any(part.startswith('.') for part in rel.split('/')):
             continue
         out.append((rel, f.read_bytes()))
     return out
