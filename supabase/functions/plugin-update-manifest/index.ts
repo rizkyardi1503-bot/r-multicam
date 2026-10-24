@@ -7,12 +7,12 @@ const releases = {
   windows: {
     version: "2.3.11.9",
     download: base + "?platform=windows&version=2.3.11.9",
-    sha256: "624b32dd9b529284bde334b767e86e389f23e8d6da0c35325d1c07f3b3a6d35a"
+    sha256: "962c2f60f746abd97f46db8b275809ee1a226351f6799ffeda81b563bef455b6"
   },
   macos: {
     version: "2.3.11.9",
     download: base + "?platform=macos&version=2.3.11.9",
-    sha256: "bb064c2b385fd8d8af40b04517fac91f9168dc45a4c738d76d2b3db1a3b4a5a0"
+    sha256: "7056a49e3d0a009d2590b309de3afa4cf1d5bd09fd58c749700c68430ab93fcc"
   }
 };
 

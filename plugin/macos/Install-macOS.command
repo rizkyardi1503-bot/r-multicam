@@ -97,8 +97,13 @@ else
       if [ -n "$SYSFF" ] && [ -x "$SYSFF" ] && "$SYSFF" -version >/dev/null 2>&1; then USEFF="$SYSFF"; say_line "Using existing FFmpeg: $SYSFF"; break; fi
     done
   fi
-  # A copied (non-pinned) ffmpeg left by an older installer is retired so the panel cannot pick it up.
-  if [ "$USEFF" != "$FF" ] && [ -e "$FF" ] && [ "$(cat "$MARK" 2>/dev/null)" != "$FFSHA" ]; then rm -f "$FF" "$MARK"; fi
+  if [ -n "$USEFF" ] && [ "$USEFF" != "$FF" ] && [ -e "$FF" ] && [ "$(cat "$MARK" 2>/dev/null)" != "$FFSHA" ]; then
+    # A copied (non-pinned) ffmpeg left by an older installer is retired, but only once another FFmpeg was chosen.
+    rm -f "$FF" "$MARK"
+  elif [ -z "$USEFF" ] && [ -x "$FF" ] && "$FF" -version >/dev/null 2>&1; then
+    # Offline update and nothing else available: keep the FFmpeg that still works; the next online install replaces it.
+    USEFF="$FF"; say_line "Keeping the current FFmpeg for now; run the installer again when online to get the verified build."
+  fi
   [ -n "$USEFF" ] || fail "Could not install FFmpeg. Check your internet connection and run this installer again, or install FFmpeg yourself (for example with Homebrew) and retry."
 fi
 "$USEFF" -version >/dev/null 2>&1 || fail "FFmpeg cannot run on this Mac."
@@ -132,6 +137,6 @@ trap - ERR
 
 say_line "Installed R Project Multicam AI v$VERSION · PUBLIC macOS LOW MEMORY"
 say_line "Plugin: $DEST"
-say_line "FFmpeg: $FF"
+say_line "FFmpeg: $USEFF"
 say_line "Backup: $BACKUP"
 say_line "No Homebrew is required. Open Premiere > Window > Extensions (Legacy) > R Project Multicam AI."

@@ -6,13 +6,13 @@ function runtime(){
  return {fs:n.require('fs'),path:n.require('path'),cp:n.require('child_process'),os:n.require('os'),Buffer:n.require('buffer').Buffer};
 }
 /* A candidate is used only if it actually runs: a saved path can point at a broken binary (for example an old copy of
-   Homebrew's ffmpeg after "brew upgrade"). The result is cached per path for this panel session. */
+   Homebrew's ffmpeg after "brew upgrade"). Only a successful check is cached (per path, this panel session), so an
+   FFmpeg installed or repaired later is picked up without restarting Premiere. */
 var runsCache={};
 function runs(r,file){
  if(!file||!r.fs.existsSync(file))return false;
- if(runsCache.hasOwnProperty(file))return runsCache[file];
- var ok=false;try{r.cp.execFileSync(file,['-version'],{windowsHide:true,timeout:15000,stdio:'ignore'});ok=true;}catch(e){ok=false;}
- return (runsCache[file]=ok);
+ if(runsCache[file])return true;
+ try{r.cp.execFileSync(file,['-version'],{windowsHide:true,timeout:5000,stdio:'ignore'});return (runsCache[file]=true);}catch(e){return false;}
 }
 function executable(userPath){
  var r=runtime(),proc=root.cep_node.require('process'),env=proc.env||{},platform=proc.platform,candidate=userPath&&userPath.trim(),candidates=[];
