@@ -51,16 +51,15 @@ function launchMacHelper(info,work,zip,attempt,onStatus){return new Promise(func
   'status(){ current || return 0; local msg="${2//\\\\/\\\\\\\\}"; msg="${msg//\\"/\\\\\\"}"; local tmp="$STATUS.$$.tmp"; printf \'{"state":"%s","message":"%s","progress":%s,"version":"%s","attempt":"%s","updated_at":"%s"}\\n\' "$1" "$msg" "$3" "$VERSION" "$ATTEMPT" "$(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)" >"$tmp"; /bin/mv -f "$tmp" "$STATUS"; }',
   // Wait for Premiere only (main app or its own CEPHtmlEngine). Other Adobe apps keep their own CEPHtmlEngine running and must not block the update.
   'premiere_running(){ /usr/bin/pgrep -f \'/Adobe Premiere Pro[^/]*\\.app/Contents/(MacOS/|.*CEPHtmlEngine)\' >/dev/null 2>&1; }',
-  'mkdir -p "$WORK"','exec >>"$LOG" 2>&1','trap \'status error "Update failed (helper line $LINENO). Log: $LOG" 0\' ERR','trap \'status error "Update helper was stopped before the update finished. Start the update again." 0; exit 1\' HUP INT TERM',
+  'mkdir -p "$WORK"','exec >>"$LOG" 2>&1','trap \'status error "Update failed (helper line $LINENO). Log: $LOG" 0\' ERR',// Ignored, not trapped: closing Premiere or the panel must never stop an install halfway (inherited by the installer).
+  'trap "" HUP INT TERM',
   'actual="$(/usr/bin/shasum -a 256 "$ZIP" | /usr/bin/awk \'{print $1}\')"','[ "$actual" = "$SHA" ] || { status error "Downloaded update failed its checksum check. Start the update again." 0; exit 1; }',
-  'status waiting "Save your project and close Premiere. The update will install after Premiere exits." 75',
-  'deadline=$(( $(/bin/date +%s) + 43200 ))',
-  'while :; do while premiere_running; do current || exit 0; if [ "$(/bin/date +%s)" -ge "$deadline" ]; then status error "Timed out waiting for Premiere to close. Click Update again when you are ready." 0; exit 1; fi; /bin/sleep 2; done; /bin/sleep 3; premiere_running || break; done',
+  // Installs while Premiere is open (live update): nothing waits for Premiere to quit, so quitting cannot interrupt it.
   'current || exit 0',
   'status extracting "Extracting verified update..." 82','[ ! -e "$PKG" ]','/usr/bin/ditto -x -k "$ZIP" "$PKG"','[ -f "$PKG/Install-macOS.command" ]','/bin/chmod 755 "$PKG/Install-macOS.command"',
-  'status installing "Installing v$VERSION..." 90','if ! RP_AUTO_UPDATE=1 /bin/bash "$PKG/Install-macOS.command"; then err="$(/usr/bin/grep \'^ERROR:\' "$LOG" | /usr/bin/tail -n 1 || true)"; status error "Update failed: ${err#ERROR: } Log: $LOG" 0; exit 1; fi',
+  'status installing "Installing v$VERSION..." 90','if ! RP_AUTO_UPDATE=1 RP_LIVE_UPDATE=1 /bin/bash "$PKG/Install-macOS.command"; then err="$(/usr/bin/grep \'^ERROR:\' "$LOG" | /usr/bin/tail -n 1 || true)"; status error "Update failed: ${err#ERROR: } Log: $LOG" 0; exit 1; fi',
   'INSTALLED="$HOME/Library/Application Support/Adobe/CEP/extensions/RProjectMulticamAI/CSXS/manifest.xml"','/usr/bin/grep -q "ExtensionBundleVersion=\\\"$VERSION\\\"" "$INSTALLED"',
-  'status installed "Updated to v$VERSION. You can reopen Premiere now." 100'];
+  'status installed "Updated to v$VERSION. Quit and reopen Premiere to use it." 100'];
   fs.writeFileSync(helper,script.join('\n')+'\n','utf8');try{fs.chmodSync(helper,493);}catch(e){}
   emit(onStatus,'starting','Starting verified macOS update helper...',70);var child=cp.spawn('/bin/bash',[helper],{detached:true,stdio:'ignore'}),settled=false,start=Date.now();
   function fail(e){if(settled)return;settled=true;emit(onStatus,'error',e.message,0);reject(e);}child.once('error',function(e){fail(Error('macOS update helper could not start: '+e.message));});child.once('spawn',function(){child.unref();});

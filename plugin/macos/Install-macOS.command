@@ -14,7 +14,9 @@ ls "$BASE" >/dev/null 2>&1 || blocked
 # Other Adobe apps (Photoshop, After Effects) run their own CEPHtmlEngine and must not block installation.
 premiere_running(){ pgrep -f '/Adobe Premiere Pro[^/]*\.app/Contents/(MacOS/|.*CEPHtmlEngine)' >/dev/null 2>&1; }
 # Premiere can take a while to quit (older update helpers start this installer as soon as the panel closes): wait up to 60 s.
-if premiere_running; then
+# RP_LIVE_UPDATE (in-panel update, v2.3.11.11+): install while Premiere is open; macOS keeps the loaded panel working and
+# the new version is used after Premiere restarts. Waiting for Premiere to quit let macOS stop the update helper.
+if [ -z "${RP_LIVE_UPDATE:-}" ] && premiere_running; then
   say_line "Adobe Premiere Pro is still running. Save your project and quit Premiere; installation continues when it has closed (waiting up to 60 seconds)..."
   waited=0
   while premiere_running && [ "$waited" -lt 60 ]; do sleep 2; waited=$((waited + 2)); done
