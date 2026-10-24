@@ -6,13 +6,7 @@ const filenames: Record<string, string> = {
   macos: "R-Project-Multicam-AI-macOS-v2.3.11.8-PUBLIC.zip",
   davinci: "R-Project-Multicam-AI-DaVinci-Windows-v1.0.0.zip"
 };
-const fallbackBase = "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/249c11973e230e0a791a4d6bc351c9713629a5bc/site/downloads/";
-const fallbackUrls: Record<string, string> = {
-  windows: fallbackBase + filenames.windows,
-  macos: fallbackBase + filenames.macos,
-  // DaVinci Resolve release: kept out of the public site, pinned to the commit that added it.
-  davinci: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/849777fa7b01c45819637fae667b9fb6e0750bf1/releases/davinci/" + filenames.davinci
-};
+// Installers are served only from the private plugin-installers bucket, after sign-in.
 
 function corsHeaders(req: Request) {
   const origin = req.headers.get("origin") || "";
@@ -53,23 +47,17 @@ Deno.serve(async (req: Request) => {
 
   const filename = filenames[platform];
   const privateUrl = supabaseUrl + "/storage/v1/object/authenticated/plugin-installers/" + encodeURIComponent(filename);
-  let upstream = await fetch(privateUrl, {
+  const upstream = await fetch(privateUrl, {
     headers: { apikey: serviceKey, authorization: "Bearer " + serviceKey },
     signal: AbortSignal.timeout(30000)
   }).catch(() => null);
-  let source = "private-storage";
-
-  if (!upstream?.ok || !upstream.body) {
-    upstream = await fetch(fallbackUrls[platform], { redirect: "follow", signal: AbortSignal.timeout(30000) }).catch(() => null);
-    source = "temporary-pinned-fallback";
-  }
   if (!upstream?.ok || !upstream.body) return new Response("Download source is temporarily unavailable.", { status: 502, headers: cors });
 
   const headers = new Headers(cors);
   headers.set("content-type", "application/zip");
   headers.set("content-disposition", `attachment; filename="${filename}"`);
   headers.set("cache-control", "private, no-store, max-age=0");
-  headers.set("x-rproject-download-source", source);
+  headers.set("x-rproject-download-source", "private-storage");
   const length = upstream.headers.get("content-length");
   if (length) headers.set("content-length", length);
   return new Response(upstream.body, { status: 200, headers });

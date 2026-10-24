@@ -18,9 +18,9 @@ document.querySelectorAll('[data-buy]').forEach(button => button.onclick = () =>
  const url = safeUrl(config.paymentUrl);
  message(url ? 'Continue to secure checkout' : 'Checkout is not open yet', url ? 'The displayed license price is '+(window.RPPrice?.label()||'Rp2.000.000')+'. Review the final billing amount, currency and purchase terms on Midtrans before paying. Use the email address linked to your plugin account.' : 'Online purchases are not available yet. Please check back when checkout opens. No payment or license activation has taken place.', url, 'Continue to Midtrans');
 });
-document.querySelectorAll('[data-account]').forEach(button => button.onclick = () => message('Your Multicam AI license', 'You can check your current license by signing in to the Multicam AI panel inside Premiere. '+(safeUrl(config.customerPortalUrl) ? 'Open the customer portal to manage your account.' : 'The website customer portal is not available yet.'), config.customerPortalUrl, 'Open customer portal'));
+document.querySelectorAll('[data-account]').forEach(button => button.onclick = () => message('Your Multicam AI license', 'You can check your current license by signing in to the Multicam AI panel inside Premiere or DaVinci Resolve. '+(safeUrl(config.customerPortalUrl) ? 'Open the customer portal to manage your account.' : 'The website customer portal is not available yet.'), config.customerPortalUrl, 'Open customer portal'));
 document.querySelectorAll('[data-download]').forEach(button => button.onclick = () => {
- message('Account required to download', 'Sign in or create a free R Project account first. After your email is confirmed, sign in to download the Windows or macOS installer.', null);
+ message('Account required to download', 'Sign in or create a free R Project account first. After your email is confirmed, sign in to download the Premiere Pro installer (Windows or macOS) or the DaVinci Resolve version (Windows).', null);
 });
 }
 
