@@ -39,6 +39,7 @@ function fromFrames(frames,times){
    the first video packet's slice headers; only for large files (>= 256 MB), where the pass takes seconds. */
 function threadArgs(ffmpeg,file,state){
  return new Promise(function(resolve){
+  if(state.cancelled)return resolve([]);
   try{if(node('fs').statSync(file).size<268435456)return resolve([]);}catch(e){return resolve([]);}
   var proc,out='',done=false,timer=null;
   function finish(x){if(done)return;done=true;if(timer)clearTimeout(timer);var i=(state.processes||[]).indexOf(proc);if(i>=0)state.processes.splice(i,1);resolve(x);}
@@ -53,6 +54,7 @@ function threadArgs(ffmpeg,file,state){
 function analyze(ffmpeg,file,state){
  state=state||{};var hit=readCache(file);if(hit)return Promise.resolve(Object.assign(hit,{cached:true}));
  return threadArgs(ffmpeg,file,state).then(function(threads){return new Promise(function(resolve,reject){
+  if(state.cancelled)return reject(Error('Agent AI Director stopped.'));
   var cp=node('child_process'),Buffer=node('buffer').Buffer;
   var args=['-nostdin','-hide_banner','-v','info'].concat(threads,['-discard:v','nokey','-skip_frame','nokey','-i',file,'-map','0:v:0','-an','-sn','-dn','-vf','scale='+W+':'+H+':flags=area,format=gray,showinfo','-fps_mode','passthrough','-f','rawvideo','pipe:1']);
   var proc=cp.spawn(ffmpeg,args,{windowsHide:true,shell:false}),frames=[],times=[],carry=Buffer.alloc(0),err='',settled=false;

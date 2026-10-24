@@ -435,7 +435,7 @@ function start(kind){
 ['cut','angle','delete'].forEach(function(id){el(id).onclick=function(){start(id);};});
 function requestStop(){
  if(!busy)return;if(activeTool==='sync'&&window.RPSyncUI){window.RPSyncUI.stop();state('Stopping sync…',false,'running');return;}stopRequested=true;controls();state('Stopping after the current step…',false,'running');
- if(analysisState){analysisState.cancelled=true;if(analysisState.process)analysisState.process.kill();if(analysisState.request)analysisState.request.destroy();/* The active async loop owns the next host call and will stop at its cancellation check. */return;}
+ if(analysisState){analysisState.cancelled=true;if(analysisState.process)analysisState.process.kill();(analysisState.processes||[]).forEach(function(p){try{p.kill();}catch(e){}});if(analysisState.request)analysisState.request.destroy();/* The active async loop owns the next host call and will stop at its cancellation check. */return;}
  if(!pending&&job)next();
 }
 el('stop').onclick=requestStop;el('multiStop').onclick=requestStop;el('zoomStop').onclick=requestStop;el('dropStop').onclick=requestStop;el('podcastStop').onclick=requestStop;
@@ -893,7 +893,7 @@ try{bindAccountUI();}catch(e){state('Account UI warning: '+e.message,true,'warni
 renderHardwareInfo();
 dropLegacyMusicMapStorage();bindOnlineSettings();restoreSetup();bindSetupMemory();renderCameraToggles(restoredCameraSelection);renderResumePanel();
 if(window.addEventListener)window.addEventListener('beforeunload',function(){
- saveSetup();el('aiKey').value='';if(el('onlineKey'))el('onlineKey').value='';if(analysisState){analysisState.cancelled=true;if(analysisState.process)analysisState.process.kill();if(analysisState.request)analysisState.request.destroy();}
+ saveSetup();el('aiKey').value='';if(el('onlineKey'))el('onlineKey').value='';if(analysisState){analysisState.cancelled=true;if(analysisState.process)analysisState.process.kill();(analysisState.processes||[]).forEach(function(p){try{p.kill();}catch(e){}});if(analysisState.request)analysisState.request.destroy();}
 });
 window.setInterval(function(){
  if(busy){var wait=Math.floor((Date.now()-lastReply)/1000),hb='Running '+Math.floor((Date.now()-started)/1000)+' seconds'+(pending?' · waiting for Premiere '+wait+' seconds':'');if(pending&&wait>15)hb+=' · slow response; do not click again';heartbeatFor(activeTool,hb);}

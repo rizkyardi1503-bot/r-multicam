@@ -170,10 +170,10 @@ async function visualMetrics(snapshot,enabled,ffmpeg,state,progress){
  var V=root.RPVisual,files={},list=[],metrics={},failures=0,next=0,doneN=0;
  snapshot.tracks.forEach(function(t){if(enabled.indexOf(t.index)<0)return;t.clips.forEach(function(c){if(c.supported&&!c.disabled&&c.file&&!(c.file in files)){files[c.file]=null;list.push(c.file);}});});
  async function worker(){while(next<list.length){check(state);var file=list[next++];try{files[file]=await V.analyze(ffmpeg,file,state);}catch(e){check(state);failures++;}doneN++;progress(.42*doneN/Math.max(1,list.length),'AI Vision: checking blur, shake and exposure · camera file '+doneN+' / '+list.length);}}
- // FFmpeg's H.264 keyframe decode uses ~2 cores whatever -threads says, so on a 12+ core machine with memory to spare
+ // FFmpeg's H.264 keyframe decode uses ~2 cores whatever -threads says, so with 12+ logical cores and memory to spare
  // up to 4 files decode at once (~1.7x faster on SSD, same speed on a hard disk). Each file's timeline is independent:
  // results do not depend on the worker count. macOS Low Memory mode keeps 2.
- var pool=2;try{var os=root.cep_node.require('os'),cores=os.cpus().length,rg=root.RPResourceGuard,low=rg&&rg.profile&&rg.profile().lowMemory;if(!low&&cores>=12&&os.freemem()>=6*1073741824)pool=Math.min(4,Math.floor(cores/4));}catch(e){}
+ var pool=2;try{var os=root.cep_node.require('os'),cores=os.cpus().length,rg=root.RPResourceGuard,low=rg&&rg.profile&&rg.profile().lowMemory;var freeB=os.freemem();if(rg&&rg.macAvailable&&os.platform()==='darwin'){try{var av=Number(rg.macAvailable(root.cep_node.require('child_process').execFileSync('/usr/bin/vm_stat',[],{encoding:'utf8',timeout:3000})));if(av>0)freeB=av*1048576;/* MB */}catch(e){}}if(!low&&cores>=12&&freeB>=6*1073741824)pool=Math.min(4,Math.floor(cores/4));}catch(e){}
  var workers=[];for(var w=0;w<Math.min(pool,Math.max(1,list.length));w++)workers.push(worker());
  await Promise.all(workers);check(state);
  snapshot.intervals.forEach(function(it){filterEnabledCameras(it.candidates||[],enabled).forEach(function(cam){

@@ -52,7 +52,9 @@ function check(state){if(state&&state.cancelled)throw Error('Sync stopped.');}
  * Decode the master and every camera clip, sync each camera. progress(p 0..1, message).
  * deps (tests only): {probe, decode} replace RPSync.probe / RPSync.decodeEnvelope.
  */
-async function analyze(sources,cameras,ffmpeg,state,progress,deps){
+/* Read-ahead jobs stop as soon as analyze ends, whether it finished, failed or was cancelled. */
+async function analyze(sources,cameras,ffmpeg,state,progress,deps){var ctl={stopped:false};try{return await analyzeRun(sources,cameras,ffmpeg,state,progress,deps,ctl);}finally{ctl.stopped=true;}}
+async function analyzeRun(sources,cameras,ffmpeg,state,progress,deps,ctl){
  deps=deps||{};progress=progress||function(){};state=state||{};
  var R=S(),probe=deps.probe||R.probe,decode=deps.decode||R.decodeEnvelope,seq=sources.sequence,frame=Number(seq.frame);
  var total=cameras.reduce(function(n,c){return n+c.clips.length;},0)+(seq.a1||[]).length,done=0;
@@ -63,7 +65,7 @@ async function analyze(sources,cameras,ffmpeg,state,progress,deps){
  var AHEAD=6,jobs=[],started=0,used=0,chain=Promise.resolve(),probes={};
  function pump(){while(started<jobs.length&&started<used+AHEAD){var j=jobs[started++];j.promise=chain=chain.then(j.run,j.run);j.promise.catch(function(){});}}
  function take(i){used=i+1;pump();return jobs[i].promise;}
- function add(run){jobs.push({run:function(){if(state.cancelled)throw Error('Sync stopped.');return run();}});}
+ function add(run){jobs.push({run:function(){if(state.cancelled||ctl.stopped)throw Error('Sync stopped.');return run();}});}
  function probeOnce(file){return probes[file]||(probes[file]=Promise.resolve(probe(ffmpeg,file,state)).then(null,function(e){delete probes[file];throw e;}));}
  seq.a1.forEach(function(c1){add(function(){return decode(ffmpeg,c1.file,c1.input,c1.end-c1.start,state);});});
  cameras.forEach(function(cam){cam.clips.forEach(function(c){add(function(){return probeOnce(c.file).then(function(p){
@@ -71,7 +73,7 @@ async function analyze(sources,cameras,ffmpeg,state,progress,deps){
   if(!(len>frame)||!p.hasAudio)return {p:p};var ex=R.excerptFor(len);
   return Promise.resolve(decode(ffmpeg,c.file,sourceIn+ex.excerptStart,ex.excerptSeconds,state)).then(function(env){
    if(!(len>LONG_CLIP))return {p:p,env:env};var endStart=sourceIn+len-ex.excerptSeconds-Math.min(30,len*.05);
-   return Promise.resolve(decode(ffmpeg,c.file,endStart,ex.excerptSeconds,state)).then(function(endEnv){return {p:p,env:env,endEnv:endEnv,endStart:endStart};});});});});});});
+   return Promise.resolve(decode(ffmpeg,c.file,endStart,ex.excerptSeconds,state)).then(function(endEnv){return {p:p,env:env,endEnv:endEnv,endStart:endStart};});}).then(null,function(e){if(state.cancelled)throw e;return {p:p,error:e};});});});});});
  // 1. Master on the sequence timeline, from the A1 clips as placed (In point + timeline start).
  var parts=[],jobAt=0;
  for(var a=0;a<seq.a1.length;a++){check(state);var c1=seq.a1[a];tick('Reading the A1 master '+(a+1)+'/'+seq.a1.length);parts.push({start:c1.start,env:await take(jobAt++)});done++;}
@@ -85,6 +87,7 @@ async function analyze(sources,cameras,ffmpeg,state,progress,deps){
    try{
     var got=await take(jobAt++),p=got.p;if(!make&&p.make)make=p.make;if(!model&&p.model)model=p.model;if(!serial&&p.serial)serial=p.serial;
     if(row.sourceOut==null||row.sourceOut>p.duration)row.sourceOut=p.duration;
+    if(got.error)throw got.error;
     var len=row.sourceOut-row.sourceIn;
     if(!(len>frame)){row.reason='clip is empty';done++;continue;}
     if(!p.hasAudio){row.reason='no audio to sync';if(p.hasVideo!==false)silent.push({row:row,id:String(i),name:c.name,fileName:base(c.file),created:p.created,sourceIn:row.sourceIn,duration:row.sourceOut});done++;continue;}
