@@ -7,12 +7,12 @@ const releases = {
   windows: {
     version: "2.3.11.9",
     download: base + "?platform=windows&version=2.3.11.9",
-    sha256: "962c2f60f746abd97f46db8b275809ee1a226351f6799ffeda81b563bef455b6"
+    sha256: "1f0e3c5c7163869dddd17dec5963efba7494cd01600159eba624618d44849898"
   },
   macos: {
     version: "2.3.11.9",
     download: base + "?platform=macos&version=2.3.11.9",
-    sha256: "7056a49e3d0a009d2590b309de3afa4cf1d5bd09fd58c749700c68430ab93fcc"
+    sha256: "5eec34085f506d748d019898a011c9e09764b61966b574556a017ae308eb68fe"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.9 PUBLIC Windows and macOS: music engine V19 (one continuous beat chain), visual quality checks in the AI director, Rp prices in the panel, sign-in renewed before it expires, macOS FFmpeg fix. Optional update: v2.3.11.2 and newer keep working. Save and close Premiere before installing.",
+    release_notes: "v2.3.11.9 PUBLIC Windows and macOS: music engine V19 (one continuous beat chain), visual quality checks in the AI director, faster analysis with identical results, Rp prices in the panel, sign-in renewed before it expires, macOS FFmpeg fix. Optional update: v2.3.11.2 and newer keep working. Save and close Premiere before installing.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

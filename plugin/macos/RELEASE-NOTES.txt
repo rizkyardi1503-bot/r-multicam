@@ -4,6 +4,9 @@ New in this release:
   on the beat on long DJ sets and tempo changes.
 - Visual quality: the AI director scores each camera for brightness, sharpness and shake (keyframes only,
   cached) and avoids dark, blurry or shaky moments.
+- Faster: AI Vision checks large 4K camera files about 2x faster and several files at once on strong PCs;
+  camera sync and beat analysis are faster too. A 4-camera 4K test went from 32 s to 17 s with identical
+  beats, drops, sync offsets and cuts.
 - Prices in the panel now match the website: Lifetime Rp2.000.000 one-time.
 - The panel renews its sign-in shortly before it expires, so license checks no longer fail first and retry.
 - Settings > FFmpeg: a saved FFmpeg that no longer runs is skipped and a working one is used.

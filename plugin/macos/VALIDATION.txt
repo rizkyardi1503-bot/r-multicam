@@ -3,6 +3,9 @@ v2.3.11.9 PUBLIC validation — 2026-10-25
   token refresh before plugin_entitlement/heartbeat on Windows and macOS copies (fails on v2.3.11.8 code),
   signed-entitlement grace harness, payment/checkout function tests, website tests.
 - FFmpeg selection: a broken saved path falls back to the working tools FFmpeg (checked on Windows).
+- Speed: scripts/bench/engine-bench.cjs runs the real panel engine with real FFmpeg on a synthetic 10-min set,
+  the e2e set and 4 Druva 4K cameras; all stage outputs (beats, BPM, drops, sections, sync, AI Vision, director
+  plan) are byte-identical before/after; Druva total 31.9 s -> 17.2 s (Windows, 16 logical cores).
 - macOS installer: bash -n syntax check and archive attributes (LF, executable bit) only.
 - Not verified natively: macOS Premiere panel, macOS installer FFmpeg download and Keychain on Apple hardware
   (Apple Silicon and Intel); a real paid Midtrans transaction; V19 engine on a full live Premiere edit.
