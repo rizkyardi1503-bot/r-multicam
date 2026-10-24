@@ -1,0 +1,18 @@
+R Project Multicam AI for DaVinci Resolve - third-party software
+
+The installer downloads these programs only when they are not already on the computer, from their official sources,
+pinned to one exact version and verified with SHA-256 before they are used:
+
+Node.js v24.21.0 (Windows x64)
+  Source: https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip
+  License: MIT (copied next to node.exe as NODE-LICENSE.txt) - https://github.com/nodejs/node/blob/main/LICENSE
+  Stored in: %LOCALAPPDATA%\RProjectMulticam\davinci\runtime
+
+FFmpeg 9.0.2 essentials build (same build the R Project Premiere plugin uses)
+  Sources: https://github.com/GyanD/codexffmpeg/releases and https://www.gyan.dev/ffmpeg/builds/
+  FFmpeg project: https://ffmpeg.org/  License information: https://ffmpeg.org/legal.html
+  Stored in: %LOCALAPPDATA%\RProjectMulticam\tools (shared with the Premiere plugin)
+  FFmpeg is used locally for audio decoding and optional frame analysis. Your media is not uploaded.
+
+DaVinci Resolve is a trademark of Blackmagic Design Pty. Ltd. R Project Multicam AI is not affiliated with
+Blackmagic Design. It uses the documented DaVinci Resolve scripting API.

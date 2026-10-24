@@ -1,0 +1,24 @@
+{
+ "source": "plugin/windows/Plugin",
+ "files": {
+  "music-pacing-auto.js": "01d0616c25a0b6d10e4ce222b8584ff2261bb7a9f62e5ed3909c4a29749bbbed",
+  "audio-core.js": "7e5d111c5a95a42041db79d684c2030c2e551fbb2cd2bc41ad993dce2e6b1452",
+  "spectral-features.js": "6079aac236348dffadf55ab3c1394ae5e2d251bc33a6ed8dc2e721c931948fdf",
+  "audio-engine.js": "f3f9f186d59f14ccc5f0405028aa0f92b2660ff22b58142ee82762e0cc8b2a66",
+  "music-learning.js": "55df4b08d9cc4ca3da46693d8cfee87291d46ff88f10cd2fa55d28a2e672cc4c",
+  "music-intelligence-v10.js": "b6e66cbf1b7b1025220698f2a2441b380e1679b90ae96efc4956d927e0919262",
+  "visual-quality.js": "7dc8f4263cce9c8c612ec3421cf17797a582ab5b5889d288d93fcf3f77c38d60",
+  "ai-director.js": "e3414001a35591b82b5992e7cf5e3cfad050a60b25735e93245c751f58a26125"
+ },
+ "sourceBuildId": "R Project Multicam AI v2.3.11.8 · MUSIC ENGINE V18 · PUBLIC",
+ "order": [
+  "music-pacing-auto.js",
+  "audio-core.js",
+  "spectral-features.js",
+  "audio-engine.js",
+  "music-learning.js",
+  "music-intelligence-v10.js",
+  "visual-quality.js",
+  "ai-director.js"
+ ]
+}
