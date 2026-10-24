@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-// v2.3.11.6 and older must update (2026-10-25): v2.3.11.7 and newer keep working (matches plugin_entitlement c_min_supported).
-const MINIMUM_SUPPORTED = "2.3.11.7";
+// Required update (2026-10-25): every version before 2.3.11.10 must update (matches plugin_entitlement c_min_supported).
+const MINIMUM_SUPPORTED = "2.3.11.10";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
