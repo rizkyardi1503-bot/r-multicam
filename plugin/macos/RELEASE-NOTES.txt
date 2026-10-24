@@ -1,3 +1,12 @@
+v2.3.11.11 PUBLIC — macOS in-panel update fixed (required update)
+New in this release:
+- macOS: Check Update now installs right away while Premiere is open, then asks you to restart Premiere. Before,
+  the update waited for Premiere to quit and macOS stopped it ("Update helper was stopped before the update
+  finished"), so Mac panels could not update themselves.
+- Required update: every earlier version must update to v2.3.11.11.
+- Everything from v2.3.11.10 is included: signed offline license, music engine V19, visual quality checks,
+  faster analysis, Rp prices, macOS FFmpeg fix.
+
 v2.3.11.10 PUBLIC — Signed offline license (required update)
 New in this release:
 - Offline use is protected: the 72-hour offline grace now trusts only a license record signed by the R Project

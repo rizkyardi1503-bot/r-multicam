@@ -1,3 +1,11 @@
+v2.3.11.11 PUBLIC validation — 2026-10-25
+- macOS update helper simulated in bash (stubbed shasum/ditto/pgrep, Premiere always running) with SIGTERM and
+  SIGHUP sent during the install: v2.3.11.10's helper reproduces "Update helper was stopped before the update
+  finished"; the v2.3.11.11 helper installs and reports "installed".
+- All release, archive, token-refresh, signing, payment and website tests rerun.
+- Not verified natively: the live in-panel update on a real Mac (first real update), macOS installer on Apple
+  hardware.
+
 v2.3.11.10 PUBLIC validation — 2026-10-25
 - Signing key generated inside Supabase and stored in Vault (private key never left the server); the panel embeds
   only the public key (k1-2026-10, 32-byte Ed25519). The setup function self-checked sign/verify.

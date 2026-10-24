@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.10";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.10",
-    download: base + "?platform=windows&version=2.3.11.10",
-    sha256: "14439a78df66c6b39e5141caa88f6245a78caffbfa0ee7f4fa569a0c7b0616a5"
+    version: "2.3.11.11",
+    download: base + "?platform=windows&version=2.3.11.11",
+    sha256: "eb3d932ea0a1c0f5e9e8f757e20dd5aaefb39c296cd888ceb5c6f2a958118da3"
   },
   macos: {
-    version: "2.3.11.10",
-    download: base + "?platform=macos&version=2.3.11.10",
-    sha256: "89dd0cc94577258f8343d831d2d55c0da1ec67246f83d7ac96f121b306922d2b"
+    version: "2.3.11.11",
+    download: base + "?platform=macos&version=2.3.11.11",
+    sha256: "6812f04bac0baa753d0d58f95fc1b2c0adf32e3ba3d400a10b952e26e6cd0aff"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.10 PUBLIC Windows and macOS, required update: offline use protected by a server-signed license (online use unchanged). Includes everything from v2.3.11.9: music engine V19, visual quality checks, faster analysis, Rp prices, macOS FFmpeg fix. Save and close Premiere before installing.",
+    release_notes: "v2.3.11.11 PUBLIC Windows and macOS, required update: the macOS in-panel update now installs while Premiere is open (restart Premiere afterwards). Includes v2.3.11.10: signed offline license, music engine V19, visual quality checks, faster analysis. If an older Mac panel says the update helper was stopped, install once from r-multicam.pages.dev.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
