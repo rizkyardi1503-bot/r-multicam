@@ -1,3 +1,12 @@
+v2.3.11.10 PUBLIC validation — 2026-10-25
+- Signing key generated inside Supabase and stored in Vault (private key never left the server); the panel embeds
+  only the public key (k1-2026-10, 32-byte Ed25519). The setup function self-checked sign/verify.
+- Offline-grace harness (lic-signed-grace-test.cjs): placeholder behaviour, online unlock, signed copy fetched/
+  persisted/refreshed, tampered/other-key/expired/clock-back/wrong user/wrong device denied offline.
+- All v2.3.11.9 release, archive, token-refresh, payment and website tests rerun.
+- Not verified natively: a live signed entitlement with a real customer token (first real panel check),
+  macOS Premiere panel and installer on Apple hardware.
+
 v2.3.11.9 PUBLIC validation — 2026-10-25
 - Release tests on Windows: release/manifest/download chain, public archive inventory (test-public-23119.py),
   token refresh before plugin_entitlement/heartbeat on Windows and macOS copies (fails on v2.3.11.8 code),

@@ -1,3 +1,13 @@
+v2.3.11.10 PUBLIC — Signed offline license (required update)
+New in this release:
+- Offline use is protected: the 72-hour offline grace now trusts only a license record signed by the R Project
+  server, so an edited license file no longer unlocks the plugin. Online use is unchanged. Open the panel online
+  once after updating; offline grace starts from that check.
+- Required update: every earlier version must update to v2.3.11.10 (Check Update in the panel, or the website
+  download). Save and close Premiere before installing.
+- Everything from v2.3.11.9 is included: music engine V19, visual quality checks, faster analysis, Rp prices,
+  sign-in renewed before it expires, macOS FFmpeg fix.
+
 v2.3.11.9 PUBLIC — Music engine V19
 New in this release:
 - Music engine V19: a new beat tracker follows one continuous beat chain through the whole song, so cuts stay

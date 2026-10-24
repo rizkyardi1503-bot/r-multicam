@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.7";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.9",
-    download: base + "?platform=windows&version=2.3.11.9",
-    sha256: "1f0e3c5c7163869dddd17dec5963efba7494cd01600159eba624618d44849898"
+    version: "2.3.11.10",
+    download: base + "?platform=windows&version=2.3.11.10",
+    sha256: "14439a78df66c6b39e5141caa88f6245a78caffbfa0ee7f4fa569a0c7b0616a5"
   },
   macos: {
-    version: "2.3.11.9",
-    download: base + "?platform=macos&version=2.3.11.9",
-    sha256: "5eec34085f506d748d019898a011c9e09764b61966b574556a017ae308eb68fe"
+    version: "2.3.11.10",
+    download: base + "?platform=macos&version=2.3.11.10",
+    sha256: "89dd0cc94577258f8343d831d2d55c0da1ec67246f83d7ac96f121b306922d2b"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.9 PUBLIC Windows and macOS: music engine V19 (one continuous beat chain), visual quality checks in the AI director, faster analysis with identical results, Rp prices in the panel, sign-in renewed before it expires, macOS FFmpeg fix. Optional for v2.3.11.7 and newer; v2.3.11.6 and older must update. Save and close Premiere before installing.",
+    release_notes: "v2.3.11.10 PUBLIC Windows and macOS, required update: offline use protected by a server-signed license (online use unchanged). Includes everything from v2.3.11.9: music engine V19, visual quality checks, faster analysis, Rp prices, macOS FFmpeg fix. Save and close Premiere before installing.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
