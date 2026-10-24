@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-// Optional update: v2.3.11.2 and newer keep working (matches plugin_entitlement c_min_supported).
-const MINIMUM_SUPPORTED = "2.3.11.2";
+// v2.3.11.6 and older must update (2026-10-25): v2.3.11.7 and newer keep working (matches plugin_entitlement c_min_supported).
+const MINIMUM_SUPPORTED = "2.3.11.7";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.9 PUBLIC Windows and macOS: music engine V19 (one continuous beat chain), visual quality checks in the AI director, faster analysis with identical results, Rp prices in the panel, sign-in renewed before it expires, macOS FFmpeg fix. Optional update: v2.3.11.2 and newer keep working. Save and close Premiere before installing.",
+    release_notes: "v2.3.11.9 PUBLIC Windows and macOS: music engine V19 (one continuous beat chain), visual quality checks in the AI director, faster analysis with identical results, Rp prices in the panel, sign-in renewed before it expires, macOS FFmpeg fix. Optional for v2.3.11.7 and newer; v2.3.11.6 and older must update. Save and close Premiere before installing.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
