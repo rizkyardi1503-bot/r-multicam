@@ -5,6 +5,8 @@
  const INTERNAL_KEY='rp_analytics_internal_v1';
   const SESSION_KEY='rp_analytics_session_v1';
   const UTM_KEY='rp_analytics_attribution_v2';
+  // Affiliate referral (?ref=CODE) is kept 30 days on any page; portal.js fills checkout with it (same key/format).
+  try{const ref=(new URLSearchParams(location.search).get('ref')||'').trim();if(/^[a-z0-9]{3,40}$/i.test(ref))localStorage.setItem('rp_affiliate_ref_v1',JSON.stringify({code:ref.toUpperCase(),at:Date.now()}));}catch{}
 
   const uuid=()=>crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(+c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>+c/4).toString(16));
   function getId(storeName,key){

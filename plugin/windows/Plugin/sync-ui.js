@@ -35,12 +35,12 @@ function loadLearned(strict){
 /** One offset per shoot day under each key ({offset, at, shots: {day: {offset, at}}}). The top-level offset/at mirror the
     newest shoot day, which is what builds before per-day memory read. offset null forgets that day (or the whole key when
     no day is given or none is left). */
-function saveLearned(key,offset,day){
+function saveLearned(key,offset,day,refName){
  var f=learnedFile();if(!f||!key)return false;var fs=root.cep_node.require('fs'),path=root.cep_node.require('path'),d=loadLearned(true); // an unreadable file is kept aside, not overwritten
  var e=d[key]&&typeof d[key]==='object'?d[key]:{},shots=e.shots&&typeof e.shots==='object'?e.shots:{},v=null;
  if(offset!==null){v={offset:Math.round(Number(offset)*1000)/1000,at:new Date().toISOString()};if(day)shots[day]=v;}else if(day)delete shots[day];
  var days=Object.keys(shots).sort(),top=days.length?shots[days[days.length-1]]:v;
- if(!top||(offset===null&&!day))delete d[key];else d[key]={offset:top.offset,at:top.at,shots:shots};
+ if(!top||(offset===null&&!day))delete d[key];else{d[key]={offset:top.offset,at:top.at,shots:shots};var rn=refName||e.refName;if(rn)d[key].refName=String(rn);}
  fs.mkdirSync(path.dirname(f),{recursive:true});fs.writeFileSync(f+'.tmp',JSON.stringify(d,null,1),'utf8');
  try{fs.renameSync(f+'.tmp',f);}catch(e){try{fs.unlinkSync(f);fs.renameSync(f+'.tmp',f);}catch(e2){try{fs.unlinkSync(f+'.tmp');}catch(e3){}throw e2;}}
  return true;
@@ -73,7 +73,7 @@ async function analyze(sources,cameras,ffmpeg,state,progress,deps){
     var len=row.sourceOut-row.sourceIn;
     if(!(len>frame)){row.reason='clip is empty';done++;continue;}
     if(!p.hasAudio){row.reason='no audio to sync';if(p.hasVideo!==false)silent.push({row:row,id:String(i),name:c.name,fileName:base(c.file),created:p.created,sourceIn:row.sourceIn,duration:row.sourceOut});done++;continue;}
-    var ex=R.excerptFor(len),entry={id:String(i),name:c.name,fileName:base(c.file),duration:len,sourceIn:row.sourceIn,created:p.created,excerptStart:row.sourceIn+ex.excerptStart,env:await decode(ffmpeg,c.file,row.sourceIn+ex.excerptStart,ex.excerptSeconds,state)};
+    var ex=R.excerptFor(len),entry={id:String(i),name:c.name,fileName:base(c.file),duration:len,mediaDuration:p.duration,sourceIn:row.sourceIn,created:p.created,excerptStart:row.sourceIn+ex.excerptStart,env:await decode(ffmpeg,c.file,row.sourceIn+ex.excerptStart,ex.excerptSeconds,state)};
     if(len>LONG_CLIP){var endStart=row.sourceIn+len-ex.excerptSeconds-Math.min(30,len*.05);entry.endExcerptStart=endStart;entry.endEnv=await decode(ffmpeg,c.file,endStart,ex.excerptSeconds,state);}
     clips.push(entry);row.entry=i;
    }catch(e){if(state.cancelled)throw e;row.reason=String(e.message||e);}
@@ -106,8 +106,29 @@ function planDrones(results,musicDuration,frame,learned){
   plan.clips.forEach(function(p){byId[p.id]=p;});
   silent.forEach(function(x){var p=byId[x.id],row=x.row;if(!p)return;row.flight=p.flight;row.method='clock';row.reason=p.reason||'';
    if(p.status==='placed'){row.status='placed';row.confidence='clock';row.start=Math.round((p.start+row.sourceIn)*1e6)/1e6;}else row.status='excluded';});
-  cam.reference=plan.reference;cam.flights=plan.flights;cam.warnings=plan.warnings;cam.key=plan.key;cam.shootDay=plan.shootDay||'';cam.learned=plan.learned;
+  cam.reference=plan.reference;cam.flights=plan.flights;cam.warnings=plan.reference?plan.warnings:bridgeHint(D,cam,results,learned||{});cam.key=plan.key;cam.shootDay=plan.shootDay||'';cam.learned=plan.learned;
  });
+}
+/** No camera clock to bridge a drone from: say which camera to tick. The drone memory knows the camera (model and
+    serial, plus its source name once a correction was saved) this drone was bridged through before. */
+function bridgeHint(D,cam,results,learned){
+ var probe=D.offsetKey?D.offsetKey({name:cam.name,make:cam.make,model:cam.model,serial:cam.serial},{model:''}):'',cut=probe.indexOf(' -> '),prefix=cut>=0?probe.slice(0,cut+4):'',best=null;
+ if(prefix)Object.keys(learned).forEach(function(k){var e=learned[k];if(k.indexOf(prefix)===0&&e&&(!best||String(e.at||'')>String(best.at||'')))best={ref:k.slice(prefix.length),at:e.at,refName:e.refName||''};});
+ var tail=' It has to sync by audio (placed, not only review); then click 2. Analyze sync again.';
+ if(!best)return ['No camera clock to bridge from: tick at least one camera with clear audio of the music.'+tail];
+ var m=/^(.*?)(?: #(.+))?$/.exec(best.ref),model=m[1],serial=m[2]||'',short=serial?' #'+serial.slice(0,8):'';
+ var same=results.filter(function(c){return !c.drone&&(c.model||c.make)===model&&(!serial||!c.serial||c.serial===serial);});
+ if(same.length)return ['No camera clock to bridge from: '+same.map(function(c){return '"'+c.name+'"';}).join(', ')+' is the camera this drone was bridged through before ('+model+short+'), but none of its clips synced by audio with a trusted clock (review only). Tick a bin of that camera with clear audio of the music, or another audio-synced camera.'+tail];
+ return ['No camera clock to bridge from: tick '+(best.refName?'"'+best.refName+'" ('+model+short+')':'the '+model+short+' camera')+' - this drone was bridged through it before.'+tail];
+}
+/** Sources that look like a drone (or were remembered as one) but are not ticked. */
+function untickedDrones(sources,picked,learned){
+ if(!sources)return [];var on={},out=[],re=/drone|fpv|mavic|avata|phantom|inspire|air ?[23]s?|mini ?[2-5]/i;
+ (picked||[]).forEach(function(p){on[p.kind+':'+p.key]=true;});
+ var known=Object.keys(learned||{}).map(function(k){var x=/^source "(.*)" -> /.exec(k);return x?x[1].toLowerCase():null;}).filter(Boolean);
+ (sources.bins||[]).forEach(function(b){if(!b.items||!b.items.length||on['bin:'+b.path])return;var nm=String(b.path).split('/').pop();if(re.test(nm)||known.indexOf(nm.toLowerCase())>=0)out.push('Bin "'+nm+'" ('+b.items.length+' clip'+(b.items.length===1?'':'s')+') looks like drone footage but is not ticked, so it is not synced. Tick it and click 2. Analyze sync again.');});
+ (sources.tracks||[]).forEach(function(t){if(!t.clips||!t.clips.length||on['track:'+t.index]||!t.name||!re.test(t.name))return;out.push('Track "'+t.name+'" (V'+(t.index+1)+') looks like drone footage but is not ticked, so it is not synced.');});
+ return out;
 }
 /** Host plan rows: placed -> camera track (h|m, c = drone by camera clock); review with a position -> review lane (r). Others stay in the report. */
 function buildRows(analysis){
@@ -182,7 +203,8 @@ function selection(){
  return out;
 }
 function showResult(a){
- var s=summary(a),lines=['Synced '+a.cameras.length+' camera'+(a.cameras.length===1?'':'s')+':'];
+ var s=summary(a),lines=['Synced '+a.cameras.length+' camera'+(a.cameras.length===1?'':'s')+':'],miss=untickedDrones(ui.sources,ui.picked,loadLearned());
+ miss.forEach(function(w){lines.push('! '+w);});
  a.cameras.forEach(function(c){var n={placed:0,review:0,excluded:0};c.rows.forEach(function(r){n[r.status==='placed'?'placed':r.status==='review'?'review':'excluded']++;});
   if(c.drone){lines.push('· '+c.name+' (drone, no audio'+(c.reference?'; camera clock bridged through '+c.reference:'')+'): '+n.placed+' placed [CLOCK], '+n.excluded+' excluded'+(c.flights&&c.flights.length?' · '+c.flights.length+' flight'+(c.flights.length===1?'':'s'):''));if(c.learned)lines.push('  remembered drone clock offset '+(c.learned.offset>=0?'+':'')+c.learned.offset.toFixed(2)+' s'+(c.learned.day?' (from the '+c.learned.day+' shoot'+(c.learned.day!==c.shootDay?', nearest to this one':'')+')':c.learned.at?' (saved '+String(c.learned.at).slice(0,10)+')':'')+' applied');(c.warnings||[]).forEach(function(w){lines.push('  ! '+w);});return;}
   lines.push('· '+c.name+(c.clockAnchored?' (camera clock used)':' (no trusted camera clock)')+': '+n.placed+' placed, '+n.review+' review, '+n.excluded+' excluded');});
@@ -201,7 +223,7 @@ async function scan(){
 }
 async function analyzeClick(){
  if(!P()||P().isBusy()||!isLifetime()||!ui.sources)return;
- var cams=planCameras(ui.sources,selection());if(!cams.length){setState('Tick at least one camera source.','error');return;}
+ ui.picked=selection();var cams=planCameras(ui.sources,ui.picked);if(!cams.length){setState('Tick at least one camera source.','error');return;}
  ui.built=null;renderDrones();begin();
  try{
   // The sources (and the A1 master) were read at Find camera sources: make sure that is still the open sequence.
@@ -250,7 +272,7 @@ function builtDrones(analysis,sequenceID){
  var drones=[];
  (analysis&&analysis.cameras||[]).forEach(function(cam){if(!cam.drone)return;var clips=[];
   cam.rows.forEach(function(r){if(r.status!=='placed'||r.confidence!=='clock')return;var zero=Math.round((r.start-r.sourceIn)*1e6)/1e6;clips.push({nodeId:r.nodeId,name:r.name,flight:r.flight,start:Math.max(0,r.start),zero:zero,planZero:zero});});
-  if(clips.length)drones.push({camera:cam.camera,track:cam.camera,cameraName:cam.name,key:cam.key||'',shootDay:cam.shootDay||'',learnedDay:cam.learned?cam.learned.day||'':null,learnedOffset:cam.learned?Number(cam.learned.offset)||0:0,flights:(cam.flights||[]).filter(function(f){return f.placed;}).length,clips:clips});});
+  if(clips.length)drones.push({camera:cam.camera,track:cam.camera,cameraName:cam.name,reference:cam.reference||'',key:cam.key||'',shootDay:cam.shootDay||'',learnedDay:cam.learned?cam.learned.day||'':null,learnedOffset:cam.learned?Number(cam.learned.offset)||0:0,flights:(cam.flights||[]).filter(function(f){return f.placed;}).length,clips:clips});});
  return drones.length?{sequenceID:String(sequenceID||''),frame:Number(analysis.frame)||0.04,drones:drones}:null;
 }
 function clock(t){t=Math.max(0,Math.round(t));var h=Math.floor(t/3600),m=Math.floor(t/60)%60,s=t%60;return (h?h+':':'')+(h&&m<10?'0':'')+m+':'+(s<10?'0':'')+s;}
@@ -275,7 +297,7 @@ function missingNote(r){return r&&r.missing?' '+r.missing+' drone clip'+(r.missi
 /** Remember the drone's total clock correction (against the camera it was bridged through) for the next analysis. */
 function remember(d,clip){
  if(!d.key)return ' (Not remembered: the reference camera model is unknown.)';var total=Math.round((d.learnedOffset+(clip.zero-clip.planZero))*1000)/1000;
- try{return saveLearned(d.key,total,d.shootDay)?' Remembered for this drone'+(d.shootDay?' (shoot '+d.shootDay+')':'')+': '+(total>=0?'+':'')+total.toFixed(2)+' s (used on the next Analyze).':'';}catch(e){return ' (Could not remember the offset: '+e.message+')';}
+ try{return saveLearned(d.key,total,d.shootDay,d.reference)?' Remembered for this drone'+(d.shootDay?' (shoot '+d.shootDay+')':'')+': '+(total>=0?'+':'')+total.toFixed(2)+' s (used on the next Analyze).':'';}catch(e){return ' (Could not remember the offset: '+e.message+')';}
 }
 async function useSelected(){
  if(!ui.built||!P()||P().isBusy()||!isLifetime())return;begin();
@@ -314,7 +336,7 @@ function wire(){
  if($('syncBuyLifetime'))$('syncBuyLifetime').onclick=function(){if($('accountBuyLifetime'))$('accountBuyLifetime').click();};
  controls();
 }
-root.RPSyncUI={planCameras:planCameras,analyze:analyze,buildRows:buildRows,summary:summary,reportCsv:reportCsv,builtDrones:builtDrones,useSelected:useSelected,nudge:nudge,forget:forget,loadLearned:loadLearned,_ui:ui,controls:controls,isLifetime:isLifetime,stop:stop};
+root.RPSyncUI={untickedDrones:untickedDrones,bridgeHint:bridgeHint,saveLearned:saveLearned,planCameras:planCameras,analyze:analyze,buildRows:buildRows,summary:summary,reportCsv:reportCsv,builtDrones:builtDrones,useSelected:useSelected,nudge:nudge,forget:forget,loadLearned:loadLearned,_ui:ui,controls:controls,isLifetime:isLifetime,stop:stop};
 if(typeof document!=='undefined'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();}
 if(typeof module!=='undefined'&&module.exports)module.exports=root.RPSyncUI;
 }(typeof window!=='undefined'?window:globalThis));

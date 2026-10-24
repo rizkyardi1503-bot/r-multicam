@@ -89,7 +89,7 @@ root.RPAudio={
   // Backward compatibility with v1.2.7 run(snapshot, density, ffmpeg, state, progress).
   if(typeof userPath==='number'){userPath=arguments[2];state=arguments[3];progress=arguments[4];}
   progress=progress||function(){};state=state||{cancelled:false};
-  var ffmpeg=executable(userPath),stamp=fingerprint(snapshot),results=[],music=[],dropSeries=[],onsetSeries=[];
+  var ffmpeg=executable(userPath),stamp=fingerprint(snapshot),results=[],music=[],dropSeries=[],onsetSeries=[],lowSeries=[];
   var total=snapshot.clips.reduce(function(s,c){return s+c.end-c.start;},0),processed=0;
   // Yield to the panel only after ~40 ms of work: a 4-16 ms timer on every 4 s analysis hop
   // used to dominate analysis time. Stop is still checked on every hop.
@@ -114,6 +114,7 @@ root.RPAudio={
     var attack=.7*Math.max(0,lowNow-(Number(feature.bass[oi-2])||0))+.3*Math.max(0,energyNow-(Number(feature.rms[oi-2])||0));
     if(attack>1e-8)onsetSeries.push({time:clip.start+oi/100,attack:attack});
    }
+   for(var lb=0;lb<feature.rms.length;lb+=5){var le=0,ln=Math.min(lb+5,feature.rms.length);for(var lk=lb;lk<ln;lk++){var b1=feature.bass[lk]||0,s1=(feature.subbass&&feature.subbass[lk])||0;le+=b1*b1+s1*s1;}lowSeries.push({time:clip.start+lb/100,low:Math.sqrt(le/Math.max(1,ln-lb))});}
    for(base=0;base<feature.rms.length;base+=50){
     var rsum=0,bsum=0,ssum=0,msum=0,hsum=0,tsum=0,fsum=0,lim=Math.min(base+50,feature.rms.length);
     for(n=base;n<lim;n++){
@@ -152,7 +153,7 @@ root.RPAudio={
   var tempoMap=[],musicGrid=[];results.forEach(function(x,ri){var c=snapshot.clips[ri];(x.tempoMap||[]).forEach(function(t){tempoMap.push({time:c.start+t.time,bpm:Math.round(t.bpm*10)/10,beat_interval:Math.round(t.beat_interval*10000)/10000,confidence:Number(t.confidence)||0});});(x.grid||[]).forEach(function(g){var q={};for(var k in g)q[k]=g[k];q.time=c.start+g.time;musicGrid.push(q);});});tempoMap.sort(function(a,b){return a.time-b.time;});musicGrid.sort(function(a,b){return a.time-b.time;});
   var tempo=tempoStats(tempos);
   onsetSeries.sort(function(a,b){return a.time-b.time;});
-  var output={snapshot:snapshot,points:[],meta:[],beats:mapped.points,beatMeta:mapped.meta,music:music,dropSeries:dropSeries,onsetSeries:onsetSeries,fingerprint:stamp,tempo:tempo.bpm,bpm:tempo.bpm,tempoConfidence:tempo.confidence,tempoSpread:tempo.spread,tempoSamples:tempo.samples,beatInterval:tempo.beatInterval,beatCount:beatCount,tempoMap:tempoMap,musicGrid:musicGrid,pacing:null,structure:null};
+  var output={snapshot:snapshot,points:[],meta:[],beats:mapped.points,beatMeta:mapped.meta,music:music,dropSeries:dropSeries,onsetSeries:onsetSeries,lowSeries:lowSeries,fingerprint:stamp,tempo:tempo.bpm,bpm:tempo.bpm,tempoConfidence:tempo.confidence,tempoSpread:tempo.spread,tempoSamples:tempo.samples,beatInterval:tempo.beatInterval,beatCount:beatCount,tempoMap:tempoMap,musicGrid:musicGrid,pacing:null,structure:null};
   output.structure={events:[],zones:[],drop_count:0,build_up_count:0};
   return output;
  }

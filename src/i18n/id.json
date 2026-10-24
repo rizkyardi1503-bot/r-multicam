@@ -1,5 +1,20 @@
 {
  "text": {
+  "You already started a payment for your previous checkout. Finish it, or wait until it expires (up to 24 hours), then try again.": "Kamu sudah memulai pembayaran untuk checkout sebelumnya. Selesaikan, atau tunggu sampai kedaluwarsa (paling lama 24 jam), lalu coba lagi.",
+  "Your previous checkout changed a moment ago. Please try again.": "Checkout sebelumnya baru saja berubah. Silakan coba lagi.",
+  "Promo service is temporarily unavailable.": "Layanan kode promo sedang tidak tersedia untuk sementara.",
+  "Your session ended. Sign in again.": "Sesi kamu berakhir. Silakan masuk lagi.",
+  "Your payment was received but the license did not activate yet. Press Check payment again or contact support.": "Pembayaranmu sudah diterima tetapi lisensi belum aktif. Tekan Cek pembayaran lagi atau hubungi support.",
+  "Checkout could not be prepared. Please try again in a minute.": "Checkout belum bisa disiapkan. Coba lagi dalam satu menit.",
+  "Payment provider is temporarily unavailable.": "Penyedia pembayaran sedang tidak tersedia untuk sementara.",
+  "A checkout is already being prepared. Please wait a few seconds and try again.": "Checkout sedang disiapkan. Tunggu beberapa detik lalu coba lagi.",
+  "The payment provider could not confirm your previous checkout. Please try again in a few minutes.": "Penyedia pembayaran belum bisa memastikan checkout sebelumnya. Coba lagi dalam beberapa menit.",
+  "Promo code is invalid or is not approved yet.": "Kode promo tidak valid atau belum disetujui.",
+  "You cannot use your own affiliate code.": "Kamu tidak bisa memakai kode afiliasi milikmu sendiri.",
+  "This account is blocked. Contact support.": "Akun ini diblokir. Hubungi support.",
+  "Confirm your email before purchasing.": "Konfirmasi email kamu sebelum membeli.",
+  "Invalid promo code.": "Kode promo tidak valid.",
+  "Your payment was already received. Your lifetime license is now active.": "Pembayaranmu sudah diterima. Lisensi lifetime kamu sekarang aktif.",
   "Online checkout is closed for now. Your trial and existing licenses are not affected.": "Checkout online ditutup untuk sementara. Trial dan lisensi yang sudah ada tidak terpengaruh.",
   "Continue to secure checkout": "Lanjut ke checkout aman",
   "Checkout is not open yet": "Checkout belum dibuka",
@@ -249,6 +264,10 @@
   "DaVinci Resolve download started. Extract the ZIP, run Install-DaVinci.bat, then in DaVinci Resolve choose Workspace > Scripts > R Project Multicam AI.": "Unduhan DaVinci Resolve dimulai. Ekstrak ZIP, jalankan Install-DaVinci.bat, lalu di DaVinci Resolve pilih Workspace > Scripts > R Project Multicam AI."
  },
  "patterns": [
+  [
+   "^Something went wrong \\(([A-Z0-9_]+)\\)\\. Please try again or contact support\\.$",
+   "Terjadi kesalahan ($1). Coba lagi atau hubungi support."
+  ],
   [
    "^The displayed license price is (.+)\\. Review the final billing amount, currency and purchase terms on Midtrans before paying\\. Use the email address linked to your plugin account\\.$",
    "Harga lisensi yang ditampilkan adalah $1. Periksa jumlah tagihan akhir, mata uang, dan ketentuan pembelian di Midtrans sebelum membayar. Gunakan alamat email yang terhubung ke akun plugin kamu."

@@ -159,7 +159,7 @@ function result(s,excerptStart,confidence,method){return {offset:Math.round((s.b
 
 // ---- per camera ----
 /**
- * clips: [{id, duration, created (unix s or null), env:{onset,level,band*}, excerptStart, sourceIn?, endEnv?, endExcerptStart?}]
+ * clips: [{id, duration, created (unix s or null), env:{onset,level,band*}, excerptStart, sourceIn?, mediaDuration? (whole file, for split recordings), endEnv?, endExcerptStart?}]
  *   duration/sourceIn describe the part that will be placed (a trimmed timeline clip: sourceIn = its In point);
  *   excerptStart and created are in media time from the file's first frame.
  * Returns {anchor, clips:[{id, status:'placed'|'review'|'excluded', offset, confidence, method, reason, drift?}]}
@@ -204,8 +204,24 @@ function* syncCameraSteps(master,clips,opts){
    if(RANK[r.confidence]<minRank){out[c.id]={id:c.id,status:'review',offset:r.offset,confidence:r.confidence,method:'audio',agree:r.agree,margin:r.margin,reason:'audio match unclear and no trusted camera clock'};continue;}
   }
   out[c.id]={id:c.id,status:'placed',offset:r.offset,confidence:r.confidence,method:r.method,score:r.score,agree:r.agree,margin:r.margin,clockOffset:r.clockOffset};
-  // Long clips: compare the start and end placement; a camera clock that runs fast/slow shows up as drift.
-  if(c.endEnv&&isFinite(c.endExcerptStart)){var e2=null;try{e2=matchWindow(master,c.endEnv,{excerptStart:c.endExcerptStart,expectedOffset:r.offset,radius:1,clockBound:Infinity});}catch(endError){e2=null;}if(e2&&RANK[e2.confidence]>=1){var drift=Math.round((e2.offset-r.offset)*1000)/1000;out[c.id].drift=drift;if(frame&&Math.abs(drift)>frame)out[c.id].reason='audio drifts '+drift.toFixed(3)+' s over the clip';}}
+  driftCheck(c,r);
+ }
+ // Long clips: compare the start and end placement; a camera clock that runs fast/slow shows up as drift.
+ function driftCheck(c,r){if(c.endEnv&&isFinite(c.endExcerptStart)){var e2=null;try{e2=matchWindow(master,c.endEnv,{excerptStart:c.endExcerptStart,expectedOffset:r.offset,radius:1,clockBound:Infinity});}catch(endError){e2=null;}if(e2&&RANK[e2.confidence]>=1){var drift=Math.round((e2.offset-r.offset)*1000)/1000;out[c.id].drift=drift;if(frame&&Math.abs(drift)>frame)out[c.id].reason='audio drifts '+drift.toFixed(3)+' s over the clip';}}}
+ // 2b. Split recordings: a camera that splits one long take into files (DJI ~35 min, GoPro, Sony 4 GB) writes the
+ // next file's creation_time up to ~3 s after the previous file really ended, so the clock window above misses
+ // the audio (Kaehla cam 1: DJI_0004/0005 sat 2.8/3.2 s late). A file whose clock starts within 4 s of the
+ // previous file's end continues it exactly: search the audio around that join instead of the clock position.
+ var byClock=clips.filter(function(c){return isFinite(c.created)&&isFinite(c.mediaDuration)&&out[c.id];}).sort(function(a,b){return a.created-b.created;});
+ for(var bi=1;bi<byClock.length;bi++){
+  var c3=byClock[bi],p3=byClock[bi-1],o3=out[c3.id],po=out[p3.id],gap=c3.created-(p3.created+p3.mediaDuration);
+  if(o3.status==='placed'||po.status!=='placed'||!(gap>-1.5&&gap<=4)||!c3.env||!c3.env.onset.length)continue;
+  yield;
+  var join=po.offset+p3.mediaDuration,r3;
+  try{r3=matchWindow(master,c3.env,{excerptStart:c3.excerptStart,expectedOffset:join,radius:1});}catch(e){continue;}
+  if(RANK[r3.confidence]<minRank){o3.reason='continues '+(p3.name||p3.id)+' (join at '+join.toFixed(3)+' s); audio match unclear there too';continue;}
+  out[c3.id]={id:c3.id,status:'placed',offset:r3.offset,confidence:r3.confidence,method:'audio+chain',score:r3.score,agree:r3.agree,margin:r3.margin,clockOffset:o3.offset,chainOffset:Math.round(join*1000)/1000};
+  driftCheck(c3,r3);
  }
  // 3. A camera records one clip at a time: the weaker of two overlapping placed clips goes to review.
  var placed=clips.map(function(c){return {c:c,r:out[c.id]};}).filter(function(x){return x.r.status==='placed';}).sort(function(a,b){return weight(b.r.confidence)-weight(a.r.confidence)||(b.r.score||0)-(a.r.score||0);}),kept=[];

@@ -209,7 +209,7 @@ async function social(provider){
 var checkoutFlight=null;
 async function paymentRequest(path,body){if(!session)throw Error('Sign in first.');try{return await request(path,{method:'POST',auth:true,body:body||{}});}catch(e){if(authRejected(e)&&await refresh())return request(path,{method:'POST',auth:true,body:body||{}});throw e;}}
 function createLifetimeCheckout(promoCode){if(checkoutFlight)return checkoutFlight;var promo=promoCode==null?'':String(promoCode).trim().toUpperCase();if(promo&&!/^[A-Z0-9]{3,40}$/.test(promo))return Promise.reject(Error('Invalid promo code. Use 3-40 letters or numbers.'));checkoutFlight=paymentRequest('/functions/v1/create-lifetime-checkout',promo?{promo_code:promo}:{}).then(function(data){var match=/^https:\/\/app\.midtrans\.com\//i.test(String(data.checkout_url||''));if(!match||data.charge_currency!=='IDR'||!isFinite(Number(data.gross_amount_idr))||Number(data.gross_amount_idr)<=0)throw Error('The payment server returned invalid checkout details.');return data;});checkoutFlight=checkoutFlight.then(function(data){checkoutFlight=null;return data;},function(e){checkoutFlight=null;throw e;});return checkoutFlight;}
-async function reconcileLifetimePayment(){var result=await paymentRequest('/functions/v1/check-lifetime-payment',{});await refreshEntitlement();return result;}
+async function reconcileLifetimePayment(){var result=await paymentRequest('/functions/v1/check-lifetime-payment',{});try{await refreshEntitlement();}catch(e){if(!result||!result.paid||(e&&e.code==='SESSION_REPLACED')||authRejected(e))throw e;}return result;}
 async function refreshEntitlement(){
  if(!session)throw Error('Sign in first.');
  await syncEntitlement();return status();
