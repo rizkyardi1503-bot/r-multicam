@@ -9,8 +9,8 @@ const releases: Record<string, { windows?: string; macos?: string }> = {
     macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/e59facb8db8ef757cfa9b0acf177720b3c5d76d7/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.11-PUBLIC.zip"
   },
   "2.3.11.12": {
-    windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/0000000000000000000000000000000000000000/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.12-PUBLIC.zip",
-    macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/0000000000000000000000000000000000000000/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.12-PUBLIC.zip"
+    windows: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/4b560220ebabf49382d01b11cbf5ec9f43416f06/site/downloads/R-Project-Multicam-AI-Windows-v2.3.11.12-PUBLIC.zip",
+    macos: "https://raw.githubusercontent.com/rizkyardi1503-bot/r-multicam/4b560220ebabf49382d01b11cbf5ec9f43416f06/site/downloads/R-Project-Multicam-AI-macOS-v2.3.11.12-PUBLIC.zip"
   }
 };
 
