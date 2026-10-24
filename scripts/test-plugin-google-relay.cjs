@@ -15,4 +15,7 @@ for(const bad of [{...stored,state:'invalid'},{...stored,port:80},{...stored,cre
 s=run({search:'?oauth=google&error=access_denied',stored});assert(s.navigations[0].endsWith('?error=cancelled'));
 s=run({search:'?oauth=google&code=website-code'});assert(!s.window.RP_PLUGIN_GOOGLE_ACTIVE);assert.equal(s.navigations.length,0);
 s=run({hash:'#plugin-google='+encodeURIComponent(JSON.stringify(flow)),origin:'https://evil.invalid'});assert.equal(s.navigations.length,0);assert(!s.elements.some(x=>x.tag==='button'));
-console.log('PASS: Google relay start/challenge/allowlisted redirect, one-use code-only loopback, expired/tampered/foreign origin rejection, Google denial, website login preserved');
+s=run({hash:'#plugin-google='+encodeURIComponent(JSON.stringify(flow))});assert.equal(s.elements.find(x=>x.tag==='h1').textContent,'Sign in to the Premiere plugin');
+const dv={...flow,host:'davinci'};s=run({hash:'#plugin-google='+encodeURIComponent(JSON.stringify(dv))});assert.equal(s.elements.find(x=>x.tag==='h1').textContent,'Sign in to the DaVinci Resolve plugin');assert(/R Project Engine/.test(s.elements.find(x=>x.tag==='p').textContent));s.elements.find(x=>x.tag==='button').onclick();
+s=run({search:'?oauth=google&code=dv-code',stored:JSON.parse(s.storage.get('rp_plugin_google_v1'))});assert.equal(s.navigations[0],`http://127.0.0.1:${flow.port}/rproject-auth/${flow.state}?code=dv-code`);assert(/R Project Engine/.test(s.elements.find(x=>x.tag==='p').textContent));
+console.log('PASS: Google relay start/challenge/allowlisted redirect, one-use code-only loopback, expired/tampered/foreign origin rejection, Google denial, website login preserved, DaVinci engine wording');
