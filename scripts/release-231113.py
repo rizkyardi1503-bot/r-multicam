@@ -108,7 +108,7 @@ for rel, entry, d_old, d_new in (("site/releases/index.html", EN_ENTRY, EN_DESC_
     if at < 0: sys.exit(f"{f}: v2.3.11.12 entry not found")
     s = s[:at] + entry + s[at:]
     if s.count(d_old) < 1: sys.exit(f"{f}: description not found")
-    s = s.replace(d_old, d_new).replace(f"Multicam AI v{OLD}", f"Multicam AI v{NEW}")
+    s = s.replace(d_old, d_new).replace(f"Multicam AI v{OLD}", f"Multicam AI v{NEW}").replace(f"Release Notes: v{OLD}", f"Release Notes: v{NEW}")
     write(f, s)
 
 for f in (ROOT / "site").rglob("*"):
