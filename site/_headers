@@ -6,6 +6,8 @@
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   Cross-Origin-Opener-Policy: same-origin
+/media/*
+  Cache-Control: public, max-age=86400
 /assets/*
   Cache-Control: public, max-age=86400
 /fonts/*

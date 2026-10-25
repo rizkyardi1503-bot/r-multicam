@@ -51,6 +51,10 @@
   el('handoff-whatsapp').onclick=()=>sent('whatsapp');el('handoff-email').onclick=()=>sent('email');
   if(typeof nav.share==='function'){el('handoff-share').hidden=false;el('handoff-share').onclick=()=>{sent('share');nav.share({title:'R Project Multicam AI',text:handoffText('share')}).catch(()=>{});};}
   el('phone-handoff').hidden=false;
+  // Homepage: on a phone the hero's first action is the handoff; the trial button steps back to secondary.
+  document.querySelectorAll('[data-handoff]').forEach(a=>{a.href=el('handoff-whatsapp').href;a.target='_blank';a.rel='noopener';a.hidden=false;a.onclick=()=>window.RP_ANALYTICS?.track('trial_cta_clicked',{label:'mobile_handoff',method:'whatsapp',entry_point:a.closest('[data-mobile-cta]')?'mobile_bar':'hero'});const t=a.nextElementSibling;if(t&&t.matches('[data-signup]')&&!a.closest('[data-mobile-cta]'))t.classList.add('secondary');});
+  const bar=document.querySelector?.('[data-mobile-cta]'),hero=document.querySelector?.('.home-hero');
+  if(bar&&hero&&'IntersectionObserver' in window){bar.hidden=false;new IntersectionObserver(([e])=>bar.classList.toggle('is-on',!e.isIntersecting)).observe(hero);}
  }
  el('promo-code').value=/^[a-z0-9]{3,40}$/i.test(promoFromLink)?promoFromLink.toUpperCase():'';
  if(window.RP_Affiliate)affiliateUI=window.RP_Affiliate.create(el('affiliate-dashboard'),authed);

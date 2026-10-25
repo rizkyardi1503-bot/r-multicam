@@ -12,7 +12,7 @@ DATE = '2026-10-18'
 PAGES = {
  'en': dict(
   src='dj-multicam-editing/index.html', out=f'{SLUG}/index.html', url=f'{ORIGIN}/{SLUG}/', home='/', p='',
-  title='Sync Multicam to Music in Premiere Pro | Auto Audio Sync',
+  title='Auto Sync Multicam Audio &amp; Music in Premiere Pro',
   desc='Auto-sync camera, drone and FPV clips to the master music in Premiere Pro. Clips line up by audio or camera clock in a new synced sequence, ready to cut.',
   ogdesc='Line up every camera, drone and FPV clip to the master mix in Adobe Premiere Pro, then let the music drive the multicam edit.',
   crumb='Sync multicam to music',
