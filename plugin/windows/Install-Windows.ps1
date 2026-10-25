@@ -152,6 +152,8 @@ if (-not $TestRoot) {
         if ($systemFF -and (Test-FFmpegExecutable $systemFF.Source)) {
             Write-Host ('Using existing FFmpeg: ' + $systemFF.Source)
             Copy-Item -LiteralPath $systemFF.Source -Destination $ff -Force
+            # Scoop shims and shared builds only run from their own folder; fall back to the pinned build.
+            if (-not (Test-FFmpegExecutable $ff)) { Remove-Item -LiteralPath $ff -Force -ErrorAction SilentlyContinue }
         }
     }
     if (-not (Test-Path -LiteralPath $ff -PathType Leaf)) {

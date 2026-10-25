@@ -152,7 +152,7 @@ function readFrameMetrics(clip,ffmpeg,state){
    function finish(err,val){if(finished||attemptDone)return;attemptDone=true;if(err&&hw&&attempt===0&&!state.cancelled){clearTimeout(timer);state.process=null;attempt++;try{proc.kill();}catch(e){}return run(false);}finished=true;clearTimeout(timer);state.process=null;err?reject(err):resolve(val);}
    proc.stdout.on('data',function(c){bytes+=c.length;if(bytes>20000){try{proc.kill();}catch(e){}finish(Error('Unexpected AI Vision sample size.'));}else chunks.push(c);});proc.stderr.on('data',function(){});proc.on('error',function(){finish(Error('FFmpeg could not read AI Vision frame.'));});proc.on('close',function(code){if(state.cancelled)return finish(Error('Agent AI Director stopped.'));if(code!==0||bytes<96*54)return finish(Error('Could not decode AI Vision sample.'));var all=Buffer.concat(chunks),m=frameMetricsFromBuffer(all.slice(0,96*54));chunks.length=0;all=null;finish(null,m);});
   }
-  run(true);
+  var rg=root.RPResourceGuard,prof=rg&&rg.profile?rg.profile():null;run(!(prof&&prof.hardwareFrames===false));
  });
 }
 function sampleJobs(snapshot,budget,enabledCameras,musicAnalysis){
