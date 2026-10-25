@@ -7,6 +7,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //  - CORS allows the Premiere panel (bearer-token auth, no cookies);
 //  - a paid order is never downgraded, and every write is checked.
 
+// Statuses the orders table accepts (plugin_payment_orders_status_check); anything else keeps the stored status.
+const STORABLE = new Set(["created", "pending", "authorize", "capture", "settlement", "deny", "cancel", "expire", "failure",
+  "refund", "partial_refund", "chargeback", "partial_chargeback", "failed"]);
+
 const cors = {
   "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, apikey, content-type, x-client-info",
@@ -70,7 +74,7 @@ Deno.serve(async (req) => {
       const up = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(order.order_id), {
         method: "PATCH",
         body: JSON.stringify({
-          status: status || order.status,
+          status: STORABLE.has(status) ? status : order.status,
           midtrans_transaction_id: m.transaction_id || order.midtrans_transaction_id,
           payment_type: m.payment_type || order.payment_type,
           fraud_status: fraud,

@@ -121,8 +121,9 @@ Deno.serve(async (req) => {
     if ((st === "settlement" || st === "capture") && (!fraud || fraud === "accept") && String(m.status_code) === "200" && Number(m.gross_amount) === Number(o.gross_amount_idr)) {
       const now = new Date().toISOString();
       const a = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(o.order_id), { method: "PATCH", body: JSON.stringify({ status: st, paid_at: now, lifetime_activated_at: now, midtrans_transaction_id: m.transaction_id || null, payment_type: m.payment_type || null, fraud_status: fraud, updated_at: now }) });
-      const b = await rest("plugin_profiles?user_id=eq." + encodeURIComponent(userId), { method: "PATCH", body: JSON.stringify({ license_status: "lifetime", lifetime_activated_at: now, lifetime_order_id: o.order_id, updated_at: now }) });
+      const b = await rest("plugin_profiles?user_id=eq." + encodeURIComponent(userId) + "&license_status=neq.blocked", { method: "PATCH", headers: { prefer: "return=representation" }, body: JSON.stringify({ license_status: "lifetime", lifetime_activated_at: now, lifetime_order_id: o.order_id, updated_at: now }) });
       if (!a.ok || !b.ok) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: o.order_id }, 500);
+      if (!(await b.json().catch(() => [])).length) return json({ error: "This account is blocked. Contact support." }, 403);
       return json({ error: "Your payment was already received. Your lifetime license is now active.", activated: true }, 409);
     }
     // A card payment Midtrans is still reviewing (authorize, or capture/settlement held for a fraud challenge) is a

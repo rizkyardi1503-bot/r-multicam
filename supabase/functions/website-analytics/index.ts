@@ -9,7 +9,7 @@ const allowedOrigins = new Set([
 const allowedEvents = new Set([
   "page_view","pricing_view","trial_cta_clicked","demo_started","signup_submitted","login_success",
   "download_requested","download_started","checkout_started",
-  "checkout_created","purchase_paid","guide_opened","compatibility_checked","checkout_opened"
+  "checkout_created","guide_opened","compatibility_checked","checkout_opened"
 ]);
 
 function cors(req: Request) {

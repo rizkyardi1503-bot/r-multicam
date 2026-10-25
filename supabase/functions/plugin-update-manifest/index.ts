@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.12 PUBLIC Windows and macOS: update test release, same code as v2.3.11.11. On macOS the update installs while Premiere is open; restart Premiere afterwards. Optional for v2.3.11.11; earlier versions must update. If an older Mac panel says the update helper was stopped, install once from r-multicam.pages.dev.",
+    release_notes: "v2.3.11.12 PUBLIC Windows and macOS: update test release, same code as v2.3.11.11. On macOS the update installs while Premiere is open; restart Premiere afterwards. Optional for v2.3.11.11; earlier versions must update. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.12 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command). Later updates then install from the panel.",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
