@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.11";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.12",
-    download: base + "?platform=windows&version=2.3.11.12",
-    sha256: "e76fe66e4b372db6f5ecb3993572277e23e56fbf7de77f0f487ee26d32bdbfdc"
+    version: "2.3.11.13",
+    download: base + "?platform=windows&version=2.3.11.13",
+    sha256: "bce4da4ed0af89c6726e23d65108f425b60556c610a5d13e8c8d7270a857e88f"
   },
   macos: {
-    version: "2.3.11.12",
-    download: base + "?platform=macos&version=2.3.11.12",
-    sha256: "cf4c4cea7cbdee280c147fa53ea537ccfb0d7ef30cdd7629aadad7b5e633aead"
+    version: "2.3.11.13",
+    download: base + "?platform=macos&version=2.3.11.13",
+    sha256: "776e6e139a96729b57e18173cbea3c76512caa8467cb7557468d04eb74cd2387"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.12 PUBLIC Windows and macOS: update test release, same code as v2.3.11.11. On macOS the update installs while Premiere is open; restart Premiere afterwards. Optional for v2.3.11.11; earlier versions must update. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.12 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command). Later updates then install from the panel.",
+    release_notes: "v2.3.11.13 PUBLIC Windows and macOS: Windows installer falls back to the pinned FFmpeg when a PATH FFmpeg cannot run; macOS Low Memory mode decodes AI Vision on the CPU with at most 24 samples. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.13 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

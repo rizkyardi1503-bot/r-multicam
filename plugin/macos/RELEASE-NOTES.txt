@@ -1,3 +1,11 @@
+v2.3.11.13 PUBLIC — Installer and low-memory fixes
+New in this release:
+- Windows installer: an FFmpeg found on PATH that only runs from its own folder (Scoop shim, shared build) no longer
+  breaks the install; the pinned FFmpeg 9.0.2 is downloaded instead.
+- macOS Low Memory mode (Macs with 12 GB or less) now does what the panel says: AI Vision decodes frames on the CPU
+  and uses at most 24 samples.
+- Required for versions before v2.3.11.11. Macs older than v2.3.11.11 install once from r-multicam.pages.dev.
+
 v2.3.11.12 PUBLIC — Update test release
 New in this release:
 - No changes to the plugin: v2.3.11.12 is the same code as v2.3.11.11. It exists so v2.3.11.11 can be updated from

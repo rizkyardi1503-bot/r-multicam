@@ -31,7 +31,7 @@ function classify(x){
  var ratio=commit/limit,remaining=(limit-commit)/1073741824;
  return {available:true,critical:ratio>=.90||remaining<3||available<1024,slow:ratio>=.75||premiere>=16*1073741824||available<3072,commit:commit,limit:limit,premiere:premiere,freeMB:available,label:'System commit '+Math.round(ratio*100)+'%; Premiere '+(premiere/1073741824).toFixed(1)+' GiB'};
 }
-function save(){try{var n=root.cep_node,fs=n.require('fs'),path=n.require('path'),proc=n.require('process'),os=n.require('os'),dir=proc.platform==='darwin'?path.join(os.homedir(),'Library','Application Support','RProjectMulticamAI'):path.join(proc.env.LOCALAPPDATA||os.homedir(),'RProjectMulticamAI');if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,'memory-diagnostics.json'),JSON.stringify({build:'2.3.11.12',samples:rows}),'utf8');}catch(e){}}
+function save(){try{var n=root.cep_node,fs=n.require('fs'),path=n.require('path'),proc=n.require('process'),os=n.require('os'),dir=proc.platform==='darwin'?path.join(os.homedir(),'Library','Application Support','RProjectMulticamAI'):path.join(proc.env.LOCALAPPDATA||os.homedir(),'RProjectMulticamAI');if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,'memory-diagnostics.json'),JSON.stringify({build:'2.3.11.13',samples:rows}),'utf8');}catch(e){}}
 function check(){
  if(inflight)return inflight;
  if(last&&Date.now()-lastAt<5000)return Promise.resolve(last);

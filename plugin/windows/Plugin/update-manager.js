@@ -1,5 +1,5 @@
 (function(global){'use strict';
-var CURRENT='2.3.11.12';
+var CURRENT='2.3.11.13';
 var ENDPOINT='https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-manifest';
 function parts(v){return String(v||'0').replace(/^v/i,'').split('.').map(function(x){return parseInt(x,10)||0;});}
 function newer(a,b){var x=parts(a),y=parts(b),n=Math.max(x.length,y.length);for(var i=0;i<n;i++){var A=x[i]||0,B=y[i]||0;if(A>B)return true;if(A<B)return false;}return false;}

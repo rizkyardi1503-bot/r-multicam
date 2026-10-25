@@ -1,3 +1,7 @@
+v2.3.11.13 PUBLIC validation — 2026-10-25
+- Release, archive, token-refresh, signing, payment and website tests rerun; engine bench unchanged on both trees.
+- Windows update simulated end to end from older versions against the live endpoints.
+
 v2.3.11.12 PUBLIC validation — 2026-10-25
 - Plugin files identical to v2.3.11.11 except the version strings; all release, archive, token-refresh, signing,
   payment and website tests rerun.
