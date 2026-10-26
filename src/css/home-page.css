@@ -542,6 +542,7 @@
 .home-closing { padding-bottom: 0; }
 .home-closing-box {
   position: relative;
+  border: 1px solid transparent;
   isolation: isolate;
   overflow: hidden;
   padding: clamp(44px, 7vw, 88px) 24px;
