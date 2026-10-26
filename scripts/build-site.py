@@ -5,7 +5,7 @@
     site/home.css  (homepage, keeps its original cascade order)
     site/site.css  (every other page)
 * Rewrites every HTML page so it loads exactly one bundle (+ page-specific CSS),
-  preloads the two web fonts and loads the motion layer.
+  preloads the two critical web fonts (display serif + body) and loads the motion layer.
 * Gives all content pages the same header, footer, breadcrumb structured data
   and an "On this page" table of contents for long pages.
 * Updates sitemap.xml <lastmod> for pages whose HTML changed.
@@ -30,7 +30,7 @@ ORIGIN = 'https://r-multicam.pages.dev'
 
 BUNDLES = {'home.css': ['base.css', 'home-page.css'], 'site.css': ['base.css', 'pages.css']}
 SOURCE_CSS = {name for files in BUNDLES.values() for name in files} | set(BUNDLES)
-FONTS = ['/fonts/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2', '/fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2']
+FONTS = ['/fonts/cormorant-garamond-latin.woff2', '/fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2']
 MOTION = '/motion.mjs'
 
 # Pages that keep their own header/footer (custom layouts or account flows).

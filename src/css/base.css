@@ -1,10 +1,11 @@
 /* ==========================================================================
    R Project — base design system (shared by home.css and site.css).
-   Futuristic studio HUD: near-black surfaces, crisp 1px lines, one violet→blue→cyan
-   accent, neon gradient borders, monospace "readout" labels.
+   Black + champagne gold, classic and quietly futuristic: a display serif
+   (Cormorant Garamond) over DM Sans, open layouts with thin gold hairlines
+   instead of boxes, soft radial light, a CSS-only 3D hero on the homepage.
    Light by design: no backdrop-filter, no blur filters, no infinite animation
-   (the tiny decorative beat bars run a finite number of beats and are off for
-   reduced motion), no fixed decorative layers. Decorative grids/glows are static CSS gradients.
+   (intro motion runs once and is off for reduced motion), no fixed decorative
+   layers. Decorative grids/glows are static CSS gradients.
    Transitions animate opacity/transform only.
    ========================================================================== */
 
@@ -25,6 +26,23 @@
   src: url(/fonts/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2) format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+/* Cormorant Garamond (SIL OFL 1.1): self-hosted Latin subset, variable wght 500-700. */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url(/fonts/cormorant-garamond-latin.woff2) format('woff2');
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+2013-2014, U+2018-201E, U+2022, U+2026, U+2032-2033, U+20AC, U+2122;
+}
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url(/fonts/cormorant-garamond-italic-latin.woff2) format('woff2');
+  unicode-range: U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+2013-2014, U+2018-201E, U+2022, U+2026, U+2032-2033, U+20AC, U+2122;
+}
 
 /* ---------------------------------------------------------------- Tokens */
 :root {
@@ -34,27 +52,35 @@
   --rp-surface-2: #1b1b1e;
   --rp-line: #f0e2c417;
   --rp-line-strong: #f0e2c42b;
+  /* Gold hairline: the main divider of the system. */
+  --rp-hair: #d4b48347;
+  --rp-hair-fade: linear-gradient(90deg, #d4b48399, #d4b48333 45%, transparent);
   --rp-text: #f3efe7;
   --rp-prose: #cfc8bb;
   --rp-muted: #aea696;
-  --rp-violet: #d4b483;
-  --rp-violet-soft: #dcc79e;
+  --rp-gold: #d4b483;
+  --rp-gold-soft: #dcc79e;
+  --rp-champagne: #e8d3a8;
+  --rp-bronze: #b8925a;
+  /* Legacy names (kept so older selectors keep working): all map to the gold family. */
+  --rp-violet: var(--rp-gold);
+  --rp-violet-soft: var(--rp-gold-soft);
   --rp-blue: #c4a06a;
-  --rp-cyan: #e8d3a8;
+  --rp-cyan: var(--rp-champagne);
   --rp-danger: #ffa69c;
   --rp-grad: linear-gradient(120deg, #e6cfa3 0%, #d4b483 50%, #b8925a 100%);
-  /* Neon hairline for gradient borders: background: <fill> padding-box, var(--rp-grad-line) border-box. */
   --rp-grad-line: linear-gradient(130deg, #e6cfa3b3 0%, #d4b4833d 45%, #b8925a99 100%);
-  --rp-glow: 0 18px 50px -28px #c9a66b66;
-  /* Static technical grid used behind heroes (always paired with a mask fade). */
+  --rp-glow: 0 30px 80px -40px #c9a66b59;
+  /* Fine technical grid used behind heroes (always paired with a mask fade). */
   --rp-grid:
-    linear-gradient(#f0e2c40f 1px, transparent 1px) 0 0 / 44px 44px,
-    linear-gradient(90deg, #f0e2c40f 1px, transparent 1px) 0 0 / 44px 44px;
-  --rp-radius: 16px;
-  --rp-radius-sm: 10px;
+    linear-gradient(#f0e2c40b 1px, transparent 1px) 0 0 / 56px 56px,
+    linear-gradient(90deg, #f0e2c40b 1px, transparent 1px) 0 0 / 56px 56px;
+  --rp-radius: 22px;
+  --rp-radius-sm: 999px;
   --rp-ease: cubic-bezier(.16, 1, .3, 1);
-  --rp-shadow: 0 24px 60px -28px #000000e6;
-  --rp-font-head: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --rp-shadow: 0 30px 70px -30px #000000f0;
+  --rp-font-serif: 'Cormorant Garamond', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --rp-font-head: var(--rp-font-serif);
   --rp-font-body: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
   --rp-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   /* Real height of the sticky header at each breakpoint; anchor jumps land below it (scroll-padding-top). */
@@ -74,7 +100,7 @@ body {
   min-height: 100vh;
   background: var(--rp-bg);
   color: var(--rp-text);
-  font: 400 16px/1.65 var(--rp-font-body);
+  font: 400 16px/1.7 var(--rp-font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-wrap: break-word;
@@ -86,83 +112,88 @@ button { cursor: pointer; }
 button:disabled { opacity: .55; cursor: wait; }
 [hidden] { display: none !important; }
 ::selection { background: #d4b48355; color: #fff; }
-:focus-visible { outline: 2px solid var(--rp-cyan); outline-offset: 3px; border-radius: 4px; }
+:focus-visible { outline: 2px solid var(--rp-champagne); outline-offset: 3px; border-radius: 4px; }
 :focus:not(:focus-visible) { outline: none; }
 
 /* ---------------------------------------------------------------- Typography */
 h1, h2, h3, h4 {
   margin: 0 0 .5em;
-  font-family: var(--rp-font-head);
-  font-weight: 500;
+  font-family: var(--rp-font-serif);
+  font-weight: 600;
   color: #f8f4ec;
   text-wrap: balance;
 }
-h1 { font-size: clamp(40px, 6vw, 72px); line-height: 1.04; letter-spacing: -.045em; }
-h2 { font-size: clamp(28px, 3.6vw, 44px); line-height: 1.12; letter-spacing: -.035em; }
-h3 { font-size: 20px; line-height: 1.3; letter-spacing: -.02em; }
-h4 { font-size: 16px; line-height: 1.4; }
+h1 { font-size: clamp(44px, 6.4vw, 84px); line-height: .98; letter-spacing: -.02em; }
+h2 { font-size: clamp(34px, 4.4vw, 56px); line-height: 1.04; letter-spacing: -.015em; }
+h3 { font-size: 24px; line-height: 1.2; letter-spacing: -.005em; }
+h4 { font: 600 16px/1.4 var(--rp-font-body); }
 p { margin: 0 0 1em; }
+/* Emphasis in headlines: gold italic serif. */
 h1 em, h2 em {
-  font-style: normal;
-  background: var(--rp-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--rp-gold);
 }
 strong, b { font-weight: 700; color: #f8f4ec; }
 small { font-size: .82em; }
 code, kbd {
   font-family: var(--rp-font-mono);
-  font-size: .88em;
-  padding: .12em .42em;
+  font-size: .86em;
+  padding: .1em .4em;
   border: 1px solid var(--rp-line);
   border-radius: 6px;
-  background: #ffffff0a;
+  background: #ffffff08;
   overflow-wrap: anywhere;
 }
 
-/* Readout label: monospace, uppercase, a small lit "LED" square. Section numbers go in a <span>. */
+/* Eyebrow: letter-spaced caps behind a short gold rule; section numbers (<span>) in italic serif. */
 .eyebrow,
 .readout {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 0 0 18px;
-  font: 500 12px/1.4 var(--rp-font-mono);
-  letter-spacing: .14em;
+  gap: 12px;
+  margin: 0 0 20px;
+  font: 600 11.5px/1.4 var(--rp-font-body);
+  letter-spacing: .24em;
   text-transform: uppercase;
-  color: var(--rp-cyan);
+  color: var(--rp-gold);
 }
 .eyebrow::before {
   content: "";
   flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  background: var(--rp-cyan);
-  box-shadow: 0 0 0 3px #e8d3a81f, 0 0 12px #e8d3a880;
+  width: 28px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--rp-gold));
 }
-.eyebrow span { color: var(--rp-text); }
-.lead { font-size: clamp(17px, 1.6vw, 19px); line-height: 1.65; color: #e1dacb; max-width: 62ch; }
+.eyebrow span {
+  font: italic 500 17px/1 var(--rp-font-serif);
+  letter-spacing: .02em;
+  text-transform: none;
+  color: var(--rp-champagne);
+}
+.lead { font-size: clamp(17px, 1.6vw, 20px); line-height: 1.65; color: #e1dacb; max-width: 60ch; }
 .subtle { font-size: 14px; line-height: 1.6; color: var(--rp-muted); }
 
 /* ---------------------------------------------------------------- Layout */
 .wrap { width: min(1180px, 100% - 48px); margin-inline: auto; }
-.section { padding-block: clamp(64px, 9vw, 112px); }
+.section { padding-block: clamp(72px, 10vw, 128px); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 28px 0; }
 
+/* Cards are open by default: no box, just a gold hairline on top. */
 .card {
-  padding: 24px;
-  background: linear-gradient(180deg, #ffffff06, transparent 120px), var(--rp-surface);
-  border: 1px solid var(--rp-line);
-  border-radius: var(--rp-radius);
+  padding: 24px 0 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--rp-hair);
+  border-radius: 0;
 }
-/* Primary panels: neon gradient border + soft glow (static box-shadow, nothing animates). */
+/* The few framed elements: a fine gold frame, generous radius, soft light from above. */
 .is-neon {
-  border-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 28px;
   background:
-    linear-gradient(180deg, #d4b48314, transparent 140px) padding-box,
-    linear-gradient(var(--rp-surface-2), var(--rp-surface-2)) padding-box,
+    radial-gradient(120% 70% at 50% 0%, #d4b4831c, transparent 60%) padding-box,
+    linear-gradient(#111113, #111113) padding-box,
     var(--rp-grad-line) border-box;
   box-shadow: var(--rp-glow);
 }
@@ -170,49 +201,50 @@ code, kbd {
 /* ---------------------------------------------------------------- Buttons */
 .button {
   position: relative;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  min-height: 46px;
-  padding: 11px 20px;
+  min-height: 48px;
+  padding: 12px 26px;
   border: 1px solid transparent;
-  border-radius: var(--rp-radius-sm);
+  border-radius: 999px;
   background: var(--rp-grad);
-  color: #080809;
+  color: #0a0a0b;
   font: 600 15px/1.3 var(--rp-font-body);
-  letter-spacing: -.005em;
+  letter-spacing: .01em;
   text-align: center;
   text-decoration: none;
   cursor: pointer;
-  box-shadow: inset 0 1px 0 #ffffff59, 0 10px 30px -12px #c4a06aa6;
-  transition: transform .25s var(--rp-ease);
+  box-shadow: inset 0 1px 0 #fff6, 0 14px 34px -16px #c9a66bb3;
+  transition: transform .3s var(--rp-ease);
 }
-/* Hover glow lives on a pseudo-element so only its opacity animates. */
+/* Gold sheen: a soft highlight that sweeps once across on hover (transform only). */
 .button::after {
   content: "";
   position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  box-shadow: 0 0 0 1px #e6d3ad80, 0 12px 36px -8px #c9a66bcc;
-  opacity: 0;
+  inset: 0 auto 0 0;
+  width: 60%;
+  background: linear-gradient(100deg, transparent, #ffffff59 50%, transparent);
+  transform: translateX(-120%) skewX(-18deg);
   pointer-events: none;
-  transition: opacity .25s var(--rp-ease);
+  transition: transform .8s var(--rp-ease);
 }
 .button:hover { transform: translateY(-1px); }
-.button:hover::after { opacity: 1; }
+.button:hover::after { transform: translateX(260%) skewX(-18deg); }
 .button:active { transform: translateY(0); }
 .button span { font-weight: 500; }
 .button.secondary {
-  background: #f0e2c408;
-  border-color: var(--rp-line-strong);
+  background: transparent;
+  border-color: #d4b48366;
   color: #f2ede4;
   box-shadow: none;
 }
-.button.secondary::after { box-shadow: 0 0 0 1px #d4b483a6, 0 0 24px -6px #d4b48373; }
-.button.secondary:hover { background: #f0e2c40f; }
+.button.secondary::after { background: linear-gradient(100deg, transparent, #d4b48326 50%, transparent); }
+.button.secondary:hover { border-color: var(--rp-gold); }
 .button:disabled::after { display: none; }
-.button.small { min-height: 38px; padding: 8px 14px; font-size: 14px; }
+.button.small { min-height: 40px; padding: 8px 18px; font-size: 14px; }
 .button.full, .full { width: 100%; }
 .button:disabled:hover { transform: none; }
 .button.coming-soon:disabled { cursor: default; }
@@ -220,7 +252,7 @@ code, kbd {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--rp-violet-soft);
+  color: var(--rp-gold-soft);
   font-size: 14px;
   text-decoration: underline;
   text-decoration-color: #d8c29666;
@@ -238,7 +270,7 @@ textarea {
   min-height: 46px;
   padding: 11px 14px;
   border: 1px solid var(--rp-line-strong);
-  border-radius: var(--rp-radius-sm);
+  border-radius: 12px;
   background: var(--rp-bg);
   color: var(--rp-text);
   font-size: 15px;
@@ -252,7 +284,7 @@ select {
   background-repeat: no-repeat;
 }
 select option { background: var(--rp-surface); color: var(--rp-text); }
-input::placeholder, textarea::placeholder { color: #86839a; }
+input::placeholder, textarea::placeholder { color: #8f887a; }
 input:hover, select:hover, textarea:hover { border-color: #ffffff3d; }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--rp-violet); outline-offset: 1px; border-color: transparent; }
 input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width: 18px; height: 18px; }
@@ -277,15 +309,15 @@ input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width:
   align-items: center;
   gap: 10px;
   color: #fff;
-  font: 600 15px/1.2 var(--rp-font-head);
+  font: 600 20px/1.05 var(--rp-font-serif);
   letter-spacing: .01em;
   white-space: nowrap;
 }
 .brand small {
   display: block;
   margin-top: 2px;
-  font: 600 10px/1.2 var(--rp-font-body);
-  letter-spacing: .16em;
+  font: 600 9.5px/1.2 var(--rp-font-body);
+  letter-spacing: .26em;
   text-transform: uppercase;
   color: var(--rp-muted);
 }
@@ -293,12 +325,13 @@ input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width:
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: var(--rp-grad);
-  color: #0a0a0b;
-  font: 700 18px/1 var(--rp-font-head);
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d4b48399;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #d4b48333, transparent 70%);
+  color: var(--rp-gold);
+  font: italic 600 20px/1 var(--rp-font-serif);
 }
 
 /* ---------------------------------------------------------------- Header */
@@ -314,7 +347,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width:
   background: #0a0a0bf2;
   border-bottom: 1px solid var(--rp-line);
 }
-/* Neon hairline that lights up once the page scrolls. */
+/* Gold hairline that appears once the page scrolls. */
 .rp-header::after {
   content: "";
   position: absolute;
@@ -322,7 +355,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width:
   right: 0;
   bottom: -1px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #d4b483b3 25%, #c4a06a80 55%, #e8d3a8b3 80%, transparent);
+  background: linear-gradient(90deg, transparent, #d4b48380 30%, #d4b48380 70%, transparent);
   opacity: 0;
   pointer-events: none;
   transition: opacity .4s var(--rp-ease);
@@ -333,6 +366,9 @@ input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width:
 .rp-header nav { display: flex; align-items: center; gap: 2px; }
 .rp-header nav a {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 8px 12px;
   border-radius: 8px;
   color: #d8d1c2;
@@ -340,17 +376,16 @@ input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width:
   font-weight: 500;
   white-space: nowrap;
 }
-.rp-header nav a:hover { color: #fff; background: #ffffff0a; }
+.rp-header nav a:hover { color: #fff; }
 .rp-header nav a[aria-current="page"] { color: #fff; }
 .rp-header nav a[aria-current="page"]::after {
   content: "";
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: 2px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--rp-grad);
+  bottom: 6px;
+  height: 1px;
+  background: var(--rp-gold);
 }
 .header-account-actions { display: flex; align-items: center; gap: 8px; }
 .rp-header .button { margin: 0; }
@@ -360,23 +395,29 @@ input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width:
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--rp-line-strong);
-  border-radius: 999px;
+  gap: 0;
+  padding: 0;
+  border: 0;
 }
 .rp-lang a {
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 44px;
+  padding: 4px 8px;
   border-radius: 999px;
   color: var(--rp-muted);
-  font: 600 12px/1.4 var(--rp-font-mono);
-  letter-spacing: .06em;
+  font: 600 11.5px/1.4 var(--rp-font-body);
+  letter-spacing: .16em;
 }
+.rp-lang a + a { position: relative; }
+.rp-lang a + a::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 1px; background: var(--rp-line-strong); }
 .rp-lang a:hover { color: #fff; }
-.rp-lang a[aria-current="true"] { background: #d4b48326; color: #fff; }
+.rp-lang a[aria-current="true"] { color: var(--rp-gold); text-decoration: underline; text-decoration-color: #d4b48399; text-underline-offset: 6px; }
 
 @media (max-width: 980px) {
-  :root { --rp-header-h: 117px; }
+  :root { --rp-header-h: 124px; }
   .rp-header { flex-wrap: wrap; padding-block: 10px 0; }
   .rp-header nav {
     order: 3;
@@ -389,20 +430,19 @@ input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width:
   }
   .rp-header nav::-webkit-scrollbar { display: none; }
   .rp-header nav a { font-size: 13.5px; padding: 10px 12px; }
-  .rp-header nav a[aria-current="page"]::after { bottom: 4px; }
   .rp-header .header-account-actions { padding-bottom: 10px; }
   .rp-header .brand, .rp-header .rp-lang { margin-bottom: 10px; }
 }
 @media (max-width: 640px) {
-  :root { --rp-header-h: 115px; }
+  :root { --rp-header-h: 124px; }
   .wrap { width: calc(100% - 32px); }
   .rp-header { padding-inline: 16px; gap: 8px 10px; }
   .rp-header nav { width: calc(100% + 32px); margin: 0 -16px; padding-inline: 4px; }
   .rp-header .brand { gap: 8px; font-size: 14px; }
   .rp-header .brand small { display: none; }
-  .rp-header .mark { width: 30px; height: 30px; font-size: 16px; }
-  .rp-header .rp-lang a { padding: 4px 8px; font-size: 11px; }
-  .rp-header .button.small { min-height: 36px; padding: 7px 11px; font-size: 13px; }
+  .rp-header .mark { width: 32px; height: 32px; font-size: 18px; }
+  .rp-header .rp-lang a { min-width: 36px; padding: 4px 6px; font-size: 11px; }
+  .rp-header .button.small { min-height: 44px; padding: 7px 13px; font-size: 13px; }
   .rp-header .button span { display: none; }
   /* Two account buttons (e.g. Login + CTA): keep brand mark only so everything fits on one row. */
   .rp-header:has(.header-account-actions > .button + .button) .brand > span:last-child { display: none; }
@@ -410,8 +450,8 @@ input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width:
 /* Very narrow phones: tighten the language switch and buttons so the header stays two rows. */
 @media (max-width: 359px) {
   .rp-header { gap: 8px 6px; }
-  .rp-header .rp-lang a { padding: 4px 6px; }
-  .rp-header .button.small { padding: 7px 9px; font-size: 12.5px; }
+  .rp-header .rp-lang a { min-width: 32px; padding: 4px; }
+  .rp-header .button.small { padding: 7px 10px; font-size: 12.5px; }
   .header-account-actions { gap: 6px; }
 }
 
@@ -419,23 +459,23 @@ input[type=checkbox], input[type=radio] { accent-color: var(--rp-violet); width:
 .rp-footer {
   margin-top: clamp(64px, 9vw, 112px);
   padding: 56px max(24px, (100% - 1180px) / 2) 40px;
-  border-top: 1px solid var(--rp-line);
-  background: linear-gradient(180deg, #0c0e16, #06070b 220px);
+  border-top: 1px solid var(--rp-hair);
+  background: radial-gradient(60% 220px at 50% 0%, #d4b48310, transparent 70%), #080809;
 }
 .rp-footer-inner { display: grid; grid-template-columns: minmax(220px, 1fr) 3fr; gap: 48px; align-items: start; }
 .rp-footer-brand p { margin: 16px 0 0; max-width: 34ch; color: var(--rp-muted); font-size: 14px; }
 .rp-footer-links { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px 24px; }
 .rp-footer-links h2 {
   margin: 0 0 14px;
-  font: 500 11px/1.4 var(--rp-font-mono);
-  letter-spacing: .16em;
+  font: 600 11px/1.4 var(--rp-font-body);
+  letter-spacing: .24em;
   text-transform: uppercase;
-  color: var(--rp-muted);
+  color: var(--rp-gold);
 }
-.rp-footer-links ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.rp-footer-links a { color: #ded7c8; font-size: 14px; }
+.rp-footer-links ul { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.rp-footer-links a { display: inline-flex; align-items: center; min-height: 40px; color: #ded7c8; font-size: 14px; }
 .rp-footer-links a:hover { color: var(--rp-cyan); }
-.rp-legal { margin: 48px 0 0; padding-top: 24px; border-top: 1px solid var(--rp-line); color: #8d92a6; font: 400 12px/1.6 var(--rp-font-mono); letter-spacing: .02em; }
+.rp-legal { margin: 48px 0 0; padding-top: 24px; border-top: 1px solid var(--rp-line); color: #9a9384; font: 400 12.5px/1.6 var(--rp-font-body); letter-spacing: .02em; }
 @media (max-width: 900px) {
   .rp-footer-inner { grid-template-columns: 1fr; gap: 36px; }
   .rp-footer-links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -492,7 +532,7 @@ dialog .actions { gap: 10px; margin: 16px 0; }
 #customer-portal form input,
 #customer-portal #promo-code { margin-bottom: 18px; }
 #customer-portal form .button { margin-top: 4px; }
-.auth-options { display: flex; gap: 8px; margin: 22px 0 12px; padding: 4px; border: 1px solid var(--rp-line); border-radius: 12px; background: var(--rp-bg); }
+.auth-options { display: flex; gap: 8px; margin: 22px 0 12px; padding: 4px; border: 1px solid var(--rp-line); border-radius: 999px; background: var(--rp-bg); }
 .auth-options .button { flex: 1; min-height: 40px; border-color: transparent; }
 .auth-options .button[aria-pressed="true"] { background: #d4b48324; border-color: #d4b48366; color: #fff; }
 #google-auth { margin: 16px 0 8px; }
@@ -537,17 +577,6 @@ dialog .actions { gap: 10px; margin: 16px 0; }
 }
 .rp-motion .rp-hide { opacity: .6; transform: translateY(14px); }
 
-/* Tiny beat bars / live dots (decorative, aria-hidden). */
-@keyframes rp-beat {
-  0% { transform: scaleY(1); }
-  14% { transform: scaleY(.5); }
-  100% { transform: scaleY(1); }
-}
-@keyframes rp-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .35; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after {
@@ -557,7 +586,6 @@ dialog .actions { gap: 10px; margin: 16px 0; }
     transition-delay: 0s !important;
   }
   .rp-motion .rp-hide { opacity: 1; transform: none; }
-  .beat-bars i, .edit-live, .hud-dot { animation: none !important; }
 }
 
 @media print {

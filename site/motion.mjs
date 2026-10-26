@@ -1,5 +1,6 @@
-// R Project — light motion layer: header state on scroll and a one-time reveal of small blocks.
-// No WebGL, no animation loop: it only reacts to scroll and to elements entering the screen.
+// R Project — light motion layer: header state on scroll, a one-time reveal of small blocks
+// and a pointer tilt for the homepage 3D stage.
+// No WebGL, no animation loop: it only reacts to scroll, the pointer and elements entering the screen.
 // Progressive enhancement: without this file every element is simply visible.
 
 const doc = document.documentElement;
@@ -63,5 +64,30 @@ function setupReveal() {
   }));
 }
 
+// Homepage 3D stage: a few degrees of tilt following the pointer (desktop, fine pointer only).
+// Touch devices and reduced motion keep the static pose from the CSS.
+function setupTilt() {
+  const stage = document.querySelector('.hero-stage');
+  const scene = stage && stage.querySelector('.stage-scene');
+  if (!scene || reduceMotion || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  const area = stage.closest('section') || stage;
+  const clamp = (v) => Math.max(-1, Math.min(1, v));
+  let x = 0, y = 0, raf = 0;
+  const apply = () => {
+    raf = 0;
+    scene.style.transform = `rotateX(${(6 - y * 4).toFixed(2)}deg) rotateY(${(-12 + x * 7).toFixed(2)}deg)`;
+  };
+  const queue = () => { if (!raf) raf = requestAnimationFrame(apply); };
+  area.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const r = stage.getBoundingClientRect();
+    x = clamp((e.clientX - (r.left + r.width / 2)) / r.width);
+    y = clamp((e.clientY - (r.top + r.height / 2)) / r.height);
+    queue();
+  }, { passive: true });
+  area.addEventListener('pointerleave', () => { x = 0; y = 0; queue(); }, { passive: true });
+}
+
 setupHeader();
 setupReveal();
+setupTilt();
