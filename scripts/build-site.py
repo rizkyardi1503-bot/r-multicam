@@ -30,7 +30,7 @@ ORIGIN = 'https://r-multicam.pages.dev'
 
 BUNDLES = {'home.css': ['base.css', 'home-page.css'], 'site.css': ['base.css', 'pages.css']}
 SOURCE_CSS = {name for files in BUNDLES.values() for name in files} | set(BUNDLES)
-FONTS = ['/fonts/cormorant-garamond-latin.woff2', '/fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2']
+FONTS = ['/fonts/cormorant-garamond-latin.woff2', '/fonts/cormorant-garamond-italic-latin.woff2', '/fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2']
 MOTION = '/motion.mjs'
 
 # Pages that keep their own header/footer (custom layouts or account flows).
