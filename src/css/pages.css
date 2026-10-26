@@ -9,8 +9,8 @@
    (absolute, scrolls with the page, never animates). */
 body {
   background:
-    radial-gradient(52% 460px at 18% -140px, #8f7bff2b, transparent 72%),
-    radial-gradient(40% 380px at 92% -120px, #6af5e314, transparent 72%),
+    radial-gradient(52% 460px at 18% -140px, #c9a66b2b, transparent 72%),
+    radial-gradient(40% 380px at 92% -120px, #e8d3a814, transparent 72%),
     var(--rp-bg);
   background-repeat: no-repeat;
 }
@@ -59,7 +59,7 @@ main.wrap > h1 {
 }
 main.wrap > .eyebrow { margin-bottom: 18px; }
 main.wrap > .subtle { margin: -6px 0 18px; font-size: 13.5px; }
-main.wrap .lead { margin-bottom: 28px; color: #dcd8e8; font-size: clamp(17px, 1.8vw, 19.5px); }
+main.wrap .lead { margin-bottom: 28px; color: #e4ddcf; font-size: clamp(17px, 1.8vw, 19.5px); }
 
 /* Prose */
 main.wrap p,
@@ -70,7 +70,7 @@ main.wrap .subtle { color: var(--rp-muted); }
 main.wrap a:not([class]) {
   color: var(--rp-violet-soft);
   text-decoration: underline;
-  text-decoration-color: #b5a5e85c;
+  text-decoration-color: #d8c2965c;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
@@ -86,7 +86,7 @@ main.wrap > h2,
 main.wrap > section > h2:first-child {
   padding-top: 28px;
   border-top: 1px solid;
-  border-image: linear-gradient(90deg, #a18bff80, #8fb4ff33 35%, var(--rp-line) 70%) 1;
+  border-image: linear-gradient(90deg, #d4b48380, #c4a06a33 35%, var(--rp-line) 70%) 1;
 }
 main.wrap h3 { margin: 32px 0 10px; font-size: 19px; }
 main.wrap ul,
@@ -115,7 +115,7 @@ main.wrap summary {
   padding: 17px 52px 17px 20px;
   list-style: none;
   cursor: pointer;
-  color: #f3f1f9;
+  color: #f6f2ea;
   font-weight: 600;
   line-height: 1.5;
 }
@@ -169,7 +169,7 @@ main.wrap .rp-toc a {
   gap: 12px;
   padding: 7px 0;
   border-top: 1px solid var(--rp-line);
-  color: #dcd8ea;
+  color: #e4ddcf;
   font-size: 14px;
   line-height: 1.45;
   text-decoration: none;
@@ -235,14 +235,14 @@ main.social-start nav a {
   padding: 8px 14px;
   border: 1px solid var(--rp-line-strong);
   border-radius: 8px;
-  color: #dcd8ea;
+  color: #e4ddcf;
   font-size: 14px;
   text-decoration: none;
 }
 main.wrap .policy-nav a:hover,
 main.wrap nav.actions a:hover,
-main.social-start nav a:hover { color: #fff; border-color: #a18bff80; }
-main.wrap .policy-nav a[aria-current] { color: #fff; border-color: #a18bff80; background: #a18bff1a; }
+main.social-start nav a:hover { color: #fff; border-color: #d4b48380; }
+main.wrap .policy-nav a[aria-current] { color: #fff; border-color: #d4b48380; background: #d4b4831a; }
 
 /* Help: contact support */
 main.wrap .installation-support {
@@ -253,7 +253,7 @@ main.wrap .installation-support {
   border: 1px solid transparent;
   border-radius: var(--rp-radius);
   background:
-    linear-gradient(135deg, #a18bff14, #6af5e30a 70%) padding-box,
+    linear-gradient(135deg, #d4b48314, #e8d3a80a 70%) padding-box,
     linear-gradient(var(--rp-surface), var(--rp-surface)) padding-box,
     var(--rp-grad-line) border-box;
   box-shadow: var(--rp-glow);
@@ -298,15 +298,15 @@ main.wrap .check-form {
   border-radius: var(--rp-radius);
   background: var(--rp-surface);
 }
-main.wrap .check-form label { display: grid; gap: 8px; align-content: start; color: #dcd8e8; }
+main.wrap .check-form label { display: grid; gap: 8px; align-content: start; color: #e4ddcf; }
 main.wrap .check-form button { grid-column: 1 / -1; justify-self: start; min-width: 200px; }
 main.wrap .check-result {
   margin: 14px 0 0;
   padding: 18px 20px;
-  border: 1px solid #6af5e347;
+  border: 1px solid #e8d3a847;
   border-radius: var(--rp-radius);
-  background: #6af5e30d;
-  color: #e4f9f6;
+  background: #e8d3a80d;
+  color: #f6efdf;
   line-height: 1.7;
 }
 
@@ -331,7 +331,7 @@ main.wrap .step-list > li::before {
   border: 1px solid transparent;
   border-radius: 10px;
   background: linear-gradient(var(--rp-bg), var(--rp-bg)) padding-box, var(--rp-grad-line) border-box;
-  box-shadow: 0 0 20px -8px #8f7bffb3;
+  box-shadow: 0 0 20px -8px #c9a66bb3;
   color: var(--rp-cyan);
   font: 600 14px/1 var(--rp-font-mono);
 }
@@ -342,7 +342,7 @@ main.wrap .step-list > li:not(:last-child)::after {
   bottom: 8px;
   left: 18px;
   width: 1px;
-  background: linear-gradient(#a18bff99, var(--rp-line));
+  background: linear-gradient(#d4b48399, var(--rp-line));
 }
 main.wrap .step-list h2 { margin: 4px 0 10px; padding: 0; border: 0; font-size: clamp(21px, 2.4vw, 25px); }
 main.wrap .step-list .conversion-links { margin: 16px 0 0; }
@@ -377,10 +377,10 @@ body > header:not(.rp-header) + main.guide-content {
 body > header:not(.rp-header) + main.guide-content > h1 { max-width: none; font-size: clamp(30px, 4.6vw, 46px); }
 body > header:not(.rp-header) + main.guide-content #confirmation-message {
   padding: 14px 16px;
-  border: 1px solid #6af5e340;
+  border: 1px solid #e8d3a840;
   border-radius: 12px;
-  background: #6af5e30d;
-  color: #e4f9f6;
+  background: #e8d3a80d;
+  color: #f6efdf;
 }
 
 /* ---------------------------------------------------------------- /start/ social landing */
@@ -410,7 +410,7 @@ main.social-start details {
 main.social-start section#pricing {
   border-color: transparent;
   background:
-    linear-gradient(160deg, #a18bff14, transparent 60%) padding-box,
+    linear-gradient(160deg, #d4b48314, transparent 60%) padding-box,
     linear-gradient(var(--rp-surface-2), var(--rp-surface-2)) padding-box,
     var(--rp-grad-line) border-box;
   box-shadow: var(--rp-glow);

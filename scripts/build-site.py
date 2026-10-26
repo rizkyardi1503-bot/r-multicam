@@ -461,7 +461,7 @@ def social_meta(html: str, lang: str) -> str:
         ('name', 'twitter:title', meta('property', 'og:title') or title),
         ('name', 'twitter:description', meta('property', 'og:description') or desc),
         ('name', 'twitter:image', SOCIAL_IMAGE),
-        ('name', 'theme-color', '#070911'),
+        ('name', 'theme-color', '#0a0a0b'),
     ]
     add = ''.join(f'<meta {a}="{k}" content="{v}">' for a, k, v in want if v and meta(a, k) is None)
     if not add:
