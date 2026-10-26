@@ -1,4 +1,4 @@
-// R Project — light motion layer: header state on scroll and one-time reveal of sections.
+// R Project — light motion layer: header state on scroll and a one-time reveal of small blocks.
 // No WebGL, no animation loop: it only reacts to scroll and to elements entering the screen.
 // Progressive enhancement: without this file every element is simply visible.
 
@@ -39,8 +39,15 @@ function setupReveal() {
     el.style.setProperty('--rp-delay', `${Math.min(i, 5) * 0.06}s`);
   }
   // Content already on screen is never hidden, so the first paint has no flash.
+  // Tall blocks (whole sections, long FAQ lists) are never dimmed: a fast scroller
+  // must never land on a large faded area. Only small elements get the reveal,
+  // and even those start at opacity .6 (see base.css), never invisible.
   const fold = innerHeight * 0.92;
-  const pending = [...items].filter((el) => el.getBoundingClientRect().top >= fold);
+  const maxH = innerHeight * 0.45;
+  const pending = [...items].filter((el) => {
+    const r = el.getBoundingClientRect();
+    return r.top >= fold && r.height <= maxH;
+  });
   if (!pending.length) return;
   doc.classList.add('rp-motion');
   for (const el of pending) el.classList.add('rp-hide');
@@ -48,7 +55,7 @@ function setupReveal() {
     for (const e of entries) {
       if (e.isIntersecting) { e.target.classList.remove('rp-hide'); io.unobserve(e.target); }
     }
-  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
+  }, { rootMargin: '0px 0px -2% 0px', threshold: 0 });
   pending.forEach((el) => io.observe(el));
   // A jump via #hash shows everything that lands on screen at once.
   addEventListener('hashchange', () => pending.forEach((el) => {

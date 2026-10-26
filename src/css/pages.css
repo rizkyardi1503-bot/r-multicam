@@ -5,13 +5,27 @@
    into the shared header, footer or dialogs.
    ========================================================================== */
 
-/* One static glow at the top of every content page (scrolls with the page, never animates). */
+/* One static glow + technical grid at the top of every content page
+   (absolute, scrolls with the page, never animates). */
 body {
   background:
-    radial-gradient(52% 460px at 18% -140px, #a18bff24, transparent 72%),
+    radial-gradient(52% 460px at 18% -140px, #8f7bff2b, transparent 72%),
     radial-gradient(40% 380px at 92% -120px, #6af5e314, transparent 72%),
     var(--rp-bg);
   background-repeat: no-repeat;
+}
+body::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: -1;
+  height: 560px;
+  pointer-events: none;
+  background: var(--rp-grid);
+  -webkit-mask-image: radial-gradient(ellipse 70% 100% at 30% 0%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 100% at 30% 0%, #000 20%, transparent 75%);
 }
 
 /* ---------------------------------------------------------------- Article column */
@@ -30,7 +44,8 @@ main.wrap nav[aria-label="Breadcrumb"] {
   gap: 4px 6px;
   margin: 0 0 28px;
   color: var(--rp-muted);
-  font-size: 13px;
+  font: 400 12.5px/1.6 var(--rp-font-mono);
+  letter-spacing: .02em;
 }
 main.wrap nav[aria-label="Breadcrumb"] a { color: var(--rp-violet-soft); }
 main.wrap nav[aria-label="Breadcrumb"] a:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
@@ -70,7 +85,8 @@ main.wrap h2 {
 main.wrap > h2,
 main.wrap > section > h2:first-child {
   padding-top: 28px;
-  border-top: 1px solid var(--rp-line);
+  border-top: 1px solid;
+  border-image: linear-gradient(90deg, #a18bff80, #8fb4ff33 35%, var(--rp-line) 70%) 1;
 }
 main.wrap h3 { margin: 32px 0 10px; font-size: 19px; }
 main.wrap ul,
@@ -93,7 +109,7 @@ main.wrap details {
   border-radius: 14px;
   background: var(--rp-surface);
 }
-main.wrap details[open] { border-color: var(--rp-line-strong); }
+main.wrap details[open] { border-color: var(--rp-line-strong); box-shadow: inset 2px 0 0 var(--rp-cyan); }
 main.wrap summary {
   position: relative;
   padding: 17px 52px 17px 20px;
@@ -112,8 +128,8 @@ main.wrap summary::after {
   width: 8px;
   height: 8px;
   margin-top: -6px;
-  border-right: 1.5px solid var(--rp-violet-soft);
-  border-bottom: 1.5px solid var(--rp-violet-soft);
+  border-right: 1.5px solid var(--rp-cyan);
+  border-bottom: 1.5px solid var(--rp-cyan);
   transform: rotate(45deg);
   transition: transform .3s var(--rp-ease);
 }
@@ -132,9 +148,8 @@ main.wrap details > :last-child { margin-bottom: 18px; }
 }
 main.wrap .rp-toc > p {
   margin: 0 0 10px;
-  color: var(--rp-muted);
-  font-size: 11px;
-  font-weight: 700;
+  color: var(--rp-cyan);
+  font: 500 11px/1.4 var(--rp-font-mono);
   letter-spacing: .16em;
   text-transform: uppercase;
 }
@@ -164,7 +179,7 @@ main.wrap .rp-toc a::before {
   flex: 0 0 auto;
   padding-top: 1px;
   color: var(--rp-cyan);
-  font: 600 11.5px/1.6 var(--rp-font-head);
+  font: 500 11.5px/1.6 var(--rp-font-mono);
 }
 main.wrap .rp-toc a:hover { color: #fff; }
 
@@ -214,9 +229,12 @@ main.social-start nav {
 main.wrap .policy-nav a,
 main.wrap nav.actions a,
 main.social-start nav a {
-  padding: 7px 14px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 14px;
   border: 1px solid var(--rp-line-strong);
-  border-radius: 999px;
+  border-radius: 8px;
   color: #dcd8ea;
   font-size: 14px;
   text-decoration: none;
@@ -232,9 +250,13 @@ main.wrap .installation-support {
   gap: 18px;
   margin: 64px 0 0;
   padding: 26px;
-  border: 1px solid var(--rp-line-strong);
+  border: 1px solid transparent;
   border-radius: var(--rp-radius);
-  background: linear-gradient(135deg, #a18bff14, #6af5e30a 70%), var(--rp-surface);
+  background:
+    linear-gradient(135deg, #a18bff14, #6af5e30a 70%) padding-box,
+    linear-gradient(var(--rp-surface), var(--rp-surface)) padding-box,
+    var(--rp-grad-line) border-box;
+  box-shadow: var(--rp-glow);
 }
 main.wrap .installation-support h2 { margin: 0 0 8px; padding: 0; border: 0; }
 main.wrap .installation-support p { margin: 0; }
@@ -255,8 +277,7 @@ main.wrap .compatibility-table-wrap {
   caption-side: top;
   text-align: left;
   color: var(--rp-muted);
-  font-size: 12px;
-  font-weight: 600;
+  font: 500 11.5px/1.4 var(--rp-font-mono);
   letter-spacing: .12em;
   text-transform: uppercase;
 }
@@ -307,11 +328,12 @@ main.wrap .step-list > li::before {
   place-items: center;
   width: 36px;
   height: 36px;
-  border: 1px solid #6af5e366;
-  border-radius: 50%;
-  background: var(--rp-bg);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: linear-gradient(var(--rp-bg), var(--rp-bg)) padding-box, var(--rp-grad-line) border-box;
+  box-shadow: 0 0 20px -8px #8f7bffb3;
   color: var(--rp-cyan);
-  font: 600 15px/1 var(--rp-font-head);
+  font: 600 14px/1 var(--rp-font-mono);
 }
 main.wrap .step-list > li:not(:last-child)::after {
   content: "";
@@ -320,7 +342,7 @@ main.wrap .step-list > li:not(:last-child)::after {
   bottom: 8px;
   left: 18px;
   width: 1px;
-  background: var(--rp-line-strong);
+  background: linear-gradient(#a18bff99, var(--rp-line));
 }
 main.wrap .step-list h2 { margin: 4px 0 10px; padding: 0; border: 0; font-size: clamp(21px, 2.4vw, 25px); }
 main.wrap .step-list .conversion-links { margin: 16px 0 0; }
@@ -368,7 +390,7 @@ main.social-start {
   margin: 0 auto;
   padding: clamp(28px, 6vw, 56px) 0 64px;
 }
-main.social-start .brand { font-size: 12px; letter-spacing: .16em; color: var(--rp-muted); }
+main.social-start .brand { font: 500 12px/1.4 var(--rp-font-mono); letter-spacing: .16em; color: var(--rp-muted); }
 main.social-start .eyebrow { margin-top: 36px; }
 main.social-start h1 { margin: 12px 0 18px; font-size: clamp(40px, 10vw, 64px); line-height: 1.04; letter-spacing: -.045em; }
 main.social-start .lead { margin-bottom: 26px; font-size: 17.5px; }
@@ -385,7 +407,14 @@ main.social-start details {
   border-radius: var(--rp-radius);
   background: var(--rp-surface);
 }
-main.social-start section#pricing { border-color: #a18bff55; background: linear-gradient(160deg, #a18bff12, transparent 60%), var(--rp-surface); }
+main.social-start section#pricing {
+  border-color: transparent;
+  background:
+    linear-gradient(160deg, #a18bff14, transparent 60%) padding-box,
+    linear-gradient(var(--rp-surface-2), var(--rp-surface-2)) padding-box,
+    var(--rp-grad-line) border-box;
+  box-shadow: var(--rp-glow);
+}
 main.social-start h2 { margin: 0 0 10px; font-size: 26px; }
 main.social-start p { color: var(--rp-prose); }
 main.social-start .subtle { color: var(--rp-muted); font-size: 13.5px; }
