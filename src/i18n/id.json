@@ -1,5 +1,20 @@
 {
  "text": {
+  "Signed in with Google. To install, open r-multicam.pages.dev on your laptop or PC and continue with Google there too.": "Sudah masuk dengan Google. Untuk instal, buka r-multicam.pages.dev di laptop atau PC lalu lanjutkan dengan Google di sana juga.",
+  "Copy link": "Salin link",
+  "Or type r-multicam.pages.dev on your laptop.": "Atau ketik r-multicam.pages.dev di laptopmu.",
+  "Create my free account now": "Buat akun gratis sekarang",
+  "Download the ZIP on this phone anyway": "Tetap unduh ZIP di HP ini",
+  "On your phone? Send the link to your laptop →": "Lagi di HP? Kirim link ke laptopmu →",
+  "Google sign-in does not work inside this app (Instagram, Facebook, TikTok…). Use your email below, or open this page in your browser (menu ⋯ → Open in browser).": "Login Google tidak bisa dipakai di dalam aplikasi ini (Instagram, Facebook, TikTok…). Pakai email di bawah, atau buka halaman ini di browser (menu ⋯ → Buka di browser).",
+  "The installer is for your laptop or PC.": "Installer-nya untuk laptop atau PC kamu.",
+  "Link copied. Paste it in a chat with yourself (WhatsApp, Telegram, email) and open it on your laptop.": "Link tersalin. Tempel di chat ke dirimu sendiri (WhatsApp, Telegram, email) lalu buka di laptop.",
+  "Account created. Confirm your email from your inbox, then open r-multicam.pages.dev on your laptop or PC and sign in there to download.": "Akun dibuat. Konfirmasi email dari inbox-mu, lalu buka r-multicam.pages.dev di laptop atau PC dan masuk di sana untuk mengunduh.",
+  "Signed in. To install, open r-multicam.pages.dev on your laptop or PC and sign in with the same email.": "Sudah masuk. Untuk instal, buka r-multicam.pages.dev di laptop atau PC dan masuk dengan email yang sama.",
+  "Copy link for my laptop": "Salin link untuk laptopku",
+  "Link copied": "Link tersalin",
+  "The plugin installs on your laptop or PC. Open r-multicam.pages.dev there, sign in, download the plugin and sign in inside Premiere. If you still need confirmation, open the link from your inbox or request a new email.": "Plugin diinstal di laptop atau PC. Buka r-multicam.pages.dev di sana, masuk, unduh plugin lalu masuk di dalam Premiere. Kalau email belum dikonfirmasi, buka link dari inbox atau minta email baru.",
+  "Next step on your laptop or PC: open r-multicam.pages.dev, sign in with this email and download the Windows or macOS installer. Your 7-day trial starts on first plugin activation.": "Langkah berikutnya di laptop atau PC: buka r-multicam.pages.dev, masuk dengan email ini lalu unduh installer Windows atau macOS. Trial 7 hari dimulai saat plugin pertama kali diaktifkan.",
   "You already started a payment for your previous checkout. Finish it, or wait until it expires (up to 24 hours), then try again.": "Kamu sudah memulai pembayaran untuk checkout sebelumnya. Selesaikan, atau tunggu sampai kedaluwarsa (paling lama 24 jam), lalu coba lagi.",
   "Your previous checkout changed a moment ago. Please try again.": "Checkout sebelumnya baru saja berubah. Silakan coba lagi.",
   "Promo service is temporarily unavailable.": "Layanan kode promo sedang tidak tersedia untuk sementara.",
@@ -265,6 +280,10 @@
   "DaVinci Resolve download started. Extract the ZIP, run Install-DaVinci.bat, then in DaVinci Resolve choose Workspace > Scripts > R Project Multicam AI.": "Unduhan DaVinci Resolve dimulai. Ekstrak ZIP, jalankan Install-DaVinci.bat, lalu di DaVinci Resolve pilih Workspace > Scripts > R Project Multicam AI."
  },
  "patterns": [
+  [
+   "^Copy this link and open it on your laptop: (.+)$",
+   "Salin link ini lalu buka di laptop: $1"
+  ],
   [
    "^Something went wrong \\(([A-Z0-9_]+)\\)\\. Please try again or contact support\\.$",
    "Terjadi kesalahan ($1). Coba lagi atau hubungi support."
