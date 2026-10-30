@@ -209,11 +209,17 @@ function* syncCameraSteps(master,clips,opts){
  for(pi=0;pi<probes.length;pi++){try{full[probes[pi].id]=matchFull(master,probes[pi].env,{excerptStart:probes[pi].excerptStart});}catch(e){}yield;}
  // Two project items of one file with the same In point are one piece of evidence, not two agreeing clips.
  function anchorFrom(all){var best=null,bestW=0,bestN=0,seen={},list=all.filter(function(d){var k=(d.clip.file||d.clip.fileName||'#'+d.clip.id)+'|'+(Number(d.clip.sourceIn)||0)+'|'+d.clip.created;if(seen[k])return false;seen[k]=true;return true;});list.forEach(function(c){var a0=c.created-c.offset,support=list.filter(function(d){return Math.abs(d.created-d.offset-a0)<=2.5;}),w=support.reduce(function(n,d){return n+weight(d.confidence);},0);if(w>bestW){bestW=w;bestN=support.length;best=support.reduce(function(n,d){return n+(d.created-d.offset)*weight(d.confidence);},0)/w;}});return {anchor:best,weight:bestW,support:bestN,distinct:list.length};}
- var seeds=probes.filter(function(c){return full[c.id]&&weight(full[c.id].confidence)>0;}).map(function(c){return {created:c.created,offset:full[c.id].offset,confidence:full[c.id].confidence,duration:c.duration,clip:c};}),A=anchorFrom(seeds);
+ var seeds=probes.filter(function(c){return full[c.id]&&weight(full[c.id].confidence)>0;}).map(function(c){return {created:c.created,offset:full[c.id].offset,confidence:full[c.id].confidence,duration:c.duration,clip:c};});
+ // A medium match whose end excerpt, searched separately over the whole music, lands on the same offset (within
+ // SINGLE_END_AGREE) is two independent matches of one clip: it weighs as high for the clock (the single-take rule below
+ // trusts the same evidence). New zumana cam 2 (DJI Osmo, split take 0003 + 0004, both medium): 0003 start -41.31 s,
+ // end -41.34 s, so the DJI clock is trusted and the drone bridges through it. Only the anchor weight changes.
+ for(pi=0;pi<seeds.length;pi++){if(seeds[pi].confidence!=='medium')continue;yield;if(endAgrees(seeds[pi]))seeds[pi].confidence='high';}
+ var A=anchorFrom(seeds);
  // Not enough agreeing long clips: try the next ones before giving up on the clock.
  for(var more=anchorClips;!(A.weight>=3&&A.support>=2)&&more<timed.length&&more<anchorClips+8;more++){
   var c2=timed.slice().sort(function(a,b){return b.duration-a.duration;})[more];if(!c2)break;try{full[c2.id]=matchFull(master,c2.env,{excerptStart:c2.excerptStart});}catch(e){continue;}
-  if(weight(full[c2.id].confidence)>0){seeds.push({created:c2.created,offset:full[c2.id].offset,confidence:full[c2.id].confidence,duration:c2.duration,clip:c2});A=anchorFrom(seeds);}
+  if(weight(full[c2.id].confidence)>0){var sd2={created:c2.created,offset:full[c2.id].offset,confidence:full[c2.id].confidence,duration:c2.duration,clip:c2};if(sd2.confidence==='medium'){yield;if(endAgrees(sd2))sd2.confidence='high';}seeds.push(sd2);A=anchorFrom(seeds);}
   yield;
  }
  // A camera filmed in one long take has no second clip to cross-check its clock. When it is the only clip that
@@ -270,6 +276,10 @@ function* syncCameraSteps(master,clips,opts){
     yield;var e4=null,s4=null;try{e4=matchFull(master,c.endEnv,{excerptStart:c.endExcerptStart});}catch(e){e4=null;}
     if(e4&&RANK[e4.confidence]>=minRank){try{s4=matchWindow(master,c.env,{excerptStart:c.excerptStart,expectedOffset:e4.offset,radius:1,clockBound:Infinity});}catch(e){s4=null;}
      if(s4&&RANK[s4.confidence]>=minRank&&Math.abs(s4.offset-e4.offset)<=.25)r={offset:s4.offset,confidence:RANK[s4.confidence]<RANK[e4.confidence]?s4.confidence:e4.confidence,method:'audio (start+end)',score:s4.score,agree:s4.agree,margin:s4.margin};
+     // Placed at the end's offset, the start excerpt lies mostly before the music or in an A1 gap: nothing there to confirm
+     // (new zumana cam 1, a 73 min take that began 27 min before the recording: end -1608.69 s high 7/7). A high end
+     // places it alone, as an end past the music leaves a placed start alone in driftCheck.
+     else if(e4.confidence==='high'&&!excerptInMusic(e4.offset+c.excerptStart,c.env.onset.length))r={offset:e4.offset,confidence:e4.confidence,method:'audio (end)',score:e4.score,agree:e4.agree,margin:e4.margin};
      else{out[c.id]={id:c.id,status:'review',offset:e4.offset,confidence:'low',method:'audio (end)',agree:e4.agree,margin:e4.margin,reason:'audio at the start of this clip is unclear; its end matches at '+e4.offset.toFixed(2)+' s but the start does not confirm it'};continue;}}
    }
    if(RANK[r.confidence]<minRank){out[c.id]={id:c.id,status:'review',offset:r.offset,confidence:r.confidence,method:'audio',agree:r.agree,margin:r.margin,reason:'audio match unclear and no trusted camera clock'};continue;}
@@ -283,10 +293,18 @@ function* syncCameraSteps(master,clips,opts){
  // flat at its floor) has nothing to match, so the clip stays placed; so does one whose end excerpt is under 3 s
  // (camera audio shorter than its video, a truncated tail).
  function endUsable(c){return !!c.endEnv&&isFinite(c.endExcerptStart)&&c.endEnv.onset.length>=RATE*3;}
- function endInMusic(c,offset){
-  var t0=Math.round((offset+c.endExcerptStart)*RATE),t1=t0+c.endEnv.onset.length,lv=master.level,music=0;
+ function endInMusic(c,offset){return excerptInMusic(offset+c.endExcerptStart,c.endEnv.onset.length);}
+ /** An excerpt of n envelope samples placed at master time `at` (s) lies at least half inside music (level not flat). */
+ function excerptInMusic(at,n){
+  var t0=Math.round(at*RATE),t1=t0+n,lv=master.level,music=0;
   for(var t=Math.max(1,t0+1);t<Math.min(master.n,t1);t++)if(lv[t]!==lv[t-1])music++;
   return music>=(t1-t0)/2;
+ }
+ /** A seed's end excerpt, searched over the whole music, lands within SINGLE_END_AGREE of its start (medium or better). */
+ function endAgrees(sd){
+  var sc=sd.clip;if(!endUsable(sc)||!endInMusic(sc,sd.offset))return false;
+  var e=null;try{e=matchFull(master,sc.endEnv,{excerptStart:sc.endExcerptStart});}catch(err){e=null;}
+  return !!e&&RANK[e.confidence]>=1&&Math.abs(e.offset-sd.offset)<=SINGLE_END_AGREE;
  }
  function driftCheck(c,r){
   if(!endUsable(c))return;
