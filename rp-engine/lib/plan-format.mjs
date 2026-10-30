@@ -91,6 +91,9 @@ export function buildPlan({ engine, analysis, cameras, points, snapshot, directo
   };
 }
 
+/** Slack (seconds) allowed when checking that a camera covers a cut; the director and the validator share it. */
+export const coverageTolerance = (frame) => frame / 2 + 1e-6;
+
 /** True when [start, end] is fully inside the union of the clips' timeline ranges. */
 function covered(clips, start, end, tol) {
   const ranges = clips.map((k) => [k.offset, k.offset + k.duration]).sort((a, b) => a[0] - b[0]);
@@ -109,12 +112,21 @@ export function validatePlan(plan) {
   const tl = plan.timeline || {};
   need(tl.fps && Number.isInteger(tl.fps.num) && Number.isInteger(tl.fps.den) && tl.fps.num > 0 && tl.fps.den > 0, "timeline.fps must be integer num/den");
   need(Number.isInteger(tl.duration_frames) && tl.duration_frames > 0, "timeline.duration_frames must be a positive integer");
+  const music = plan.music || {};
+  need(typeof music.file === "string" && music.file.length > 0, "music.file is required");
+  need(music.name === undefined || (typeof music.name === "string" && music.name.length > 0), "music.name must be a non-empty string");
+  need(Number.isFinite(music.duration) && music.duration > 0, "music.duration must be a positive number");
   need(Array.isArray(plan.cameras) && plan.cameras.length > 0, "cameras must be a non-empty array");
   need(Array.isArray(plan.cuts) && plan.cuts.length > 0, "cuts must be a non-empty array");
   if (errors.length) return errors;
   const frame = tl.fps.den / tl.fps.num;
+  const angleIds = new Set();
   plan.cameras.forEach((c, i) => {
     need(c.index === i, `cameras[${i}].index must be ${i}`);
+    need(typeof c.angle_id === "string" && c.angle_id.length > 0, `cameras[${i}].angle_id is required`);
+    need(c.angle_id !== "music", `cameras[${i}].angle_id must not be "music" (reserved for the music angle)`);
+    need(!angleIds.has(c.angle_id), `cameras[${i}].angle_id "${c.angle_id}" is used by another camera`);
+    angleIds.add(c.angle_id);
     need(Array.isArray(c.clips), `cameras[${i}].clips must be an array`);
     (c.clips || []).forEach((k, j) => {
       need(typeof k.file === "string" && k.file.length > 0, `cameras[${i}].clips[${j}].file is required`);
@@ -128,7 +140,8 @@ export function validatePlan(plan) {
     cursor = c.end_frame;
     need(c.camera === -1 || (Number.isInteger(c.camera) && c.camera >= 0 && c.camera < plan.cameras.length), `cuts[${i}].camera ${c.camera} is not a camera index`);
     if (c.camera >= 0 && plan.cameras[c.camera]) {
-      const cam = plan.cameras[c.camera], tol = frame / 2 + 1e-6;
+      const cam = plan.cameras[c.camera], tol = coverageTolerance(frame);
+      need(c.angle_id == null || c.angle_id === cam.angle_id, `cuts[${i}].angle_id "${c.angle_id}" does not match cameras[${c.camera}].angle_id "${cam.angle_id}"`);
       need(covered(cam.clips || [], c.start_frame * frame, c.end_frame * frame, tol), `cuts[${i}] uses ${cam.angle_id || "camera " + c.camera} outside its recorded range`);
     }
     if (i > 0) need(plan.cuts[i - 1].camera !== c.camera, `cuts[${i}] repeats the previous camera (merge it)`);

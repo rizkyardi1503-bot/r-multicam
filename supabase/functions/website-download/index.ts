@@ -1,9 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const browserOrigins = new Set(["https://r-multicam.pages.dev","http://127.0.0.1:8765"]);
+// Cloudflare Pages preview deployments: https://<deployment-or-branch>.r-multicam.pages.dev (one label, https only).
+const previewOrigin = /^https:\/\/[a-z0-9-]+\.r-multicam\.pages\.dev$/;
+const allowedOrigin = (origin: string) => browserOrigins.has(origin) || previewOrigin.test(origin);
 const filenames: Record<string, string> = {
-  windows: "R-Project-Multicam-AI-Windows-v2.3.11.13-PUBLIC.zip",
-  macos: "R-Project-Multicam-AI-macOS-v2.3.11.13-PUBLIC.zip"
+  windows: "R-Project-Multicam-AI-Windows-v2.3.11.14-PUBLIC.zip",
+  macos: "R-Project-Multicam-AI-macOS-v2.3.11.14-PUBLIC.zip"
 };
 // DaVinci Resolve is "coming soon" on the website; its zip stays in the bucket but is not served yet.
 // Installers are served only from the private plugin-installers bucket, after sign-in.
@@ -11,7 +14,7 @@ const filenames: Record<string, string> = {
 function corsHeaders(req: Request) {
   const origin = req.headers.get("origin") || "";
   return {
-    ...(browserOrigins.has(origin) ? { "access-control-allow-origin": origin } : {}),
+    ...(allowedOrigin(origin) ? { "access-control-allow-origin": origin } : {}),
     "access-control-allow-headers": "authorization, apikey, content-type",
     "access-control-allow-methods": "GET, OPTIONS",
     "access-control-expose-headers": "content-disposition, content-length, x-rproject-download-source",

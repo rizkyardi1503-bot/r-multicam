@@ -1,12 +1,14 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const origins = new Set(['https://r-multicam.pages.dev','http://127.0.0.1:8765']);
+// Cloudflare Pages preview deployments: https://<deployment-or-branch>.r-multicam.pages.dev (one label, https only).
+const allowedOrigin = (origin: string) => origins.has(origin) || /^https:\/\/[a-z0-9-]+\.r-multicam\.pages\.dev$/.test(origin);
 Deno.serve(async (req: Request) => {
  const origin=req.headers.get('origin')||'';
- const headers={'content-type':'application/json','cache-control':'no-store','vary':'Origin',...(origins.has(origin)?{'access-control-allow-origin':origin}:{}),'access-control-allow-methods':'POST, OPTIONS','access-control-allow-headers':'authorization,apikey,content-type'};
+ const headers={'content-type':'application/json','cache-control':'no-store','vary':'Origin',...(allowedOrigin(origin)?{'access-control-allow-origin':origin}:{}),'access-control-allow-methods':'POST, OPTIONS','access-control-allow-headers':'authorization,apikey,content-type'};
  const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers});
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers});
  if(req.method!=='POST')return json({error:'METHOD_NOT_ALLOWED'},405);
- if(origin&&!origins.has(origin))return json({error:'ORIGIN_NOT_ALLOWED'},403);
+ if(origin&&!allowedOrigin(origin))return json({error:'ORIGIN_NOT_ALLOWED'},403);
  try {
   const url=Deno.env.get('SUPABASE_URL')!,key=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const token=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');

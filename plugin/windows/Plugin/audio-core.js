@@ -23,6 +23,49 @@ api.features=function(){
   }
  },result:function(){return {rms:rms,bass:bass,subbass:subbass,mid:mid,high:high,transient:transient,flux:flux};}};
 };
+// Bar and phrase labels per stretch. One beat%4 over the whole file let a single dropped beat or the next track of a
+// DJ set shift every later bar label (on a real 93 min set the drops landed on beats 1-4 uniformly).
+//  - a stretch restarts at a gap of more than 1.5 beat periods and where breaks[i] is set (tempo path change);
+//  - bar phase: Viterbi over the beats, state = position in the bar. Advancing costs nothing, a phase change inside a
+//    stretch costs BAR_RESET (about eight downbeats of evidence, a ~32-beat vote). Evidence for a downbeat: the beat's
+//    accent (kick/bass attack) plus half the level change around it, both z-scored over +-16 beats;
+//  - phrase position (bar in a 16-bar phrase): the same over the downbeats, evidence = the level change (low band and
+//    full band, 4 beats after against 4 before): sections start on phrase boundaries.
+var BAR_RESET=8,PHRASE_RESET=6;
+function barGrid(times,accent,feature,breaks){
+ var n=times.length,grid=[],i,j,s;if(!n)return grid;
+ var rms=feature.rms||[],bass=feature.bass||[],sub=feature.subbass||[],N=rms.length,pL=new Float64Array(N+1),pR=new Float64Array(N+1);
+ for(i=0;i<N;i++){var b=Number(bass[i])||0,u=Number(sub[i])||0,r=Number(rms[i])||0;pL[i+1]=pL[i]+b*b+u*u;pR[i+1]=pR[i]+r*r;}
+ function lvl(p,a,z){if(!N)return 0;a=Math.max(0,Math.min(N-1,a));z=Math.max(a+1,Math.min(N,z));return Math.log(1e-12+(p[z]-p[a])/(z-a));}
+ var eL=new Float64Array(n),eR=new Float64Array(n),per=new Float64Array(n);
+ for(i=0;i<n;i++){var a0=Math.round(times[i]*100),z0=i+1<n?Math.round(times[i+1]*100):a0+Math.round((i?times[i]-times[i-1]:.5)*100);eL[i]=lvl(pL,a0,z0);eR[i]=lvl(pR,a0,z0);}
+ function change(e,x){if(x<4||x+4>n)return 0;var a=0,c=0;for(var q=0;q<4;q++){a+=e[x+q];c+=e[x-1-q];}return Math.abs(a-c)/4;}
+ function z(v){var o=new Float64Array(n),s1=0,s2=0,lo=0,hi=0;for(var x=0;x<n;x++){while(hi<Math.min(n,x+16)){s1+=v[hi];s2+=v[hi]*v[hi];hi++;}while(lo<x-16){s1-=v[lo];s2-=v[lo]*v[lo];lo++;}var c=hi-lo,m=s1/c,sd=Math.sqrt(Math.max(0,s2/c-m*m));o[x]=sd>1e-9+1e-6*Math.abs(m)?(v[x]-m)/sd:0;}return o;}
+ var nov=new Float64Array(n),nL=new Float64Array(n),nR=new Float64Array(n);for(i=0;i<n;i++){nL[i]=change(eL,i);nR[i]=change(eR,i);}nL=z(nL);nR=z(nR);for(i=0;i<n;i++)nov[i]=nL[i]+nR[i];
+ var acc=new Float64Array(n);for(i=0;i<n;i++)acc[i]=Number(accent[i])||0;acc=z(acc);
+ // stretch starts
+ for(i=0;i<n;i++){var v=[];for(j=Math.max(1,i-8);j<Math.min(n,i+9);j++)v.push(times[j]-times[j-1]);v.sort(function(x,y){return x-y;});per[i]=v.length?v[v.length>>1]:0;}
+ var start=new Uint8Array(n);start[0]=1;for(i=1;i<n;i++)if(times[i]-times[i-1]>1.5*per[i]||(breaks&&breaks[i]))start[i]=1;
+ // bar phase
+ var cur=[0,0,0,0],back=new Int8Array(n*4),lab=new Int8Array(n);
+ for(i=0;i<n;i++){var mx=Math.max(cur[0],cur[1],cur[2],cur[3]),mi=cur.indexOf(mx),nx=[0,0,0,0];
+  for(s=0;s<4;s++){var adv=cur[(s+3)&3];if(!start[i]&&adv>=mx-BAR_RESET){nx[s]=adv;back[i*4+s]=(s+3)&3;}else{nx[s]=start[i]?mx:mx-BAR_RESET;back[i*4+s]=mi;}if(!s)nx[s]+=acc[i]+.5*nov[i];}
+  cur=nx;}
+ s=cur.indexOf(Math.max(cur[0],cur[1],cur[2],cur[3]));for(i=n-1;i>=0;i--){lab[i]=s;s=back[i*4+s];}
+ // phrase position over the downbeats
+ var db=[];for(i=0;i<n;i++)if(lab[i]===0)db.push(i);
+ var S=16,pc=new Float64Array(S),pb=new Int8Array(db.length*S),pos=new Int16Array(n).fill(-1),brk=new Uint8Array(db.length);
+ for(var k=0;k<db.length;k++){brk[k]=!k||db[k]-db[k-1]!==4?1:0;for(j=k?db[k-1]+1:0;j<=db[k]&&!brk[k];j++)if(start[j])brk[k]=1;
+  var pm=-Infinity,pmi=0;for(s=0;s<S;s++)if(pc[s]>pm){pm=pc[s];pmi=s;}var pn=new Float64Array(S);
+  for(s=0;s<S;s++){var pa=pc[(s+S-1)%S];if(!brk[k]&&pa>=pm-PHRASE_RESET){pn[s]=pa;pb[k*S+s]=(s+S-1)%S;}else{pn[s]=brk[k]?pm:pm-PHRASE_RESET;pb[k*S+s]=pmi;}if(!s)pn[s]+=nov[db[k]];}
+  pc=pn;}
+ if(db.length){var ps=0;for(s=1;s<S;s++)if(pc[s]>pc[ps])ps=s;for(k=db.length-1;k>=0;k--){pos[db[k]]=ps;ps=pb[k*S+ps];}}
+ var bar=0,phraseCount=0,lastPos=-2;
+ for(i=0;i<n;i++){var isDown=lab[i]===0,p=pos[i];if(isDown){bar++;if(p===0)phraseCount=(lastPos>=0&&lastPos===S-1)?phraseCount+1:0;lastPos=p;}
+  grid.push({time:times[i],strength:0,beat_in_bar:lab[i]+1,is_downbeat:isDown,bar:Math.max(1,bar),phrase8:isDown&&p%8===0,phrase16:isDown&&p===0,phrase32:isDown&&p===0&&phraseCount%2===0});}
+ return grid;
+}
+api.barGrid=barGrid;
 // v18 tracker (per-window tempo and phase), kept for comparison benchmarks.
 api.analyzeV18=async function(feature,options){
  options=options||{};
@@ -103,11 +146,10 @@ api.analyzeV18=async function(feature,options){
   var energyJump=before>1e-7&&after/before>3.2;
   markers.push({time:beats[i].time,reason:energyJump?'Energy change':'Beat',strength:beats[i].strength});
  }
- // Infer bar/downbeat phase from repeating beat-strength accents. This is evidence, not a guaranteed musical label.
- var phaseScores=[0,0,0,0];for(i=0;i<beats.length;i++)phaseScores[i%4]+=Number(beats[i].strength)||0;var downPhase=0;for(i=1;i<4;i++)if(phaseScores[i]>phaseScores[downPhase])downPhase=i;
- var grid=[];for(i=0;i<beats.length;i++){var isDown=(i%4)===downPhase,bar=Math.floor((i-downPhase)/4)+1;grid.push({time:beats[i].time,strength:beats[i].strength||0,beat_in_bar:((i-downPhase)%4+4)%4+1,is_downbeat:isDown,bar:Math.max(1,bar),phrase8:isDown&&bar>0&&((bar-1)%8===0),phrase16:isDown&&bar>0&&((bar-1)%16===0),phrase32:isDown&&bar>0&&((bar-1)%32===0)});}
+ // Bar/downbeat phase per stretch from beat-strength accents (see barGrid). Evidence, not a guaranteed musical label.
+ var grid=barGrid(beats.map(function(x){return x.time;}),beats.map(function(x){return x.strength;}),feature,null);for(i=0;i<grid.length;i++)grid[i].strength=beats[i].strength||0;
  progress(1);
- return {markers:markers,beatCount:beats.length,tempos:tempos,tempoMap:measuredTempo,grid:grid,downbeatPhase:downPhase};
+ return {markers:markers,beatCount:beats.length,tempos:tempos,tempoMap:measuredTempo,grid:grid,downbeatPhase:grid.length?(4-grid[0].beat_in_bar+1)%4:0};
 };
 // v19 beat tracker. One tempo path for the whole clip and one continuous beat chain:
 //  - onset strength: low band, broad band and transients, with a level floor so a bass swell rising out of a
@@ -191,6 +233,24 @@ api.analyze=async function(feature,options){
   D[w][q]=bv+cands[w][q].cost;B[w][q]=bi;}}
  var path=new Array(cands.length),last=cands.length-1,bq=0;
  if(last>=0){for(q=1;q<D[last].length;q++)if(D[last][q]<D[last][bq])bq=q;for(w=last;w>=0;w--){path[w]=cands[w][bq];bq=B[w][bq];}}
+ // A breakdown can read its off-beat pattern as 4/3, 3/2, 2 or 1/2 times the music's tempo (176.5 BPM for 24 s inside
+ // 132 BPM in a real set) when its evidence is weak. The path is split into stretches (consecutive windows within 3 %).
+ // An anchor is a stretch of at least 8 windows with clear evidence (mean best evidence >= .45), or of 30 windows (2 min,
+ // a track) at any evidence. Any other stretch at such a ratio to the nearest anchor (else the anchor on the other side)
+ // takes that anchor's tempo. Only anchors are references, so no stretch copies a tempo that is replaced itself, and
+ // stretches at other ratios (a DJ pitch change, the next track) keep their own tempo.
+ var HARM=[4/3,3/4,3/2,2/3,2,.5],runs=[];
+ function harmonic(x,y){var lr=Math.log(x/y);for(var h=0;h<HARM.length;h++)if(Math.abs(lr-Math.log(HARM[h]))<.03)return true;return false;}
+ for(w=0;w<path.length;w++){if(w&&Math.abs(Math.log(path[w].L/path[w-1].L))<.03)runs[runs.length-1].b=w;else runs.push({a:w,b:w});}
+ runs.forEach(function(R2){var eS=0,eN=0,len=R2.b-R2.a+1;for(var w2=R2.a;w2<=R2.b;w2++)if(wins[w2].ok){var bw=-Infinity;for(var q2=0;q2<cands[w2].length;q2++)bw=Math.max(bw,cands[w2][q2].e);eS+=bw;eN++;}R2.anchor=len>=8&&((eN&&eS/eN>=.45)||len>=30);});
+ for(var ri=0;ri<runs.length;ri++){
+  var R=runs[ri],Lr=path[R.a].L,refs=[];if(R.anchor)continue;
+  for(var la=ri-1;la>=0&&!runs[la].anchor;la--);for(var ra=ri+1;ra<runs.length&&!runs[ra].anchor;ra++);
+  if(la>=0)refs.push({d:R.a-runs[la].b,L:path[runs[la].b].L});if(ra<runs.length)refs.push({d:runs[ra].a-R.b,L:path[runs[ra].a].L});refs.sort(function(x,y){return x.d-y.d;});
+  var ref=null;for(var rf=0;rf<refs.length;rf++)if(Math.abs(Math.log(Lr/refs[rf].L))>=.03&&harmonic(Lr,refs[rf].L)){ref=refs[rf].L;break;}
+  if(ref===null)continue;
+  for(w=R.a;w<=R.b;w++){var pick=null;for(q=0;q<cands[w].length;q++){var dq=Math.abs(Math.log(cands[w][q].L/ref));if(dq<.03&&(!pick||dq<Math.abs(Math.log(pick.L/ref))))pick=cands[w][q];}path[w]=pick||{L:ref,e:wins[w].ok?comb(wins[w].ac,ref):0,cost:0};}
+ }
  // Period per frame (linear between window centres).
  var per=new Float64Array(N);
  for(i=0;i<N;i++){var x=i/HOP-.5,w0=Math.max(0,Math.min(path.length-1,Math.floor(x))),w1=Math.min(path.length-1,w0+1),t=Math.max(0,Math.min(1,x-w0));per[i]=path.length?path[w0].L*(1-t)+path[w1].L*t:L0;}
@@ -246,7 +306,19 @@ api.analyze=async function(feature,options){
  // section (same tempo, exact phase) instead of following those hats. A stretch whose own pulse runs at a
  // different tempo keeps the chain.
  var KICK=.25;
- function isKick(t){var ww=Math.max(0,Math.min(wins.length-1,Math.floor(t*rate/HOP)));return clarity[ww*3]>=KICK;}
+ // Clarity is blind to phase and level: off-beat percussion in a kickless breakdown pulses in the low band too, the
+ // chain follows it half a beat off, and the stretch passed as a kick section (kept its chain). Kick level per window:
+ // the low-band attack at the chain beats is at least that between them (not an off-beat low pulse) and at least half
+ // the typical kick attack within +-60 s (a local reference, so a quieter track is judged against itself). It only
+ // splits a kick section where the chain also runs half a beat off (see below); elsewhere sections are as before.
+ var kOn=new Float64Array(wins.length),kMid=new Float64Array(wins.length),kN=new Float64Array(wins.length),kRef=new Float64Array(wins.length),kAll=[];
+ for(k=0;k<times.length;k++){var wk=Math.max(0,Math.min(wins.length-1,Math.floor(times[k].t*rate/HOP))),nt=k+1<times.length?times[k+1].t:k?2*times[k].t-times[k-1].t:times[k].t+.5;kOn[wk]+=attack(times[k].t);kMid[wk]+=attack((times[k].t+nt)/2);kN[wk]++;}
+ var kClear=function(x){return kN[x]&&clarity[x*3]>=KICK&&kOn[x]>=kMid[x];};for(w=0;w<wins.length;w++)if(kClear(w))kAll.push(kOn[w]/kN[w]);kAll.sort(function(x,y){return x-y;});kAll=kAll.length?kAll[kAll.length>>1]:0;
+ for(w=0;w<wins.length;w++){var kl=[];for(var wq=Math.max(0,w-15);wq<=Math.min(wins.length-1,w+15);wq++)if(kClear(wq))kl.push(kOn[wq]/kN[wq]);kl.sort(function(x,y){return x-y;});kRef[w]=kl.length>=4?kl[kl.length>>1]:kAll;}
+ function kickLike(ww){return kN[ww]>0&&kOn[ww]>=kMid[ww]&&kOn[ww]/kN[ww]>=.5*kRef[ww];}
+ if(options.debug){options.debug.kOn=kOn;options.debug.kMid=kMid;options.debug.kN=kN;options.debug.kRef=kRef;}
+ function winAt(t){return Math.max(0,Math.min(wins.length-1,Math.floor(t*rate/HOP)));}
+ function isKick(t){return clarity[winAt(t)*3]>=KICK;}
  // The clarity window looks up to 10 s ahead, so a window can read clear before the kick enters: a kick
  // section starts (and ends) at a beat whose low-band attack is comparable to the section's typical kick.
  function attack(t){var c9=Math.round(t*rate),m9=0;for(var z9=Math.max(0,c9-3);z9<=Math.min(N-1,c9+3);z9++)m9=Math.max(m9,bands[0][z9]);return m9;}
@@ -254,8 +326,9 @@ api.analyze=async function(feature,options){
  function fit(arr){var m3=arr.length,sx3=0,sy3=0,sxx3=0,sxy3=0;for(var z=0;z<m3;z++){sx3+=z;sy3+=arr[z];sxx3+=z*z;sxy3+=z*arr[z];}var sl=(m3*sxy3-sx3*sy3)/(m3*sxx3-sx3*sx3);return {slope:sl,icp:(sy3-sl*sx3)/m3};}
  var segs=[],cur=null;
  for(k=0;k<times.length;k++){if(isKick(times[k].t)){if(cur&&times[k].t-times[k-1].t>1.5*pathPeriodAt(times[k].t))cur=null;if(!cur){cur={a:k,b:k};segs.push(cur);}else cur.b=k;}else cur=null;}
- segs.forEach(function(g){var at9=[];for(var z8=g.a;z8<=g.b;z8++)at9.push(attack(times[z8].t));var srt=at9.slice().sort(function(x,y){return x-y;}),md9=srt[srt.length>>1]||0;
-  while(g.a<g.b&&attack(times[g.a].t)<.5*md9)g.a++;while(g.b>g.a&&attack(times[g.b].t)<.5*md9)g.b--;});
+ function trim(g){var at9=[];for(var z8=g.a;z8<=g.b;z8++)at9.push(attack(times[z8].t));var srt=at9.slice().sort(function(x,y){return x-y;}),md9=srt[srt.length>>1]||0;
+  while(g.a<g.b&&attack(times[g.a].t)<.5*md9)g.a++;while(g.b>g.a&&attack(times[g.b].t)<.5*md9)g.b--;}
+ segs.forEach(trim);
  segs=segs.filter(function(g){return g.b-g.a+1>=8;});
  if(segs.length){
   var outT=[],strengthAt=function(t){var ii=Math.max(0,Math.min(N-1,Math.round(t*rate)));return onset[ii];};
@@ -266,23 +339,35 @@ api.analyze=async function(feature,options){
   // low band is active the beat chain follows those attacks (in a DJ set the next track's kick may sit at another
   // phase than the grid of the previous one).
   var lowQuiet=function(t0,t1){var n5=0,act=0;for(var tt3=t0;tt3<t1;tt3+=4){var ww4=Math.max(0,Math.min(wins.length-1,Math.floor(tt3*rate/HOP)));act+=activity[ww4*3];n5++;}return !n5||act/n5<.45;};
-  var consistent=function(P,t0,t1){if(!lowQuiet(t0,t1))return false;var n4=0,bad=0;for(var tt2=t0;tt2<t1;tt2+=4){if(!pulse(tt2))continue;n4++;if(Math.abs(Math.log(pathPeriodAt(tt2)/P))>.03)bad++;}return !n4||bad<=n4*.25;};
+  // Half-beat lock: the chain sits half a beat off the grid (origin + k*step) through a stretch without kick-level low
+  // attacks. That is off-beat percussion (its low-band leak keeps activity up), not the next track's kick.
+  var halfOff=function(origin,step,t0,t1){var m6=0,kl6=0,n6=0,h6=0;for(var tt6=t0;tt6<t1;tt6+=4){var ww6=Math.max(0,Math.min(wins.length-1,Math.floor(tt6*rate/HOP)));m6++;if(kN[ww6]>0&&kOn[ww6]/kN[ww6]>=.5*kRef[ww6])kl6++;}
+   if(!(step>0)||kl6>m6*.25)return false;for(var z6=0;z6<times.length;z6++){var t8=times[z6].t;if(t8<=t0||t8>=t1)continue;var f6=(t8-origin)/step;f6-=Math.floor(f6);n6++;if(f6>=.35&&f6<=.65)h6++;}return n6>=8&&h6>=n6*.6;};
+  // A stretch where the chain has (almost) no beats (they fell on frames read as silence) has nothing to follow: carry.
+  var chainEmpty=function(P,t0,t1){var c7=0;for(var z7=0;z7<times.length;z7++)if(times[z7].t>t0&&times[z7].t<t1)c7++;return t1-t0>4*P&&c7<.25*(t1-t0)/P;};
+  var consistent=function(P,t0,t1,origin,step){if(!lowQuiet(t0,t1)&&!halfOff(origin,step||P,t0,t1)&&!chainEmpty(step||P,t0,t1))return false;var n4=0,bad=0;for(var tt2=t0;tt2<t1;tt2+=4){if(!pulse(tt2))continue;n4++;if(Math.abs(Math.log(pathPeriodAt(tt2)/P))>.03)bad++;}return !n4||bad<=n4*.25;};
+  // Split a kick section at an inner stretch (>= 8 s) without kick-level low attacks where the chain runs half a beat
+  // off the grid of the kick beats before it: the gap logic below then carries that grid through it.
+  var split=[];segs.forEach(function(g){var a7=g.a;for(var z=g.a;z<=g.b;){if(kickLike(winAt(times[z].t))){z++;continue;}var e7=z;while(e7<=g.b&&!kickLike(winAt(times[e7].t)))e7++;
+   if(e7<=g.b&&z-a7>=8&&times[e7-1].t-times[z].t>=8){var eL=edge({a:a7,b:z-1},false);if(halfOff(eL.t,eL.P,times[z].t-1e-6,times[e7-1].t+1e-6)){split.push({a:a7,b:z-1});a7=e7;}}z=e7;}
+   split.push({a:a7,b:g.b});});
+  if(split.length>segs.length){split.forEach(trim);split=split.filter(function(g){return g.b-g.a+1>=8;});if(split.length)segs=split;}
   var keepChain=function(t0,t1){for(var z=0;z<times.length;z++)if(times[z].t>=t0&&times[z].t<t1)outT.push({t:times[z].t,s:times[z].s});};
   var firstLive=0;while(firstLive<N&&silent[firstLive])firstLive++;var lastLive=N-1;while(lastLive>0&&silent[lastLive])lastLive--;
   // before the first kick section
   var e0=edge(segs[0],true);
-  if(consistent(e0.P,firstLive/rate,e0.t)){var pre=[];for(var tb=e0.t-e0.P;tb>=firstLive/rate-1e-6;tb-=e0.P)pre.push(tb);pre.reverse();pre.forEach(function(t5){if(!silent[Math.round(t5*rate)])outT.push({t:t5,s:strengthAt(t5)});});}
+  if(consistent(e0.P,firstLive/rate,e0.t,e0.t)){var pre=[];for(var tb=e0.t-e0.P;tb>=firstLive/rate-1e-6;tb-=e0.P)pre.push(tb);pre.reverse();pre.forEach(function(t5){if(!silent[Math.round(t5*rate)])outT.push({t:t5,s:strengthAt(t5)});});}
   else keepChain(0,times[segs[0].a].t-1e-6);
   for(var g=0;g<segs.length;g++){
    segTimes(segs[g]).forEach(function(t6,z){outT.push({t:t6,s:times[segs[g].a+z].s});});
    if(g+1<segs.length){
     var eA=edge(segs[g],false),eB=edge(segs[g+1],true),Pm=(eA.P+eB.P)/2,gap=eB.t-eA.t,nb=Math.round(gap/Pm);
-    if(nb>=1&&Math.abs(gap/nb/Pm-1)<.03&&Math.abs(Math.log(eA.P/eB.P))<.03&&consistent(Pm,eA.t,eB.t)){for(var z2=1;z2<nb;z2++){var t7=eA.t+gap*z2/nb;if(!silent[Math.round(t7*rate)])outT.push({t:t7,s:strengthAt(t7)});}}
+    if(nb>=1&&Math.abs(gap/nb/Pm-1)<.03&&Math.abs(Math.log(eA.P/eB.P))<.03&&consistent(Pm,eA.t,eB.t,eA.t,gap/nb)){for(var z2=1;z2<nb;z2++){var t7=eA.t+gap*z2/nb;if(!silent[Math.round(t7*rate)])outT.push({t:t7,s:strengthAt(t7)});}}
     else keepChain(times[segs[g].b].t+1e-6,times[segs[g+1].a].t-1e-6);
    }
   }
   var e1=edge(segs[segs.length-1],false);
-  if(consistent(e1.P,e1.t,lastLive/rate)){for(var tf=e1.t+e1.P;tf<=lastLive/rate+1e-6;tf+=e1.P)if(!silent[Math.min(N-1,Math.round(tf*rate))])outT.push({t:tf,s:strengthAt(tf)});}
+  if(consistent(e1.P,e1.t,lastLive/rate,e1.t)){for(var tf=e1.t+e1.P;tf<=lastLive/rate+1e-6;tf+=e1.P)if(!silent[Math.min(N-1,Math.round(tf*rate))])outT.push({t:tf,s:strengthAt(tf)});}
   else keepChain(times[segs[segs.length-1].b].t+1e-6,Infinity);
   if(options.debug)options.debug.segs=segs.map(function(g2){var e2=edge(g2,true);return {from:times[g2.a].t,to:times[g2.b].t,beats:g2.b-g2.a+1,P:e2.P};});
   outT.sort(function(x,y){return x.t-y.t;});times=outT;
@@ -310,10 +395,13 @@ api.analyze=async function(feature,options){
   if(at>=100&&at+100<N){for(j=at-100;j<at;j++)before+=rms[j]*rms[j];for(j=at;j<at+100;j++)after+=rms[j]*rms[j];}
   markers.push({time:beats[i].time,reason:before>1e-7&&after/before>3.2?'Energy change':'Beat',strength:beats[i].strength});
  }
- var phaseScores=[0,0,0,0];for(i=0;i<beats.length;i++)phaseScores[i%4]+=Number(beats[i].strength)||0;var downPhase=0;for(i=1;i<4;i++)if(phaseScores[i]>phaseScores[downPhase])downPhase=i;
- var grid=[];for(i=0;i<beats.length;i++){var isDown=(i%4)===downPhase,bar=Math.floor((i-downPhase)/4)+1;grid.push({time:beats[i].time,strength:beats[i].strength||0,beat_in_bar:((i-downPhase)%4+4)%4+1,is_downbeat:isDown,bar:Math.max(1,bar),phrase8:isDown&&bar>0&&((bar-1)%8===0),phrase16:isDown&&bar>0&&((bar-1)%16===0),phrase32:isDown&&bar>0&&((bar-1)%32===0)});}
+ // Bar phase per stretch (see barGrid): accent = the beat's kick/bass attack; a stretch also restarts where the tempo
+ // path changes by more than 3 % (the next track of a DJ set).
+ var bTimes=beats.map(function(x){return x.time;}),bBreak=new Uint8Array(beats.length);
+ for(k=1;k<beats.length;k++){var wa=Math.min(path.length-1,Math.floor(bTimes[k-1]*rate/HOP)),wb=Math.min(path.length-1,Math.floor(bTimes[k]*rate/HOP));if(wa!==wb&&path[wa]&&path[wb]&&Math.abs(Math.log(path[wb].L/path[wa].L))>.03)bBreak[k]=1;}
+ var grid=barGrid(bTimes,bTimes.map(attack),feature,bBreak);for(i=0;i<grid.length;i++)grid[i].strength=beats[i].strength||0;
  progress(1);
- return {markers:markers,beatCount:beats.length,tempos:tempos,tempoMap:measuredTempo,grid:grid,downbeatPhase:downPhase};
+ return {markers:markers,beatCount:beats.length,tempos:tempos,tempoMap:measuredTempo,grid:grid,downbeatPhase:grid.length?(4-grid[0].beat_in_bar+1)%4:0};
 };
 api.timeline=function(results,snapshot){
  var points=[],meta=[],seen={};

@@ -46,6 +46,7 @@ function tempoStats(values){
  var confidence=clean.length>=4&&mad<2.5&&agree>=.6?'high':clean.length>=2&&mad<7?'medium':'low';
  return {bpm:Math.round(bpm),confidence:confidence,spread:Math.round(mad*10)/10,samples:clean.length,beatInterval:Math.round((60/bpm)*1000)/1000};
 }
+var DECODE_IDLE_MS=Number(root.RP_DECODE_IDLE_MS)||60000; // RP_DECODE_IDLE_MS: tests only
 var LITTLE_ENDIAN=new Uint8Array(new Uint32Array([1]).buffer)[0]===1;
 // Seek exactly: an input -ss on AAC audio (m4a, mp4/mov camera files) lands 8-64 ms off (even -ss 0 drops
 // the first AAC frame). Seek the input to 10 s before the start, then trim the rest after decoding: exact.
@@ -60,8 +61,12 @@ function decode(clip,ffmpeg,state,onProgress){
   var args=['-nostdin','-hide_banner','-v','error','-threads',String(profile.threads),'-filter_threads','1'].concat(seekArgs(clip.file,clip.input),['-t',(clip.end-clip.start).toFixed(6),
    '-map','0:a:0','-vn','-ac','1','-ar','8000','-af','highpass=f=20,lowpass=f=3800','-f','f32le','pipe:1']);
   var proc=r.cp.spawn(ffmpeg,args,{windowsHide:true,shell:false});state.process=proc;
-  function fail(err){if(!settled){settled=true;reject(err);}}
+  // A stalled FFmpeg (offline network drive, a hung codec) used to leave the analysis waiting forever. Without data for
+  // DECODE_IDLE_MS it is killed like Stop does, with its own message. A deliberate pause (memory check) does not count.
+  var lastData=Date.now(),idle=setInterval(function(){if(memoryPending)lastData=Date.now();if(settled||state.cancelled||Date.now()-lastData<DECODE_IDLE_MS)return;fail(Error('FFmpeg stopped sending audio for '+Math.round(DECODE_IDLE_MS/100)/10+' s while reading A1 ('+String(clip.file).split(/[\\/]/).pop()+'). Check that the media drive is reachable, then Analyze again.'));try{proc.kill();}catch(e){}},Math.min(5000,DECODE_IDLE_MS));
+  function fail(err){clearInterval(idle);if(!settled){settled=true;reject(err);}}
   proc.stdout.on('data',function(chunk){
+   lastData=Date.now();
    if(settled)return;
    if(state.cancelled){proc.kill();return;}
    try{
@@ -79,14 +84,14 @@ function decode(clip,ffmpeg,state,onProgress){
     // or an unbounded queue of pending memory checks during a long clip.
     if(!memoryPending&&Date.now()-memoryAt>=5000&&root.RPResourceGuard&&root.RPResourceGuard.preflight){
      memoryPending=true;memoryAt=Date.now();proc.stdout.pause();
-     root.RPResourceGuard.preflight(state,'audio decoding').then(function(){memoryPending=false;if(!settled&&!state.cancelled)proc.stdout.resume();},function(err){memoryPending=false;proc.kill();fail(err);});
+     root.RPResourceGuard.preflight(state,'audio decoding').then(function(){memoryPending=false;lastData=Date.now();if(!settled&&!state.cancelled)proc.stdout.resume();},function(err){memoryPending=false;proc.kill();fail(err);});
     }
    }catch(e){proc.kill();fail(e);}
   });
   proc.stderr.on('data',function(b){stderr=(stderr+b.toString()).slice(-2000);});
   proc.on('error',function(e){fail(Error('Could not start FFmpeg: '+e.message));});
   proc.on('close',function(code){
-   state.process=null;
+   clearInterval(idle);state.process=null;
    if(state.cancelled)return fail(Error('Analysis stopped.'));
    if(code!==0)return fail(Error('Cannot read A1 audio: '+stderr));
    if(sampleCount/8000<clip.end-clip.start-.15)return fail(Error('A1 media is shorter than the timeline clip. Check trimming or render A1 to WAV.'));

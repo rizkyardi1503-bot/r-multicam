@@ -7,11 +7,15 @@ function message(title, body, url, label) {
  document.querySelector('#notice-body').textContent = body;
  const link = document.querySelector('#notice-link'); const valid = safeUrl(url);
  link.hidden = !valid; if(valid) {link.href = valid; link.textContent = label; link.rel = 'noopener noreferrer';link.target = '_blank';} else link.removeAttribute('href');
- notice.showModal();
+ if (typeof notice.showModal === 'function') notice.showModal();
+ else { notice.setAttribute('open', ''); Object.assign(notice.style, { display: 'block', position: 'fixed', top: '24px', left: '0', right: '0', margin: '0 auto', zIndex: '1000' }); }
 }
+// Safari before 15.4 (macOS Catalina) has no <dialog>: without this the notice would sit open in the page.
+function closeNotice() { if (typeof notice.close === 'function') notice.close(); else { notice.removeAttribute('open'); notice.style.display = 'none'; } }
 if (notice) {
-document.querySelector('#close-notice').onclick = () => notice.close();
-document.querySelector('#notice-done').onclick = () => notice.close();
+if (typeof notice.showModal !== 'function') notice.style.display = 'none';
+document.querySelector('#close-notice').onclick = closeNotice;
+document.querySelector('#notice-done').onclick = closeNotice;
 // Fallback handlers; portal.js replaces them with the account dialog once it has loaded.
 if (config.checkoutOpen !== true) document.querySelectorAll('[data-buy]').forEach(button => { button.hidden = true; });
 document.querySelectorAll('[data-buy]').forEach(button => button.onclick = () => {

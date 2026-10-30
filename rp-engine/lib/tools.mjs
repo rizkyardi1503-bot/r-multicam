@@ -22,23 +22,51 @@ function writeFile(target, text) {
   return out;
 }
 
+/** Name of a part's output file: "set.rpplan.json" -> "set - Part 2.rpplan.json", in the same folder. */
+export function partFile(file, index, count) {
+  if (count <= 1) return file;
+  const renamed = path.basename(file).replace(/(\.rpplan)?(\.[^.]+)?$/, (m) => ` - Part ${index + 1}${m}`);
+  return path.join(path.dirname(file), renamed);
+}
+
+/**
+ * One CLI camera: FILE[=ROLE][@OFFSET_SECONDS]. The role starts at the LAST '=' (a folder or file
+ * name may contain '='); text after it that still has a path separator is part of the file name.
+ */
+export function parseCameraSpec(spec) {
+  let text = String(spec);
+  const cam = {};
+  const at = text.match(/@(-?\d+(?:\.\d+)?)$/);
+  if (at) { cam.offset = Number(at[1]); cam.sync = "none"; text = text.slice(0, at.index); }
+  const eq = text.lastIndexOf("=");
+  if (eq >= 0 && !/[\\/]/.test(text.slice(eq + 1))) {
+    const role = text.slice(eq + 1);
+    text = text.slice(0, eq);
+    if (role) cam.role = role;
+  }
+  return { file: text, ...cam };
+}
+
 function planDigest(plan, extra = {}) {
   const used = {};
-  for (const c of plan.cuts) if (c.camera >= 0) used[c.angle_id] = (used[c.angle_id] || 0) + c.duration;
+  const angleOf = (c) => c.angle_id ?? plan.cameras[c.camera]?.angle_id;
+  const lengthOf = (c) => (Number.isFinite(c.duration) ? c.duration : (c.end_frame - c.start_frame) * plan.timeline.fps.den / plan.timeline.fps.num);
+  for (const c of plan.cuts) if (c.camera >= 0) used[angleOf(c)] = (used[angleOf(c)] || 0) + lengthOf(c);
+  const startOf = (c) => (Number.isFinite(c.start) ? c.start : c.start_frame * plan.timeline.fps.den / plan.timeline.fps.num);
   return {
     ...extra,
-    model: plan.generator.model,
-    plugin_version: plan.generator.plugin_version,
+    model: plan.generator?.model,
+    plugin_version: plan.generator?.plugin_version,
     fps: `${plan.timeline.fps.num}/${plan.timeline.fps.den}`,
     duration_seconds: plan.timeline.duration,
     bpm: plan.music.bpm,
     bpm_confidence: plan.music.bpm_confidence,
-    drops: plan.music.drops.map((d) => ({ time: d.time, build_start: d.build_start, confidence: d.confidence })),
-    cameras: plan.cameras.map((c) => ({ angle: c.angle_id, role: c.role, clips_used: c.clips.length, clips_excluded: (c.excluded_clips || []).length, offsets: c.clips.slice(0, 6).map((k) => k.offset), sync: c.clips.map((k) => k.sync.confidence) })),
+    drops: (plan.music.drops || []).map((d) => ({ time: d.time, build_start: d.build_start, confidence: d.confidence })),
+    cameras: plan.cameras.map((c) => ({ angle: c.angle_id, role: c.role, clips_used: c.clips.length, clips_excluded: (c.excluded_clips || []).length, offsets: c.clips.slice(0, 6).map((k) => k.offset), sync: c.clips.map((k) => k.sync?.confidence) })),
     cut_count: plan.cuts.length,
-    longest_shot_seconds: Math.max(...plan.cuts.map((c) => c.duration)),
+    longest_shot_seconds: Math.max(...plan.cuts.map(lengthOf)),
     screen_time_seconds: Object.fromEntries(Object.entries(used).map(([k, v]) => [k, Math.round(v * 100) / 100])),
-    first_cuts: plan.cuts.slice(0, 12).map((c) => `${c.start.toFixed(2)}s ${c.angle_id || "gap"}${c.drop != null ? " [DROP]" : ""}`),
+    first_cuts: plan.cuts.slice(0, 12).map((c) => `${startOf(c).toFixed(2)}s ${angleOf(c) || "gap"}${c.drop != null ? " [DROP]" : ""}`),
     summary: plan.summary
   };
 }
@@ -69,8 +97,8 @@ export const TOOLS = [
         output: { type: "string", description: "Optional path to save the full analysis JSON." }
       }
     },
-    async run(args, progress) {
-      const a = await analyzeMusic(args.music, { sensitivity: args.sensitivity, progress });
+    async run(args, progress, ctx = {}) {
+      const a = await analyzeMusic(args.music, { sensitivity: args.sensitivity, progress, signal: ctx.signal });
       const fake = { choices: [], summaries: [] };
       const plan = buildPlan({ engine: a.engine, analysis: a, cameras: [], points: [], snapshot: { intervals: [] }, director: fake, fps: a.fps, frame: a.fps.den / a.fps.num, duration: a.duration, musicFile: path.resolve(args.music), cadences: [] });
       const music = plan.music;
@@ -104,14 +132,15 @@ export const TOOLS = [
         min_sync_confidence: { type: "string", enum: ["high", "medium", "low"], description: "Leave out clips synced below this confidence (default medium)." }
       }
     },
-    async run(args, progress) {
+    async run(args, progress, ctx = {}) {
       const common = {
+        signal: ctx.signal,
         cameras: args.cameras, cadences: args.cadences, dropCamera: args.drop_camera,
         sensitivity: args.sensitivity, vision: !!args.vision, fps: args.fps, minSyncConfidence: args.min_sync_confidence, cacheDir: args.cache_dir, progress
       };
       const parts = Array.isArray(args.music) ? args.music : [args.music];
       const plans = parts.length > 1 ? (await planSession({ ...common, parts })).plans : [await planMulticam({ ...common, music: parts[0] })];
-      const suffix = (file, i) => (plans.length > 1 ? file.replace(/(\.rpplan)?(\.[^.\/]+)?$/, (m) => ` - Part ${i + 1}${m}`) : file);
+      const suffix = (file, i) => partFile(file, i, plans.length);
       const out = plans.map((plan, i) => {
         const errors = validatePlan(plan);
         if (errors.length) throw new Error("Engine produced an invalid plan: " + errors.join("; "));

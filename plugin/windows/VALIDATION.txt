@@ -1,3 +1,10 @@
+v2.3.11.14 PUBLIC validation — 2026-10-30
+- Five independent code reviews (sync, music, Auto Cut host, licensing, website and payment) and a second review of
+  every fix; 79 plugin test runs pass on Windows and macOS, plus website, payment and rp-engine suites.
+- Real shoot (2 cameras, 106 min set): every camera clip placed at its audio position; Auto Cut plans every Cut Pace
+  with no shot under 4 beats; music analysis matches the previous release on kick alignment with breakdown misreads
+  fixed. Sync benchmark unchanged (no new wrong placements).
+
 v2.3.11.13 PUBLIC validation — 2026-10-25
 - Release, archive, token-refresh, signing, payment and website tests rerun; engine bench unchanged on both trees.
 - Windows update simulated end to end from older versions against the live endpoints.

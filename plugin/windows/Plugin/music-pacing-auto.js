@@ -38,25 +38,38 @@ function offsetBeats(map,t,n,fallback){
 // Each A1 clip (segments: [{start,end}] in sequence time) gets its own phase anchor, so two songs on A1 each stay on
 // their beat; inside a clip the grid re-locks its phase after 4 beats without a detected beat.
 function asc(a,b){return a-b;}
-function steadyGrid(raw,beat,duration,frame,segments){
+// Beat length the step band is centred on at time v: the engine tempo map (a set at 132 BPM may play 150 BPM for half an
+// hour), median-smoothed over 12 s against single-window misreads, and replaced by its 120 s median where it jumps
+// outside 0.8-1.25x of that: there the map read the off-beat pattern itself (176 in a 132 set = 4/3 x). Within 6% of the
+// set tempo (normal drift, which the step median follows anyway) and without a usable map: the set beat, as before.
+function localBeat(map,beat){
+ var m=(map||[]).filter(function(x){return x&&isFinite(x.time)&&Number(x.bpm)>=40&&Number(x.bpm)<=240;}).map(function(x){return {time:Number(x.time),bpm:Number(x.bpm)};}).sort(function(a,b){return a.time-b.time;});
+ if(m.length<2)return function(){return beat;};
+ function med(i,w,a){var v=[];for(var q=lower(m,m[i].time-w);q<m.length&&m[q].time<=m[i].time+w;q++)v.push(a[q]);v.sort(asc);return v[v.length>>1];}
+ var raw=m.map(function(x){return x.bpm;}),s=raw.map(function(_,i){return med(i,12,raw);}),ref=s.map(function(v,i){var L=med(i,120,s),r=v/L;return r>.8&&r<1.25?v:L;});
+ return function(v){var b=60/ref[Math.max(0,lower(m,v+.000001)-1)];return Math.abs(b/beat-1)<.06?beat:b;};
+}
+function steadyGrid(raw,beat,duration,frame,segments,map){
  var all=raw.filter(function(x){return isFinite(x)&&x>=0&&x<duration;}).sort(asc),out=[];
  function snap(x){return frame>0?Math.round(x/frame)*frame:x;}
  function push(x){x=snap(x);if(x>=0&&x<duration&&(!out.length||x-out[out.length-1]>.04))out.push(x);}
  if(!(beat>0))return out;
+ var ref=localBeat(map,beat);
  var segs=(segments||[]).filter(function(s){return isFinite(s.start)&&isFinite(s.end)&&s.end>s.start;}).map(function(s){return {start:Math.max(0,Number(s.start)),end:Math.min(duration,Number(s.end))};}).filter(function(s){return s.end>s.start;}).sort(function(a,b){return a.start-b.start;});
  if(!segs.length)segs=[{start:0,end:duration}];
  segs.forEach(function(seg){
   var t=all.filter(function(x){return x>=seg.start&&x<seg.end;}),i,j,x,L,due,hit;
-  if(t.length<8){for(x=seg.start;x<seg.end;x+=beat)push(x);return;}
-  // The step follows real drift but stays within 10% of the song tempo: a band that followed its own last value ratcheted
-  // down onto the off-beat pattern (3/4 beat in artbat and argy), as did a per-clip estimate of the most common gap.
+  if(t.length<8){for(x=seg.start;x<seg.end;x+=ref(x))push(x);return;}
+  // The step follows real drift but stays within 10% of the local tempo from the tempo map: a band that followed its own
+  // last value ratcheted down onto the off-beat pattern (3/4 beat in artbat and argy), as did a per-clip estimate of the
+  // most common gap; a band around the single set tempo could not follow a 150 BPM track in a 132 BPM set.
   var T=t.map(function(v){return {time:v};});
   function closest(v,win){var k=lower(T,v),best=null;for(var q=Math.max(0,k-2);q<Math.min(t.length,k+2);q++)if(Math.abs(t[q]-v)<=win&&(best===null||Math.abs(t[q]-v)<Math.abs(best-v)))best=t[q];return best;}
-  function step(v){var k=lower(T,v),w=[];for(var q=Math.max(1,k-24);q<Math.min(t.length,k+24);q++){var d=t[q]-t[q-1];if(d>beat*.9&&d<beat*1.1)w.push(d);}w.sort(asc);return w.length>=6?w[w.length>>1]:beat;}
+  function step(v){var k=lower(T,v),R=ref(v),w=[];for(var q=Math.max(1,k-24);q<Math.min(t.length,k+24);q++){var d=t[q]-t[q-1];if(d>R*.9&&d<R*1.1)w.push(d);}w.sort(asc);return w.length>=6?w[w.length>>1]:R;}
   // Next run of 4 detected beats evenly spaced at the current tempo, after v: where the beat continues after a phase jump.
   function relock(v,limit,cur){for(var k=lower(T,v);k+3<t.length&&t[k]<limit;k++){var ok=true;for(var q=k+1;q<=k+3;q++){var d=t[q]-t[q-1];if(!(d>cur*.9&&d<cur*1.1)){ok=false;break;}}if(ok)return t[k];}return null;}
   // Anchor on the phase most detected beats agree with (first 30 s of the clip), so an early off-beat hit cannot set it.
-  var anchor=t[0],support=-1;for(i=0;i<t.length&&t[i]<t[0]+30;i++){var n=0;for(j=i;j<t.length&&t[j]<t[i]+30;j++){var ph=(t[j]-t[i])/beat;ph-=Math.round(ph);if(Math.abs(ph)<.12)n++;}if(n>support){support=n;anchor=t[i];}}
+  var anchor=t[0],support=-1,B0=ref(t[0]);for(i=0;i<t.length&&t[i]<t[0]+30;i++){var n=0;for(j=i;j<t.length&&t[j]<t[i]+30;j++){var ph=(t[j]-t[i])/B0;ph-=Math.round(ph);if(Math.abs(ph)<.12)n++;}if(n>support){support=n;anchor=t[i];}}
   var head=[];for(x=anchor;;){L=step(x);due=x-L;if(due<=seg.start-L*.25)break;hit=closest(due,L*.1);x=hit===null?due:hit;head.unshift(Math.max(seg.start,x));}head.forEach(push);
   var miss=0;
   for(x=anchor;x<seg.end;){push(x);L=step(x);due=x+L;hit=closest(due,L*.1);
@@ -103,7 +116,7 @@ function apply(result,pacing,duration,maxPoints){duration=Number(duration)||0;en
  // Validated selected drops interrupt cadence and restart its beat count.
  if(pacing&&pacing.config&&pacing.config.userSelectedCadence){
   var range=result.snapshot&&result.snapshot.range||{start:0,end:duration},scopeStart=range.start,scopeEnd=range.end;
-  var steady=steadyGrid(grid.map(function(x){return x.time;}),Number(result.beatInterval)||60/Math.max(40,Number(result.tempo)||120),duration,frame,result.snapshot&&result.snapshot.clips||null);
+  var steady=steadyGrid(grid.map(function(x){return x.time;}),Number(result.beatInterval)||60/Math.max(40,Number(result.tempo)||120),duration,frame,result.snapshot&&result.snapshot.clips||null,map);
   grid=steady.map(function(t){return {time:t};});map=gridTempoMap(steady);result.beatFirst.tempo_map=map;result.beatFirst.steady_grid=steady;
   var at=scopeStart,previous=scopeStart,di=0,drops=(result.structure&&result.structure.events||[]).map(function(e){var raw=Number(e.drop_time);return {time:frame>0?Math.round(raw/frame)*frame:raw,confidence:Number(e.confidence_score)||0};}).filter(function(e){
    // A drop cut closer than 4 beats to Mark In/Out leaves an edge shot the 4-beat guard can never merge
@@ -111,6 +124,9 @@ function apply(result,pacing,duration,maxPoints){duration=Number(duration)||0;en
    // Such drops get no own cut; the director still gives the shot containing the drop its drop camera.
    return isFinite(e.time)&&e.time>scopeStart&&e.time<scopeEnd&&beatDistance(map,scopeStart,e.time,result.tempo)>=3.75&&beatDistance(map,e.time,scopeEnd,result.tempo)>=3.75;
   }).sort(function(a,b){return a.time-b.time;});
+  // Two drops under 4 beats apart (e.g. after impact alignment) each restarted the count, cutting a 2-beat shot the
+  // 4-beat guard then had to repair. Only the stronger one cuts and restarts the count (the earlier one on a tie).
+  drops=drops.reduce(function(kept,e){var p=kept[kept.length-1];if(p&&beatDistance(map,p.time,e.time,result.tempo)<3.75){if(e.confidence>p.confidence)kept[kept.length-1]=e;}else kept.push(e);return kept;},[]);
   // Count cadence on the detected beat grid (phase-accurate, no tempo drift); tempo stepping is only the fallback past the grid.
   var gi=lower(grid,scopeStart-1e-6);
   function nearestGrid(t){var k=lower(grid,t);if(k>0&&(k>=grid.length||t-grid[k-1].time<=grid[k].time-t))k--;return k;}

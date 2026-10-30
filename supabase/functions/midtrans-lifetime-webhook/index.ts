@@ -10,6 +10,13 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //  - unknown order ids (Midtrans dashboard test notifications) are acknowledged instead of retried forever.
 
 const enc = new TextEncoder();
+// Constant-time comparison for the Midtrans signature (no early exit on the first differing character).
+const safeEqual = (a: string, b: string) => {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+};
 const hex = (buf: ArrayBuffer) => Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const REFUND = new Set(["refund", "partial_refund", "chargeback", "partial_chargeback"]);
@@ -29,20 +36,22 @@ Deno.serve(async (req) => {
   if (!body?.order_id || !body?.signature_key) return json({ error: "BAD_NOTIFICATION" }, 400);
 
   const expected = hex(await crypto.subtle.digest("SHA-512", enc.encode(String(body.order_id) + String(body.status_code) + String(body.gross_amount) + serverKey)));
-  if (expected.toLowerCase() !== String(body.signature_key).toLowerCase()) return json({ error: "INVALID_SIGNATURE" }, 401);
+  if (!safeEqual(expected.toLowerCase(), String(body.signature_key).toLowerCase())) return json({ error: "INVALID_SIGNATURE" }, 401);
 
   const headers = { apikey: serviceKey, authorization: "Bearer " + serviceKey, "content-type": "application/json" };
   const rest = (path: string, init: RequestInit = {}) =>
     fetch(supabaseUrl + "/rest/v1/" + path, { ...init, headers: { ...headers, ...(init.headers || {}) }, signal: AbortSignal.timeout(10000) });
   const orderId = encodeURIComponent(String(body.order_id));
   // Owner alerts (refund, paid but not activated, duplicate payment). A failed write is logged, never retried by Midtrans.
+  // purchase_paid is sent by whichever path activates the order first (this webhook, check-lifetime-payment or the
+  // checkout reconcile); a unique index allows one per order, so 409 means another path already sent it.
   const alert = async (event_name: string, user_id: string, metadata: Record<string, unknown>) => {
     const r = await rest("website_analytics_events", {
       method: "POST",
       headers: { prefer: "return=minimal" },
       body: JSON.stringify({ event_name, user_id, path: "/", metadata })
     }).catch(() => null);
-    if (!r || !r.ok) console.error("owner alert not stored", event_name, String(metadata.order_id || ""), r ? r.status : "network");
+    if (!r || (!r.ok && r.status !== 409)) console.error("owner alert not stored", event_name, String(metadata.order_id || ""), r ? r.status : "network");
   };
 
   const q = await rest("plugin_payment_orders?order_id=eq." + orderId + "&select=*");
@@ -114,7 +123,7 @@ Deno.serve(async (req) => {
       await alert("purchase_paid_not_activated", order.user_id, { order_id: order.order_id });
       return json({ ok: true, warning: "PROFILE_NOT_FOUND_OR_BLOCKED" });
     }
-    if (!order.lifetime_activated_at) await alert("purchase_paid", order.user_id, { order_id: order.order_id, gross_amount_idr: Number(order.gross_amount_idr) });
+    if (!order.lifetime_activated_at) await alert("purchase_paid", order.user_id, { order_id: order.order_id, gross_amount_idr: Number(order.gross_amount_idr), via: "webhook" });
   } else if (refunded) {
     await alert("purchase_refunded", order.user_id, { order_id: order.order_id, status, gross_amount_idr: Number(order.gross_amount_idr) });
   }

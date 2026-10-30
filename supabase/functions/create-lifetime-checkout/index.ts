@@ -8,7 +8,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //    Midtrans order on every click (prevents paying twice from two tabs);
 //  - before creating a new order, recent orders are checked with Midtrans; an order that was already paid
 //    activates the license instead of asking the customer to pay again;
-//  - the response includes display_price_usd (the panel reads that field; it showed "US$undefined").
+//  - prices are IDR only: the response carries no USD figure (panels since v2.3.11.9 show gross_amount_idr);
+//  - a never-opened Snap checkout older than 24 h is closed as "expire" (Midtrans sends nothing for it);
+//  - activating a missed payment here sends the owner's purchase_paid alert (the webhook then skips it).
 // Needs the column added in supabase/migrations/20261015_payment_and_version_hardening.sql (checkout_url).
 
 const cors = {
@@ -17,11 +19,13 @@ const cors = {
   "access-control-allow-methods": "POST, OPTIONS"
 };
 
-// One price for every country: Rp2.000.000 (all Midtrans methods). The USD figure is only a rough reference for the
-// Premiere panel's confirm dialog (it prints "US$" + display_price_usd); the amount charged is always the IDR price.
+// One price for every country: Rp2.000.000 (all Midtrans methods), charged and shown in IDR.
 const LIFETIME_IDR = 2000000;
-const LIFETIME_USD_REFERENCE = 120;
+// plugin_payment_orders.display_price_usd is a NOT NULL column left from the retired USD-quoted checkout (fx_* columns
+// stay null, so no CHECK uses it). Nothing shows or charges it; new rows keep the last value for consistent reports.
+const LEGACY_DISPLAY_PRICE_USD = 120;
 const REUSE_MS = 23 * 3600 * 1000;
+const SNAP_EXPIRY_MS = 24 * 3600 * 1000;
 // Midtrans statuses after which an order can no longer be paid.
 const FINAL = new Set(["expire", "cancel", "deny", "failure"]);
 // Public webhook address (SUPABASE_URL inside a function is the API gateway and may not be the public host).
@@ -91,8 +95,6 @@ Deno.serve(async (req) => {
     checkout_url: checkoutUrl,
     reused,
     display_price_idr: LIFETIME_IDR,
-    display_price_usd: LIFETIME_USD_REFERENCE,
-    reference_price_usd: LIFETIME_USD_REFERENCE,
     charge_currency: "IDR",
     gross_amount_idr: amount,
     discount_percent: code ? 10 : 0,
@@ -114,8 +116,9 @@ Deno.serve(async (req) => {
   for (const o of unpaid) {
     const mr = await fetch("https://api.midtrans.com/v2/" + encodeURIComponent(o.order_id) + "/status", { headers: midtransAuth, signal: AbortSignal.timeout(10000) }).catch(() => null);
     const m = mr ? await mr.json().catch(() => ({})) : {};
-    if (!mr || (!mr.ok && mr.status !== 404)) { o.mt = "unknown"; continue; }
-    if (mr.status === 404 || String(m.status_code) === "404") { o.mt = "none"; continue; }
+    // "Never opened" only when Midtrans says so in its JSON (status_code 404); a bare HTTP 404 or error is unknown.
+    if (mr && String(m.status_code) === "404") { o.mt = "none"; continue; }
+    if (!mr || !mr.ok) { o.mt = "unknown"; continue; }
     const st = String(m.transaction_status || "");
     const fraud = m.fraud_status ? String(m.fraud_status).toLowerCase() : null;
     if ((st === "settlement" || st === "capture") && (!fraud || fraud === "accept") && String(m.status_code) === "200" && Number(m.gross_amount) === Number(o.gross_amount_idr)) {
@@ -124,6 +127,11 @@ Deno.serve(async (req) => {
       const b = await rest("plugin_profiles?user_id=eq." + encodeURIComponent(userId) + "&license_status=neq.blocked", { method: "PATCH", headers: { prefer: "return=representation" }, body: JSON.stringify({ license_status: "lifetime", lifetime_activated_at: now, lifetime_order_id: o.order_id, updated_at: now }) });
       if (!a.ok || !b.ok) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: o.order_id }, 500);
       if (!(await b.json().catch(() => [])).length) return json({ error: "This account is blocked. Contact support." }, 403);
+      // Owner alert; 409 = already sent for this order by another path (unique index on purchase_paid per order).
+      if (!o.lifetime_activated_at) {
+        const al = await rest("website_analytics_events", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ event_name: "purchase_paid", user_id: userId, path: "/", metadata: { order_id: o.order_id, gross_amount_idr: Number(o.gross_amount_idr), via: "checkout_reconcile" } }) }).catch(() => null);
+        if (!al || (!al.ok && al.status !== 409)) console.error("owner alert not stored", "purchase_paid", o.order_id, al ? al.status : "network");
+      }
       return json({ error: "Your payment was already received. Your lifetime license is now active.", activated: true }, 409);
     }
     // A card payment Midtrans is still reviewing (authorize, or capture/settlement held for a fraud challenge) is a
@@ -150,7 +158,8 @@ Deno.serve(async (req) => {
     const up = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(o.order_id) + "&paid_at=is.null&status=eq." + encodeURIComponent(o.status), {
       method: "PATCH",
       headers: { prefer: "return=representation" },
-      body: JSON.stringify({ status: o.mt === "none" ? "cancel" : o.mt, updated_at: new Date().toISOString() })
+      // Never opened: "expire" once its Snap link has expired, otherwise "cancel" (closed by this new checkout).
+      body: JSON.stringify({ status: o.mt === "none" ? (Date.now() - Date.parse(o.created_at) > SNAP_EXPIRY_MS ? "expire" : "cancel") : o.mt, updated_at: new Date().toISOString() })
     });
     if (!up.ok) return json({ error: "ORDER_LOOKUP_FAILED" }, 500);
     // Paid or started a moment ago (webhook in between): stop; the next attempt sees it.
@@ -163,7 +172,7 @@ Deno.serve(async (req) => {
     headers: { prefer: "return=minimal" },
     body: JSON.stringify({
       user_id: userId, order_id: orderId, product_code: "lifetime_v1",
-      display_price_usd: LIFETIME_USD_REFERENCE, charge_currency: "IDR", gross_amount_idr: grossAmount,
+      display_price_usd: LEGACY_DISPLAY_PRICE_USD, charge_currency: "IDR", gross_amount_idr: grossAmount,
       fx_rate_usd_idr: null, fx_provider: null, fx_rate_updated_at: null, fx_quoted_at: null,
       affiliate_user_id: affiliate?.user_id || null, affiliate_code: affiliate?.code || null,
       discount_percent: discountPercent, affiliate_commission_percent: affiliate ? 20 : 0, status: "created"

@@ -1,6 +1,11 @@
 'use strict';
 (() => {
+  // Same-origin Pages Function (functions/api/analytics.js) adds the visitor's country; the direct Supabase URL is the
+  // fallback when the proxy is missing (local preview, old deploy) or unreachable.
+  const PROXY='/api/analytics';
   const ENDPOINT='https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/website-analytics';
+  // Not 500: the proxy may already have forwarded the event, and a retry would count it twice.
+  const PROXY_MISSING=new Set([404,405,501]);
  const VISITOR_KEY='rp_analytics_visitor_v1';
  const INTERNAL_KEY='rp_analytics_internal_v1';
   const SESSION_KEY='rp_analytics_session_v1';
@@ -39,7 +44,7 @@
   function track(eventName,metadata={},authToken=null){
     const headers={'content-type':'application/json'};
     if(authToken)headers.authorization='Bearer '+authToken;
-    fetch(ENDPOINT,{
+    const request={
       method:'POST',
       headers,
       body:JSON.stringify({
@@ -49,7 +54,9 @@
         metadata:{...metadata,content_id:attribution.content_id||null,reporting_exclude:internal()||attribution.reporting_exclude===true}
       }),
       keepalive:true
-    }).catch(()=>{});
+    };
+    const direct=()=>fetch(ENDPOINT,request).catch(()=>{});
+    fetch(PROXY,request).then(r=>{if(r&&PROXY_MISSING.has(r.status))direct();},direct);
   }
 
  function internal(){try{return localStorage.getItem(INTERNAL_KEY)==='1';}catch{return false;}}

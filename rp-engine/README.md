@@ -72,7 +72,11 @@ node bin/rp-engine.mjs validate set.rpplan.json
 ```
 
 - Write a camera as `FILE[=ROLE][@OFFSET]`. `@12.5` places the camera's first frame at
-  12.5 s and turns audio sync off.
+  12.5 s and turns audio sync off. The role starts at the last `=`; end a file name that
+  contains `=` with a trailing `=` (`clip=1.mp4=`).
+- `--media-dir` relinks every file by name, so it refuses a plan that uses two different files
+  with the same name (for example `C0001.MOV` from two cards); use `path_from`/`path_to` there.
+- Music and camera inputs must be local file paths (no `http:`, `concat:`, `pipe:` ...).
 - `--drop-camera N` uses camera N (0-based) on every drop.
 - `--vision` samples frames to avoid dark or blurry angles.
 

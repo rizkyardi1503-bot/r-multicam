@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
 $base = $PSScriptRoot
 $src = Join-Path $base 'Plugin'
-$version = '2.3.11.13'
+$version = '2.3.11.14'
 if (-not (Test-Path -LiteralPath $src -PathType Container)) { throw 'Plugin payload folder is missing. Extract the whole ZIP first, then run SETUP-WINDOWS.cmd from the extracted folder.' }
 
 # Manual recovery guard: stop only stale R Project one-click updater processes from an older build.
@@ -243,7 +243,21 @@ if ($installedPanel -notlike ("*r.version==='" + $version + "'*")) { throw 'Inst
     foreach ($name in $moved) {
         $saved = Join-Path $backup $name
         # Restore each copy on its own: one failure must not hide the original error or skip the others.
-        if (Test-Path -LiteralPath $saved) { try { Move-PluginFolder $saved (Join-Path $extensionRoot $name) } catch { Write-Warning ("Could not restore $name automatically; it is kept at: $saved") } }
+        if (-not (Test-Path -LiteralPath $saved)) { continue }
+        $target = Join-Path $extensionRoot $name
+        # A leftover the removal above could not delete (locked file) would make the restore fail with "Destination already exists":
+        # move it into this run's backup folder (outside the extensions folder, so CEP never loads a second copy of the bundle ID),
+        # try to delete it, then restore anyway. [IO.Directory]::Move is a plain rename: it fails cleanly across volumes, never half-copies.
+        if (Test-Path -LiteralPath $target) {
+            $aside = Join-Path $backup ('failed-install-' + $name)
+            try {
+                [IO.Directory]::Move($target, $aside)
+                Remove-Item -LiteralPath $aside -Recurse -Force -ErrorAction SilentlyContinue
+                if (Test-Path -LiteralPath $aside) { Write-Warning ("Leftover of the failed install kept at: $aside") }
+            } catch {}
+        }
+        if (Test-Path -LiteralPath $target) { Write-Warning ("Could not restore $name automatically; it is kept at: $saved"); continue }
+        try { Move-PluginFolder $saved $target } catch { Write-Warning ("Could not restore $name automatically; it is kept at: $saved") }
     }
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
     throw

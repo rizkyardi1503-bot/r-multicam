@@ -91,7 +91,7 @@ async function analyzeRun(sources,cameras,ffmpeg,state,progress,deps,ctl){
     var len=row.sourceOut-row.sourceIn;
     if(!(len>frame)){row.reason='clip is empty';done++;continue;}
     if(!p.hasAudio){row.reason='no audio to sync';if(p.hasVideo!==false)silent.push({row:row,id:String(i),name:c.name,fileName:base(c.file),created:p.created,sourceIn:row.sourceIn,duration:row.sourceOut});done++;continue;}
-    var ex=R.excerptFor(len),entry={id:String(i),name:c.name,fileName:base(c.file),duration:len,mediaDuration:p.duration,sourceIn:row.sourceIn,created:p.created,excerptStart:row.sourceIn+ex.excerptStart,env:got.env};
+    var ex=R.excerptFor(len),entry={id:String(i),name:c.name,file:norm(c.file),fileName:base(c.file),duration:len,mediaDuration:p.duration,sourceIn:row.sourceIn,created:p.created,excerptStart:row.sourceIn+ex.excerptStart,env:got.env};
     if(len>LONG_CLIP){entry.endExcerptStart=got.endStart;entry.endEnv=got.endEnv;}
     clips.push(entry);row.entry=i;
    }catch(e){if(state.cancelled)throw e;row.reason=String(e.message||e);}
@@ -268,8 +268,11 @@ async function build(){
   if(r.status==='done'){progress(1,r.message);setState(r.message,'success');ui.built=builtDrones(ui.analysis,r.sequenceID);renderDrones();}else setState(r.message||'Sync stopped.',r.status==='stopped'?'warning':'error');
  }catch(e){
   // The host job must not stay "running" after a failed call (timeout, busy bridge): stop it so a new sync can start.
+  // A begin that timed out here may still have created the job in Premiere (ui.jobId never set): ask the host for it.
+  var stale=null;
+  if(!ui.jobId){try{var st=await host('rp_syncState()',30000);if(st.status==='running'&&st.id){ui.jobId=st.id;stale=st;}}catch(stateError){}}
   if(ui.jobId){try{await host('rp_syncStop('+P().quote(ui.jobId)+')',30000);}catch(stopError){}}
-  setState(e.message+(ui.jobId&&!/original sequence is unchanged/.test(e.message)?' The synced sequence is incomplete: delete it and build again. The original sequence is unchanged.':''),'error');
+  setState(e.message+(stale?' Stopped an unfinished sync (\''+(stale.sequenceName||'synced sequence')+'\'): delete that sequence, then Build again.':ui.jobId&&!/original sequence is unchanged/.test(e.message)?' The synced sequence is incomplete: delete it and build again. The original sequence is unchanged.':''),'error');
  }
  finally{ui.jobId=null;end();}
 }

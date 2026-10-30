@@ -6,7 +6,8 @@
 //   rp-engine fcpxml set.rpplan.json --out set.fcpxml [--media-dir /Volumes/Footage]
 //   rp-engine validate set.rpplan.json
 // A camera is FILE[=ROLE][@OFFSET_SECONDS]; without @OFFSET it is synced from its own audio.
-import { TOOLS } from "../lib/tools.mjs";
+// The role starts at the last '='; end a file name that contains '=' with a trailing '=' (FILE=).
+import { TOOLS, parseCameraSpec } from "../lib/tools.mjs";
 
 function parse(argv) {
   const out = { _: [] };
@@ -20,14 +21,6 @@ function parse(argv) {
   return out;
 }
 
-function camera(spec) {
-  const m = String(spec).match(/^(.*?)(?:=(.*?))?(?:@(-?\d+(?:\.\d+)?))?$/);
-  const cam = { file: m[1] };
-  if (m[2]) cam.role = m[2];
-  if (m[3] !== undefined) { cam.offset = Number(m[3]); cam.sync = "none"; }
-  return cam;
-}
-
 const progress = (p, message) => process.stderr.write(`\r${String(Math.round(p * 100)).padStart(3)}%  ${String(message || "").slice(0, 70).padEnd(70)}`);
 const tool = (name) => TOOLS.find((t) => t.name === name);
 
@@ -39,7 +32,7 @@ async function main() {
     result = await tool("analyze_music").run({ music: args._[0], output: args.out, sensitivity: args.sensitivity, include_beats: !!args.beats }, progress);
   } else if (cmd === "plan" && args.music && args.camera) {
     result = await tool("plan_multicam").run({
-      music: args.music, cameras: args.camera.map(camera), output: args.out || "plan.rpplan.json", fcpxml: args.fcpxml,
+      music: args.music, cameras: args.camera.map(parseCameraSpec), output: args.out || "plan.rpplan.json", fcpxml: args.fcpxml,
       cadences: args.cadence ? String(args.cadence).split(",").map(Number) : undefined,
       drop_camera: args["drop-camera"] === undefined ? undefined : Number(args["drop-camera"]),
       sensitivity: args.sensitivity, vision: !!args.vision, fps: args.fps ? Number(args.fps) : undefined

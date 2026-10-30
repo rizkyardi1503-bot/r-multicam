@@ -1,3 +1,22 @@
+v2.3.11.14 PUBLIC — Sync, Auto Cut and Analyze Music fixes
+New in this release:
+- Sync Cameras to Music (Lifetime): drones sync through a camera filmed in one long take; a clip whose own audio
+  clearly disagrees with its camera clock is placed by its audio; a long clip whose end does not match its start goes
+  to Review; close matches are marked [CHECK] instead of high.
+- Auto Cut Multicam: Cut Pace 2/4/6/8 no longer blocks Apply when the footage cannot keep every shot at 4 beats or
+  more. The planner switches to another camera, moves the cut, or keeps the camera through a weaker drop next to a
+  stronger one. Running it on a sequence that was already cut works with a warning.
+- Auto Cut safety: Stop then Continue never removes footage where the winning camera was trimmed or deleted; a saved
+  job resumes after reopening the project; Keep Clips is remembered after restarting Premiere; Apply stops before any
+  edit when the backup copy cannot be made.
+- Analyze Music: bars and downbeats are found per section (drops land on beat 1), tempo misreads in breakdowns and
+  half-beat locks are fixed, the beat grid follows tempo changes between tracks, Best Drops ignores missing data, and a
+  stalled FFmpeg read stops after 60 s with a clear message.
+- Panel: every step folds to one line with its status; Sync Cameras to Music is Lifetime only (no longer beta).
+- Account: a PC clock that is a few minutes or hours wrong no longer blocks access; the sign-in is stored encrypted
+  (after going back to an older version, sign in once).
+- Optional update for v2.3.11.11 and later. Macs older than v2.3.11.11 install once from r-multicam.pages.dev.
+
 v2.3.11.13 PUBLIC — Installer and low-memory fixes
 New in this release:
 - Windows installer: an FFmpeg found on PATH that only runs from its own folder (Scoop shim, shared build) no longer

@@ -2,7 +2,7 @@
 set -euo pipefail
 BASE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$BASE/Plugin"
-VERSION="2.3.11.13"
+VERSION="2.3.11.14"
 say_line(){ printf '%s\n' "$*"; }
 fail(){ say_line "ERROR: $*"; exit 1; }
 # macOS privacy protection (TCC) can block Terminal from reading Downloads/Desktop/Documents. Report that instead of "missing" or "damaged" files.
@@ -122,7 +122,16 @@ rollback(){
   if [ "$INSTALLED" = 1 ]; then rm -rf "$DEST" 2>/dev/null || true; fi
   rm -rf "$STAGE" 2>/dev/null || true
   for name in RProjectMulticamAI com.rproject.multicam R-Project-Multicam-AI r.project.multicam; do
-    if [ -e "$BACKUP/$name" ]; then mv "$BACKUP/$name" "$EXTROOT/$name" 2>/dev/null || true; fi
+    [ -e "$BACKUP/$name" ] || continue
+    target="$EXTROOT/$name"
+    # Restoring onto a leftover (rm -rf failed part-way) would nest the backup inside it: move the leftover into this run's backup
+    # folder first (same volume as the extensions folder, and outside it, so CEP never sees a second copy of the bundle ID).
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      aside="$BACKUP/failed-install-$name"
+      mv "$target" "$aside" 2>/dev/null && { rm -rf "$aside" 2>/dev/null || say_line "Leftover of the failed install kept at: $aside"; }
+    fi
+    if [ -e "$target" ] || [ -L "$target" ]; then say_line "Could not restore $name automatically; it is kept at: $BACKUP/$name"; continue; fi
+    mv "$BACKUP/$name" "$target" 2>/dev/null || say_line "Could not restore $name automatically; it is kept at: $BACKUP/$name"
   done
 }
 trap 'rollback; say_line "ERROR: Installation failed; previous plugin restored."' ERR

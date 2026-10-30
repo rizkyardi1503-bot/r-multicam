@@ -46,24 +46,54 @@ const rat = (n, d) => { const g = gcd(n, d); return { n: n / g, d: d / g }; };
 const add = (x, y) => rat(x.n * y.d + y.n * x.d, x.d * y.d);
 const ts = (x) => (x.n === 0 ? "0s" : x.d === 1 ? `${x.n}s` : `${x.n}/${x.d}s`);
 
-/** Start timecode of a clip as a rational at the clip's own frame rate (NDF). */
-function timecodeStart(tc, clipFps) {
-  const m = String(tc || "").match(/^(\d+):(\d+):(\d+)[:;](\d+)$/);
-  if (!m) return rat(0, 1);
+/**
+ * Frame count of a clip's start timecode at the clip's own frame rate. A ';' separator marks
+ * drop-frame timecode, which only exists at 29.97/59.94: frame numbers 0-1 (0-3 at 59.94) are
+ * skipped at the start of every minute except every tenth, so 01:00:00;00 @29.97 is frame 107892.
+ */
+export function timecodeFrames(tc, clipFps) {
+  const m = String(tc || "").match(/^(\d+):(\d+):(\d+)([:;])(\d+)$/);
+  if (!m) return { frames: 0, drop: false };
   const r = frameRate(clipFps || 25), nominal = Math.round(r.num / r.den);
-  const frames = ((Number(m[1]) * 60 + Number(m[2])) * 60 + Number(m[3])) * nominal + Number(m[4]);
-  return rat(frames * r.den, r.num);
+  const dropPerMinute = r.den === 1001 ? { 30: 2, 60: 4 }[nominal] || 0 : 0;
+  const drop = m[4] === ";" && dropPerMinute > 0;
+  const totalMinutes = Number(m[1]) * 60 + Number(m[2]);
+  let frames = (totalMinutes * 60 + Number(m[3])) * nominal + Number(m[5]);
+  if (drop) frames -= dropPerMinute * (totalMinutes - Math.floor(totalMinutes / 10));
+  return { frames, drop };
+}
+
+/** Start timecode of a clip as a rational of seconds. */
+export function timecodeStart(tc, clipFps) {
+  const r = frameRate(clipFps || 25);
+  return rat(timecodeFrames(tc, clipFps).frames * r.den, r.num);
+}
+
+/** media_dir relinks by file name, so two different files with one name (C0001.MOV on two cards) cannot share it. */
+function checkRelinkNames(plan, options) {
+  if (!options.mediaDir) return;
+  const seen = new Map();
+  const files = [plan.music.file, ...plan.cameras.flatMap((c) => c.clips.map((k) => k.file))];
+  for (const file of files) {
+    const norm = String(file).replace(/\\/g, "/").toLowerCase(), name = norm.split("/").pop();
+    if (!seen.has(name)) seen.set(name, { norm, file });
+    else if (seen.get(name).norm !== norm) {
+      throw new Error(`media_dir cannot relink two different files named "${name}" (${seen.get(name).file} and ${file}); use path_from/path_to instead, or rename one of them.`);
+    }
+  }
 }
 
 export function planToFcpxml(plan, options = {}) {
   const problems = validatePlan(plan);
   if (problems.length) throw new Error("Invalid plan: " + problems.join("; "));
+  checkRelinkNames(plan, options);
+  const musicName = plan.music.name || path.basename(String(plan.music.file).replace(/\\/g, "/"));
   const fps = plan.timeline.fps, frameSec = fps.den / fps.num;
   const F = (frames) => rat(frames * fps.den, fps.num);          // timeline frames -> rational
   const t = (frames) => ts(F(frames));
   const toFrames = (sec) => Math.round(sec / frameSec);
   const floorFrames = (sec) => Math.floor(sec / frameSec + 1e-6);
-  const title = options.projectName || `RP Multicam - ${plan.music.name.replace(/\.[^.]+$/, "")}`;
+  const title = options.projectName || `RP Multicam - ${musicName.replace(/\.[^.]+$/, "")}`;
   const eventName = options.eventName || "R Project Multicam AI";
   const width = plan.timeline.width, height = plan.timeline.height;
   const total = plan.timeline.duration_frames;
@@ -94,22 +124,23 @@ export function planToFcpxml(plan, options = {}) {
       const mode = options.assetStart || "auto";
       const useTc = mode === "timecode" || (mode === "auto" && /\.(mov|mxf)$/i.test(String(clip.file)));
       const start = useTc ? timecodeStart(clip.timecode, clip.fps) : rat(0, 1);
+      const tcFormat = timecodeFrames(clip.timecode, clip.fps).drop ? "DF" : "NDF";
       const name = String(clip.file).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
       const audio = clip.has_audio ? ` hasAudio="1" audioSources="1" audioChannels="${clip.audio_channels || 2}" audioRate="${clip.audio_rate || 48000}"` : "";
       res.push(`    <asset id="${id}" name="${esc(name)}" start="${ts(start)}" duration="${t(floorFrames(clip.duration))}" hasVideo="1" format="${clipFormat}" videoSources="1"${audio}>`,
         `      <media-rep kind="original-media" src="${esc(mediaUrl(clip.file, options))}"/>`, `    </asset>`);
-      return { id, clip, name, start, offsetFr: toFrames(clip.offset), durFr: floorFrames(clip.duration) };
+      return { id, clip, name, start, tcFormat, offsetFr: toFrames(clip.offset), durFr: floorFrames(clip.duration) };
     })
   }));
   const musicId = `r${nextId++}`, mcId = `r${nextId++}`;
   const musicFr = Math.min(floorFrames(plan.music.duration), total);
-  res.push(`    <asset id="${musicId}" name="${esc(plan.music.name)}" start="0s" duration="${t(floorFrames(plan.music.duration))}" hasAudio="1" audioSources="1" audioChannels="${plan.music.audio_channels || 2}" audioRate="${plan.music.audio_rate || 48000}">`,
+  res.push(`    <asset id="${musicId}" name="${esc(musicName)}" start="0s" duration="${t(floorFrames(plan.music.duration))}" hasAudio="1" audioSources="1" audioChannels="${plan.music.audio_channels || 2}" audioRate="${plan.music.audio_rate || 48000}">`,
     `      <media-rep kind="original-media" src="${esc(mediaUrl(plan.music.file, options))}"/>`, `    </asset>`);
 
   // Multicam: every angle is laid out on the music timeline (gaps between its clips).
   res.push(`    <media id="${mcId}" name="${esc(title)} Multicam">`, `      <multicam format="${timelineFormat}" tcStart="0s" tcFormat="NDF">`);
   for (const { cam, clips } of angles) {
-    res.push(`        <mc-angle name="${esc(cam.role || cam.name)}" angleID="${cam.angle_id}">`);
+    res.push(`        <mc-angle name="${esc(cam.role || cam.name)}" angleID="${esc(cam.angle_id)}">`);
     let cursor = 0;
     for (const a of clips.slice().sort((x, y) => x.offsetFr - y.offsetFr)) {
       let at = a.offsetFr, inFr = 0, dur = a.durFr;
@@ -117,14 +148,14 @@ export function planToFcpxml(plan, options = {}) {
       if (at + dur > total) dur = total - at;
       if (dur <= 0) continue;
       if (at > cursor) res.push(`          <gap name="Gap" offset="${t(cursor)}" start="0s" duration="${t(at - cursor)}"/>`);
-      res.push(`          <asset-clip ref="${a.id}" name="${esc(a.name)}" offset="${t(at)}" start="${ts(add(a.start, F(inFr)))}" duration="${t(dur)}" tcFormat="NDF"/>`);
+      res.push(`          <asset-clip ref="${a.id}" name="${esc(a.name)}" offset="${t(at)}" start="${ts(add(a.start, F(inFr)))}" duration="${t(dur)}" tcFormat="${a.tcFormat}"/>`);
       cursor = at + dur;
     }
     if (cursor === 0) res.push(`          <gap name="Gap" offset="0s" start="0s" duration="${t(total)}"/>`);
     res.push(`        </mc-angle>`);
   }
   res.push(`        <mc-angle name="Music" angleID="music">`,
-    `          <asset-clip ref="${musicId}" name="${esc(plan.music.name)}" offset="0s" start="0s" duration="${t(musicFr)}" audioRole="music"/>`,
+    `          <asset-clip ref="${musicId}" name="${esc(musicName)}" offset="0s" start="0s" duration="${t(musicFr)}" audioRole="music"/>`,
     `        </mc-angle>`, `      </multicam>`, `    </media>`);
 
   // Storyline: one mc-clip per planned shot.
@@ -139,14 +170,14 @@ export function planToFcpxml(plan, options = {}) {
       continue;
     }
     spine.push(`          <mc-clip ref="${mcId}" name="${esc(title)}" offset="${t(cut.start_frame)}" start="${t(cut.start_frame)}" duration="${t(len)}">`,
-      `            <mc-source angleID="${cut.angle_id}" srcEnable="video"/>`,
+      `            <mc-source angleID="${esc(plan.cameras[cut.camera].angle_id)}" srcEnable="video"/>`,
       `            <mc-source angleID="music" srcEnable="audio"/>`, ...marks, `          </mc-clip>`);
   }
 
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<!DOCTYPE fcpxml>`,
-    `<!-- Generated by R Project Multicam AI Engine (${esc(plan.generator.model)}) from ${esc(plan.format)}/${plan.version}. -->`,
+    `<!-- Generated by R Project Multicam AI Engine (${esc(plan.generator?.model || "unknown")}) from ${esc(plan.format)}/${plan.version}. -->`,
     `<fcpxml version="1.10">`,
     `  <resources>`, ...res, `  </resources>`,
     `  <library>`,

@@ -5,14 +5,21 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
+import v8 from "node:v8";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { TOOLS } from "../lib/tools.mjs";
 import { validatePlan } from "../lib/plan-format.mjs";
 import { planToFcpxml } from "../lib/fcpxml.mjs";
 import { sessionAnchors } from "../lib/session.mjs";
+import { probe, syncByAudio, audioStartCorrection } from "../lib/media.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// Test against this repo's plugin engine, not an older copy installed in Premiere's CEP folder
+// (resolvePluginDir prefers the installed one). An explicit RP_PLUGIN_DIR still wins.
+const repoPlugin = path.resolve(ROOT, "../plugin", process.platform === "darwin" ? "macos" : "windows", "Plugin");
+if (!process.env.RP_PLUGIN_DIR && fs.existsSync(repoPlugin)) process.env.RP_PLUGIN_DIR = repoPlugin;
+await import("./unit-tests.mjs");
 const FFMPEG = process.env.RP_FFMPEG || "ffmpeg";
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rp-engine-test-"));
 const tool = (n) => TOOLS.find((t) => t.name === n);
@@ -194,6 +201,77 @@ await test("CLI validate", async () => {
   const r = spawnSync(process.execPath, [path.join(ROOT, "bin/rp-engine.mjs"), "validate", planPath], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(JSON.parse(r.stdout).valid, true);
+});
+
+// A small helper to talk to the MCP server: resolves with every message it wrote once it exits.
+function runMcp(lines, { before } = {}) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(process.execPath, [path.join(ROOT, "bin/rp-engine-mcp.mjs")], { stdio: ["pipe", "pipe", "pipe"] });
+    let out = "";
+    proc.stdout.on("data", (d) => { out += d; });
+    proc.on("error", reject);
+    proc.on("close", (code) => resolve({ code, messages: out.split("\n").filter(Boolean).map((l) => JSON.parse(l)) }));
+    (async () => { await before?.(proc); for (const [delay, msg] of lines) { if (delay) await new Promise((r) => setTimeout(r, delay)); proc.stdin.write(JSON.stringify(msg) + "\n"); } proc.stdin.end(); })();
+    setTimeout(() => { proc.kill(); reject(new Error("MCP server did not exit")); }, 60000).unref();
+  });
+}
+const rpc = (id, method, params) => ({ jsonrpc: "2.0", id, method, params });
+
+await test("MCP server still answers calls in flight when stdin closes", async () => {
+  const missing = path.join(dir, "no-such-song.wav");
+  const r = await runMcp([[0, rpc(1, "tools/call", { name: "analyze_music", arguments: { music: missing } })]]);
+  const reply = r.messages.find((m) => m.id === 1);
+  assert.ok(reply, "the result of the call in flight must be written before the server exits");
+  assert.equal(reply.result.isError, true);
+  assert.equal(r.code, 0);
+});
+
+await test("MCP cancellation stops the call and sends no result for it", async () => {
+  const args = { music, cameras: CAMS.map((c) => ({ files: c.files })), output: path.join(dir, "cancelled.rpplan.json") };
+  const r = await runMcp([
+    [0, rpc(1, "tools/call", { name: "plan_multicam", arguments: args })],
+    [200, { jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 1, reason: "test" } }],
+    [100, rpc(2, "ping", {})]
+  ]);
+  assert.ok(r.messages.some((m) => m.id === 2), "the server keeps answering after a cancellation");
+  assert.ok(!r.messages.some((m) => m.id === 1), "a cancelled request gets no response");
+  assert.ok(!fs.existsSync(args.output), "a cancelled plan must not be written");
+});
+
+await test("probe times out and can be aborted", async () => {
+  await assert.rejects(probe(FFMPEG, music, { timeoutMs: 1 }), /did not answer/);
+  const controller = new AbortController();
+  const pending = probe(FFMPEG, music, { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  const ok = await probe(FFMPEG, music);
+  assert.ok(Math.abs(ok.duration - DUR) < 0.1 && ok.hasAudio && !ok.hasVideo);
+});
+
+await test("a camera whose audio starts after its video is placed by its first frame", async () => {
+  // Video frame 0 is at 19.5 s of the music; the audio (music from 20 s) is delayed 0.5 s in the file.
+  const lagging = path.join(dir, "lagging.mp4");
+  ff(["-f", "lavfi", "-i", "color=c=red:size=160x90:rate=25", "-itsoffset", "0.5", "-ss", "20", "-t", "35", "-i", music, "-map", "0:v", "-map", "1:a", "-t", "30", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", lagging]);
+  const info = await probe(FFMPEG, lagging);
+  assert.ok(info.audioStart - info.videoStart > 0.4 && info.audioStart - info.videoStart < 0.6, `audio lead ${info.audioStart - info.videoStart}`);
+  const raw = await syncByAudio(FFMPEG, music, lagging, {});
+  const placed = raw.offset - audioStartCorrection(info, 0);
+  assert.ok(Math.abs(raw.offset - 20) <= 0.05, `raw offset ${raw.offset} locates the first audio sample`);
+  assert.ok(Math.abs(placed - 19.5) <= 0.05, `first frame at ${placed}, expected 19.5`);
+});
+
+await test("a clip too short to sync is a cached, deterministic failure", async () => {
+  const short = path.join(dir, "short.mp4");
+  ff(["-f", "lavfi", "-i", "color=c=red:size=160x90:rate=25", "-ss", "10", "-t", "1.5", "-i", music, "-map", "0:v", "-map", "1:a", "-t", "1.5", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", short]);
+  const cacheDir = path.join(dir, "cache-short");
+  const { planMulticam } = await import("../lib/engine.mjs");
+  const r = await planMulticam({ music, cameras: [{ files: [short] }], syncOnly: true, cacheDir });
+  assert.deepEqual(r.cameras, [[]]);
+  const files = fs.readdirSync(cacheDir).filter((f) => f.startsWith("sync-"));
+  assert.equal(files.length, 1);
+  const cached = v8.deserialize(fs.readFileSync(path.join(cacheDir, files[0])));
+  assert.match(cached.error, /too short/);
+  assert.equal(cached.deterministic, true);
 });
 
 if (process.env.RP_KEEP_TEST) console.log(`kept ${dir}`); else fs.rmSync(dir, { recursive: true, force: true });

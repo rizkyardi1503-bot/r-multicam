@@ -2,7 +2,7 @@
 'use strict';
 var cs,busy=false,pending=false,stopRequested=false,job=null,ready=false,lastInfo=null,lastReply=Date.now(),started=0,activeTool='multi';
 var analysisState=null,suggestion=null,uploadIndex=0,pendingSeq=0;
-// v2.3.11.13: generous host ceilings. A long DJ set (80+ min, thousands of clips) or a Premiere autosave
+// v2.3.11.14: generous host ceilings. A long DJ set (80+ min, thousands of clips) or a Premiere autosave
 // can block ExtendScript for tens of seconds; a short timeout only produced false failures.
 var HOST_TIMEOUT_MS=60000,HOST_STEP_TIMEOUT_MS=120000;
 function hostTimeout(base,units,perUnitMs){return Math.min(900000,Math.round(Math.max(base,base+(Number(units)||0)*(Number(perUnitMs)||0))));}
@@ -33,7 +33,7 @@ function stripMusicMap(result,a1){
  x.result.snapshot=a1;return x;
 }
 function musicMapFile(){var base=resumeFilePath();if(!base)return '';var path=resumeRequire('path');return path.join(path.dirname(base),'master-music-map-v18-multifeature-public.json');}
-// v2.3.11.13: a 2 h set produces a ~50+ MB map. It lives only in the cache folder next to the resume
+// v2.3.11.14: a 2 h set produces a ~50+ MB map. It lives only in the cache folder next to the resume
 // file (never localStorage: quota errors + slow panel start), is capped, and is written asynchronously
 // once per burst of saves instead of being stringified 2-3 times on the UI thread.
 var MUSIC_MAP_MAX_BYTES=96*1048576,musicMapTimer=null,musicMapLatest=null,musicMapWriteSeq=0;
@@ -135,7 +135,7 @@ function clearResumeCheckpoint(){clearPersistentResume();try{if(window.localStor
 function stageResumeCheckpoint(kind){
  if(!aiPlan||!aiPlan.snapshot||!aiPlan.snapshot.points)return;
  var snap=aiPlan.snapshot;
- var enabled=(aiPlan.enabledCameras||collectEnabledCameras()).slice(0); writeResumeCheckpoint({minimumShotBeats:4,version:RESUME_SCHEMA,kind:kind||'delete',structurePolicyVersion:1,structurePolicy:aiPlan.structurePolicy,maxHoldBeats:8,tempoMap:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.beat_first&&aiPlan.musicAnalysis.beat_first.tempo_map||[],estimatedBpm:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.estimated_bpm||0,status:'prepared',phase:'cut',projectPath:String(snap.projectPath||''),sequenceID:String(snap.sequenceID||''),sequenceName:lastInfo&&lastInfo.name?lastInfo.name:'Active Sequence',duration:Number(snap.duration)||0,frame:Number(snap.frame)||0,a1Signature:String(snap.a1Signature||''),cameraMediaSignature:cameraMediaSignatureFromSnapshot(snap,enabled),points:snap.points.slice(0),coverageSwitches:(snap.intervals||[]).filter(function(it){return it.coverageSwitch;}).map(function(it){return it.start;}),choices:aiPlan.choices.map(function(c){return Number(c.camera);}),enabledTracks:enabled,point:0,track:0,verifyPoint:0,prepScene:0,task:0,cuts:0,removed:0,skipped:0,done:0,total:snap.points.length,liveJobId:'',buildOrigin:'2.3.11.13',checkpointStore:'persistent-file',createdAt:Date.now(),updatedAt:Date.now()});
+ var enabled=(aiPlan.enabledCameras||collectEnabledCameras()).slice(0); writeResumeCheckpoint({minimumShotBeats:4,version:RESUME_SCHEMA,kind:kind||'delete',structurePolicyVersion:1,structurePolicy:aiPlan.structurePolicy,maxHoldBeats:8,tempoMap:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.beat_first&&aiPlan.musicAnalysis.beat_first.tempo_map||[],estimatedBpm:aiPlan.musicAnalysis&&aiPlan.musicAnalysis.estimated_bpm||0,status:'prepared',phase:'cut',projectPath:String(snap.projectPath||''),sequenceID:String(snap.sequenceID||''),sequenceName:lastInfo&&lastInfo.name?lastInfo.name:'Active Sequence',duration:Number(snap.duration)||0,frame:Number(snap.frame)||0,a1Signature:String(snap.a1Signature||''),cameraMediaSignature:cameraMediaSignatureFromSnapshot(snap,enabled),points:snap.points.slice(0),coverageSwitches:(snap.intervals||[]).filter(function(it){return it.coverageSwitch;}).map(function(it){return it.start;}),choices:aiPlan.choices.map(function(c){return Number(c.camera);}),enabledTracks:enabled,point:0,track:0,verifyPoint:0,prepScene:0,task:0,cuts:0,removed:0,skipped:0,done:0,total:snap.points.length,liveJobId:'',buildOrigin:'2.3.11.14',checkpointStore:'persistent-file',createdAt:Date.now(),updatedAt:Date.now()});
 }
 var resumeFlushTime=0,resumeFlushPhase='',resumeFlushId='';
 function syncResumeCheckpoint(r){
@@ -163,7 +163,7 @@ function renderResumePanel(){
  if(el('resumeInfo'))el('resumeInfo').innerHTML=resumeLabel(x);
  if(el('resumeBadge')){var k=x.status==='error'?'error':'warning';el('resumeBadge').className='badge '+k;el('resumeBadge').textContent=x.phase==='delete'?'CLEANUP':'RESUME';}
  if(el('resumeRun'))el('resumeRun').disabled=busy||pending||!ready||!licenseCanUse();
- // v2.3.11.13: "Continue Cleanup Only" was only enabled in the cleanup phase, where it ran exactly the same
+ // v2.3.11.14: "Continue Cleanup Only" was only enabled in the cleanup phase, where it ran exactly the same
  // host resume as Continue. One button resumes whatever stage was saved (cut -> cleanup).
  if(el('resumeCleanup')){el('resumeCleanup').style.display='none';el('resumeCleanup').disabled=true;}
  if(el('resumeDiscard'))el('resumeDiscard').disabled=busy||pending;
@@ -324,7 +324,7 @@ function invoke(code,cb,timeoutMs){
  var guard=window.RPResourceGuard;
  if(!guard||!/^\s*rp_step\(/.test(code)||pending)return invokeHost(code,cb,timeoutMs);
  // Own the host slot while sampling: Stop cannot enqueue a competing request.
- // v2.3.11.13: the callback runs exactly once and the slot is released on every failure path.
+ // v2.3.11.14: the callback runs exactly once and the slot is released on every failure path.
  var delivered=false,reply=function(r){if(delivered)return;delivered=true;cb(r);},sample;
  pending=true;
  try{guard.observe(job);sample=guard.check();}catch(guardError){sample=Promise.reject(guardError);}
@@ -366,7 +366,7 @@ function estimate(){
 function refresh(){
  if(busy||pending)return;
  invoke('rp_getActiveInfo()',function(r){
-  ready=r.ok&&r.version==='2.3.11.13';lastInfo=r.ok?r:null;
+  ready=r.ok&&r.version==='2.3.11.14';lastInfo=r.ok?r:null;
   if(ready&&r.pendingID){
    // A Premiere host job can outlive/recover from a panel reload. Resume polling it
    // instead of automatically stopping it and leaving thousands of partial cuts.
@@ -376,12 +376,12 @@ function refresh(){
   // This panel is busy while its own sync runs, so a running sync here was left by a closed panel and nothing can drive or stop it.
   if(ready&&r.syncPendingID){invoke('rp_syncStop('+quote(r.syncPendingID)+')',function(x){if(x&&x.ok===false)state('A sync left running by a closed panel could not be stopped: '+(x.message||'unknown error')+'. Restart Premiere Pro.',true,'error');else state('A sync left running by a closed panel was stopped. Run Sync again.',false,'warning');controls();});}
   el('timeline').textContent=r.name?r.name+' · '+r.duration.toFixed(2)+' seconds':'Open an active sequence in Premiere.';
-  if(!ready)state(r.message||('Host version mismatch (panel 2.3.11.13 / host '+String(r&&r.version||'unknown')+'). Close Premiere completely, reinstall this build, then reopen Premiere.'),true);
+  if(!ready)state(r.message||('Host version mismatch (panel 2.3.11.14 / host '+String(r&&r.version||'unknown')+'). Close Premiere completely, reinstall this build, then reopen Premiere.'),true);
   else if(el('state').textContent==='Connecting…')state('Ready');
   estimate();controls();
  });
 }
-// Host step timing (v2.3.11.13): written next to the resume checkpoint so slow runs can be diagnosed.
+// Host step timing (v2.3.11.14): written next to the resume checkpoint so slow runs can be diagnosed.
 var stepTimingAt=0,stepTimingLogged='';
 function stepTimingText(t){if(!t||!t.steps)return '';var avg=function(x){return Math.round(x/t.steps);};return 'Host timing: '+t.steps+' steps, avg '+avg(t.stepMs)+' ms/step · cut '+Math.round(t.cut/1000)+' s · prepare '+Math.round(t.prepare/1000)+' s · cleanup resolve '+Math.round(t.resolve/1000)+' s, unlink '+Math.round(t.unlink/1000)+' s ('+t.batches+' batches, '+t.batchPieces+' pieces), remove '+Math.round(t.remove/1000)+' s, verify '+Math.round(t.verify/1000)+' s · checks '+Math.round(t.checks/1000)+' s · GC '+Math.round(t.gc/1000)+' s';}
 function saveStepTiming(r,force){
@@ -816,7 +816,7 @@ el('aiApply').onclick=function(){setActiveTool('multi');applyAI('angle');};
 el('aiDelete').onclick=function(){setActiveTool('multi');applyAI('delete');};
 el('aiExport').onclick=function(){
  if(busy||pending||!aiPlan)return;
- var report={version:'2.3.11.13-public-v19',engine:aiPlan.model,instructions:'Automatic music-driven editing; no prompt',selectedPacing:selectedPacingCadences(),dropCamera:selectedDropCamera()==null?'auto':'V'+(selectedDropCamera()+1),cameraRoles:aiPlan.roles,enabledCameras:aiPlan.enabledCameras||collectEnabledCameras(),musicAnalysis:aiPlan.musicAnalysis||musicContext(suggestion),pacing:aiPlan.pacing||suggestion&&suggestion.pacing||null,images:aiPlan.images,summary:aiPlan.summaries,choices:aiPlan.choices.map(function(c){var it=aiPlan.snapshot.intervals[c.id];return {start:it.start,end:it.end,camera:c.camera<0?null:'V'+(c.camera+1),confidence:c.confidence,reason:c.reason};})};
+ var report={version:'2.3.11.14-public-v19',engine:aiPlan.model,instructions:'Automatic music-driven editing; no prompt',selectedPacing:selectedPacingCadences(),dropCamera:selectedDropCamera()==null?'auto':'V'+(selectedDropCamera()+1),cameraRoles:aiPlan.roles,enabledCameras:aiPlan.enabledCameras||collectEnabledCameras(),musicAnalysis:aiPlan.musicAnalysis||musicContext(suggestion),pacing:aiPlan.pacing||suggestion&&suggestion.pacing||null,images:aiPlan.images,summary:aiPlan.summaries,choices:aiPlan.choices.map(function(c){var it=aiPlan.snapshot.intervals[c.id];return {start:it.start,end:it.end,camera:c.camera<0?null:'V'+(c.camera+1),confidence:c.confidence,reason:c.reason};})};
  pending=true;
  try{cs.evalScript("(function(){var f=File.saveDialog('Save Agent AI Director plan as JSON');return f?encodeURIComponent(f.fsName):'';})()",function(raw){
   pending=false;lastReply=Date.now();

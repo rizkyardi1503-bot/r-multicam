@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.11";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.13",
-    download: base + "?platform=windows&version=2.3.11.13",
-    sha256: "bce4da4ed0af89c6726e23d65108f425b60556c610a5d13e8c8d7270a857e88f"
+    version: "2.3.11.14",
+    download: base + "?platform=windows&version=2.3.11.14",
+    sha256: "426068b0321aa42d2db1651c0fd750841a88e5322774b55e1b116d87fa59914b"
   },
   macos: {
-    version: "2.3.11.13",
-    download: base + "?platform=macos&version=2.3.11.13",
-    sha256: "776e6e139a96729b57e18173cbea3c76512caa8467cb7557468d04eb74cd2387"
+    version: "2.3.11.14",
+    download: base + "?platform=macos&version=2.3.11.14",
+    sha256: "3ceb2ff7bc8b089615c5f5b14491abf93f3e088a8627e9752af02c1b4b36d7cc"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.13 PUBLIC Windows and macOS: Windows installer falls back to the pinned FFmpeg when a PATH FFmpeg cannot run; macOS Low Memory mode decodes AI Vision on the CPU with at most 24 samples. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.13 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
+    release_notes: "v2.3.11.14 PUBLIC Windows and macOS: Sync Cameras to Music syncs drones through single-take cameras and places clips by their own audio when the camera clock is wrong; Auto Cut Multicam no longer blocks Apply when footage cannot meet the 4-beat minimum (switches camera, moves the cut or keeps the camera through a weaker drop) and is safer on Stop, Continue and resume; Analyze Music finds bars per section and fixes tempo misreads; the panel steps fold to one line. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.14 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

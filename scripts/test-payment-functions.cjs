@@ -1,5 +1,6 @@
 // Payment functions against a fake PostgREST + fake Midtrans: one payable checkout per customer (reuse, cancel,
-// busy), already-paid activation, webhook statuses (chargeback, unknown), duplicate payment and owner alerts.
+// busy), already-paid activation, webhook statuses (chargeback, unknown), duplicate payment and owner alerts,
+// parallel check-payment with stale-order skip/expiry, and one purchase_paid alert whichever path activates.
 // Usage: node scripts/test-payment-functions.cjs
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict'), crypto = require('node:crypto');
 const { stripTypeScriptTypes } = require('node:module');
@@ -180,4 +181,67 @@ const notify = async (w, b) => {
     const n = await notify(w, { order_id: 'B', status_code: '200', gross_amount: '2000000.00', transaction_status: 'settlement' });
     assert.equal(n.data.warning, 'DUPLICATE_PAYMENT'); assert.equal(b.lifetime_activated_at, null); assert.equal(w.alerts.length, 1, 'webhook after check: no second alert'); }
   console.log('PASS check payment: activation, duplicate keeps first activation with one alert, webhook afterwards agrees');
+
+  // Check payment asks Midtrans about all relevant orders at once, skips orders closed > 25 h ago, and expires
+  // never-opened checkouts older than 24 h.
+  { const ago = (h) => new Date(Date.now() - h * hour).toISOString();
+    const w = world({ orders: [order('NEW', { created_at: ago(1) }), order('STALE', { created_at: ago(30) }), order('CLOSED_OLD', { status: 'expire', created_at: ago(40) }),
+      order('CANCEL_OLD', { status: 'cancel', created_at: ago(26) }), order('CANCEL_RECENT', { status: 'cancel', created_at: ago(5) }), order('FAILED_OLD', { status: 'failed', created_at: ago(50) })] });
+    const base = w.fetch; let inFlight = 0, maxInFlight = 0; const asked = [];
+    w.fetch = async (url, init) => { const u = new URL(url); if (u.hostname !== 'api.midtrans.com') return base(url, init);
+      asked.push(decodeURIComponent(u.pathname.split('/')[2])); inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 30)); inFlight--; return base(url, init); };
+    const r = await check(w);
+    assert.equal(r.data.paid, false);
+    assert.deepEqual(asked.sort(), ['CANCEL_OLD', 'CANCEL_RECENT', 'NEW', 'STALE'], 'expired/failed orders older than 25 h are not asked about; cancelled ones are (old Snap tab)');
+    assert.equal(maxInFlight, 4, 'Midtrans is asked in parallel');
+    assert.equal(w.orders.find((o) => o.order_id === 'STALE').status, 'expire', 'never-opened checkout older than 24 h expires');
+    assert.equal(w.orders.find((o) => o.order_id === 'NEW').status, 'created', 'a recent unopened checkout stays payable');
+    assert.equal(w.orders.find((o) => o.order_id === 'CANCEL_RECENT').status, 'cancel');
+    const again = []; w.fetch = async (url, init) => { const u = new URL(url); if (u.hostname === 'api.midtrans.com') again.push(decodeURIComponent(u.pathname.split('/')[2])); return base(url, init); };
+    await check(w); assert.deepEqual(again.sort(), ['CANCEL_OLD', 'CANCEL_RECENT', 'NEW'], 'the expired order is not asked about again after 25 h'); }
+  // A bare HTTP 404 without Midtrans JSON (gateway/outage) is unknown, never "never opened": nothing expired or closed.
+  { const ago = new Date(Date.now() - 30 * hour).toISOString();
+    const bare = (w) => { const base = w.fetch; w.fetch = async (url, init) => (new URL(url).hostname === 'api.midtrans.com' ? new Response('<html>Not Found</html>', { status: 404 }) : base(url, init)); return w; };
+    let w = bare(world({ orders: [order('STALE', { created_at: ago })] })); await check(w); assert.equal(w.orders[0].status, 'created');
+    w = bare(world({ orders: [order('STALE', { created_at: ago })] })); const r = await buy(w, ''); assert.equal(r.status, 409); assert.match(r.data.error, /could not confirm/); assert.equal(w.orders.length, 1); assert.equal(w.orders[0].status, 'created'); }
+  // Race: the webhook stores the settlement after check payment read the order but before its "pending" write.
+  { const w = world({ orders: [order('A')], mid: { A: { status_code: '201', transaction_status: 'pending', gross_amount: '2000000.00' } } });
+    const base = w.fetch; w.fetch = async (url, init = {}) => { const u = new URL(url);
+      if ((init.method || 'GET') === 'PATCH' && u.pathname === '/rest/v1/plugin_payment_orders') Object.assign(w.orders[0], { status: 'settlement', paid_at: '2026-10-30T00:00:00Z', lifetime_activated_at: '2026-10-30T00:00:00Z' });
+      if ((init.method || 'GET') === 'PATCH' && u.pathname === '/rest/v1/plugin_payment_orders' && u.searchParams.get('paid_at') !== 'is.null') { const o = w.orders[0]; Object.assign(o, JSON.parse(init.body)); return new Response(null, { status: 204 }); }
+      return base(url, init); };
+    await check(w); const o = w.orders[0];
+    assert.equal(o.status, 'settlement', 'a pending answer never downgrades a stored payment'); assert.equal(o.paid_at, '2026-10-30T00:00:00Z'); assert.equal(o.lifetime_activated_at, '2026-10-30T00:00:00Z'); }
+  console.log('PASS check payment race: a late pending answer never overwrites a webhook settlement; bare HTTP 404 is unknown (check + checkout); cancelled orders still checked');
+  // A lifetime account: its paid orders are not asked about again; result stays paid.
+  { const w = world({ orders: [order('A', { status: 'settlement', paid_at: '2026-10-01', lifetime_activated_at: '2026-10-01' })], profile: { license_status: 'lifetime', lifetime_order_id: 'A' } });
+    const r = await check(w); assert.equal(r.data.paid, true); assert(!w.calls.some((c) => c.includes('/v2/')), 'no Midtrans call'); }
+  // Checkout: a never-opened order older than 24 h is closed as "expire" (not "cancel") before the new one.
+  { const w = world({ orders: [order('OLD', { created_at: new Date(Date.now() - 26 * hour).toISOString() })] });
+    const r = await buy(w, ''); assert.equal(r.status, 200); assert.equal(w.orders.find((o) => o.order_id === 'OLD').status, 'expire'); }
+  // Checkout responses are IDR only.
+  { const w = world(); const r = await buy(w); assert.equal(r.data.charge_currency, 'IDR'); assert(!('display_price_usd' in r.data) && !('reference_price_usd' in r.data)); assert.equal(r.data.gross_amount_idr, 2000000); }
+  console.log('PASS check payment: parallel Midtrans checks, closed orders > 25 h skipped, unopened > 24 h expired (check and checkout), lifetime account skips paid orders; IDR-only checkout reply');
+
+  // purchase_paid owner alert: exactly once, whichever path activates.
+  const settle = { status_code: '200', transaction_status: 'settlement', gross_amount: '2000000.00', transaction_id: 't' };
+  const paidAlerts = (w) => w.alerts.filter((a) => a.event_name === 'purchase_paid');
+  { const w = world({ orders: [order('A')], mid: { A: settle } });
+    await check(w); assert.deepEqual(paidAlerts(w).map((a) => [a.metadata.order_id, a.metadata.via]), [['A', 'check_payment']]);
+    await check(w); await notify(w, { order_id: 'A', status_code: '200', gross_amount: '2000000.00', transaction_status: 'settlement' });
+    assert.equal(paidAlerts(w).length, 1, 'check payment first: no second alert from a repeat check or the webhook'); }
+  { const w = world({ orders: [order('A')], mid: { A: settle } });
+    const r = await buy(w); assert.equal(r.data.activated, true); assert.deepEqual(paidAlerts(w).map((a) => [a.metadata.order_id, a.metadata.via]), [['A', 'checkout_reconcile']]);
+    await notify(w, { order_id: 'A', status_code: '200', gross_amount: '2000000.00', transaction_status: 'settlement' }); await check(w);
+    assert.equal(paidAlerts(w).length, 1, 'checkout reconcile first: no second alert'); }
+  { const w = world({ orders: [order('A')], mid: { A: settle } });
+    await notify(w, { order_id: 'A', status_code: '200', gross_amount: '2000000.00', transaction_status: 'settlement' }); await check(w);
+    assert.deepEqual(paidAlerts(w).map((a) => a.metadata.via), ['webhook'], 'webhook first: check payment adds nothing'); }
+  // Two paths at the same time: the unique index answers 409 to the second insert; that is not an error.
+  { const w = world({ orders: [order('A')], alertStatus: 409 }); const r = await notify(w, { order_id: 'A', status_code: '200', gross_amount: '2000000.00', transaction_status: 'settlement' });
+    assert.equal(r.status, 200); assert(!r.logs.some((l) => l[0] === 'error'), '409 = alert already stored'); }
+  { const w = world({ orders: [order('A')], mid: { A: settle }, alertStatus: 409 }); const logs = [], h = load('check-lifetime-payment', w.fetch, logs);
+    const r = await h(new Request('https://f.test', { method: 'POST', headers: { authorization: 'Bearer user' }, body: '{}' })); assert.equal(r.status, 200); assert(!logs.some((l) => l[0] === 'error')); }
+  console.log('PASS purchase_paid alert: once via check payment, checkout reconcile or webhook, whichever activates first; concurrent duplicate (409) is quiet');
 })().catch((e) => { console.error(e); process.exitCode = 1; });

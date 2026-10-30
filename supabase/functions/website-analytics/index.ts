@@ -2,7 +2,6 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const allowedOrigins = new Set([
   "https://r-multicam.pages.dev",
-  "https://r-project-multicam-ai.rizkyardi1503.chatgpt.site",
   "http://127.0.0.1:8765"
 ]);
 
@@ -25,6 +24,25 @@ function clean(value: unknown, max: number) {
   if (typeof value !== "string") return null;
   const v=value.trim();
   return v ? v.slice(0,max) : null;
+}
+// Visitor country/region. Supabase does not see the visitor's Cloudflare edge, so the website posts through its own
+// Pages Function (functions/api/analytics.js), which adds request.cf.country/region as x-rp-geo-* headers and proves
+// itself with the shared secret ANALYTICS_PROXY_SECRET. Once that secret is set here, only the proxy's geo headers
+// are trusted (a browser could send any cf-* header directly). Without the secret the old cf-* headers are read.
+function safeEqual(a:string,b:string){
+  if(a.length!==b.length)return false;
+  let diff=0;
+  for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);
+  return diff===0;
+}
+function geo(req:Request){
+  const secret=Deno.env.get("ANALYTICS_PROXY_SECRET")||"";
+  if(!secret)return {country:clean(req.headers.get("cf-ipcountry"),3),region:clean(req.headers.get("cf-region"),120)};
+  if(!safeEqual(req.headers.get("x-rp-proxy-secret")||"",secret))return {country:null,region:null};
+  const country=clean(req.headers.get("x-rp-geo-country"),3);
+  let region:string|null=null;
+  try{region=clean(decodeURIComponent(req.headers.get("x-rp-geo-region")||""),120);}catch{region=null;}
+  return {country:country&&/^[A-Z0-9]{2,3}$/i.test(country)?country.toUpperCase():null,region};
 }
 function deviceFromUa(ua:string){
   if(/iPad|Tablet|Android(?!.*Mobile)/i.test(ua))return "tablet";
@@ -72,6 +90,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const ua=req.headers.get("user-agent")||"";
+  const place=geo(req);
   const supplied=body.metadata && typeof body.metadata==="object" && !Array.isArray(body.metadata)
     ? (JSON.stringify(body.metadata).length <= 2000 ? body.metadata : {})
     : {};
@@ -93,8 +112,8 @@ Deno.serve(async (req: Request) => {
     utm_source:clean(body.utm_source,120),
     utm_medium:clean(body.utm_medium,120),
     utm_campaign:clean(body.utm_campaign,200),
-    country_code:clean(req.headers.get("cf-ipcountry"),3),
-    region:clean(req.headers.get("cf-region"),120),
+    country_code:place.country,
+    region:place.region,
     device_type:deviceFromUa(ua),
     os_family:osFromUa(ua),
     metadata

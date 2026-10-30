@@ -1,5 +1,5 @@
 R PROJECT MULTICAM AI — macOS INSTALLATION GUIDE
-Version: v2.3.11.13 PUBLIC
+Version: v2.3.11.14 PUBLIC
 
 IMPORTANT FOR MAC USERS
 -----------------------
@@ -58,7 +58,7 @@ In Premiere Pro open:
 Window > Extensions (Legacy) > R Project Multicam AI
 
 Confirm the panel shows:
-v2.3.11.13
+v2.3.11.14
 
 TRIAL & PRICE
 -------------

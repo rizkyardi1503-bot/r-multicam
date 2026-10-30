@@ -3,8 +3,8 @@
 // applyPacing -> snapshot -> RPDirector.run), so the plan matches what the panel would make.
 import path from "node:path";
 import { loadEngine } from "./runtime.mjs";
-import { probe, frameRate, syncByAudio } from "./media.mjs";
-import { buildPlan } from "./plan-format.mjs";
+import { probe, frameRate, syncByAudio, resolveMediaPath, audioStartCorrection } from "./media.mjs";
+import { buildPlan, coverageTolerance } from "./plan-format.mjs";
 import { fileKey, cacheGet, cachePut } from "./cache.mjs";
 
 export const MODEL = "R Project Auto Music Map V14";
@@ -73,17 +73,30 @@ function normaliseCadences(list) {
 
 function noop() {}
 
+/** Cache identity of the engine: plugin version plus a hash of the engine files' content. */
+const engineKey = (engine) => `${engine.version}+${engine.hash}`;
+
+/** Cancel a plugin-engine job (the `state` object RPAudio/RPDirector read) when the AbortSignal fires. Returns an unbind function. */
+function cancelOnAbort(signal, state) {
+  if (!signal) return noop;
+  const stop = () => { state.cancelled = true; try { if (state.process) state.process.kill(); } catch { /* already gone */ } };
+  if (signal.aborted) stop();
+  signal.addEventListener("abort", stop, { once: true });
+  return () => signal.removeEventListener("abort", stop);
+}
+
 /** Analyze a music file: BPM, beat grid, tempo map, energy, sections, build-ups and drops. */
 export async function analyzeMusic(musicFile, options = {}) {
+  musicFile = resolveMediaPath(musicFile);
   const engine = options.engine || loadEngine(options.pluginDir);
   const ffmpeg = engine.RPAudio.executable(options.ffmpeg || process.env.RP_FFMPEG || "");
-  const info = probe(ffmpeg, musicFile);
+  const info = await probe(ffmpeg, musicFile, { signal: options.signal });
   if (!info.hasAudio) throw new Error(`No audio stream in ${musicFile}`);
   const fps = frameRate(options.fps || 30);
   const frame = fps.den / fps.num;
   // Exact decoded length is required by the engine's "media shorter than clip" guard.
   const duration = Math.floor(info.duration * 100) / 100;
-  const snapshot = { clips: [{ file: path.resolve(musicFile), input: 0, start: 0, end: duration }], duration, frame, signature: "headless" };
+  const snapshot = { clips: [{ file: musicFile, input: 0, start: 0, end: duration }], duration, frame, signature: "headless" };
   const enrichOptions = {
     sensitivity: options.sensitivity || "balanced",
     preBeats: clampInt(options.preBeats, 8, 64, 24),
@@ -93,15 +106,16 @@ export async function analyzeMusic(musicFile, options = {}) {
     cutsBefore: 3,
     cutsAfter: 4
   };
-  const cacheName = `music-${fileKey(musicFile, enrichOptions, fps, engine.version)}.v8`;
+  const cacheName = `music-${fileKey(musicFile, enrichOptions, fps, engineKey(engine))}.v8`;
   const cached = cacheGet(options.cacheDir, cacheName);
   if (cached) { (options.progress || noop)(1, "Reusing cached music analysis"); return { engine, ffmpeg, info, duration, fps, result: cached }; }
   const state = { cancelled: false, process: null };
   // Two resumable steps for long sets: raw decode/beat analysis, then music intelligence.
-  const rawName = `raw-${fileKey(musicFile, fps, engine.version)}.v8`;
+  const rawName = `raw-${fileKey(musicFile, fps, engineKey(engine))}.v8`;
   let result = cacheGet(options.cacheDir, rawName);
   if (!result) {
-    result = await engine.RPAudio.run(snapshot, ffmpeg, state, options.progress || noop);
+    const unbind = cancelOnAbort(options.signal, state);
+    try { result = await engine.RPAudio.run(snapshot, ffmpeg, state, options.progress || noop); } finally { unbind(); }
     cachePut(options.cacheDir, rawName, result);
   }
   const t0 = Date.now();
@@ -129,11 +143,14 @@ function mergeCoverage(clips, tol) {
  * Each camera is one "track"; each of its clips is one timeline clip.
  */
 export function directorSnapshot(cameras, points, duration, frame) {
-  const bounds = [0, ...points, duration], tol = frame / 4;
+  // The plan's last cut ends at the frame-snapped duration, and validatePlan() checks coverage against
+  // that frame with coverageTolerance(): judge the last interval and the clips' ends the same way.
+  const lastFrameTime = Math.round(duration / frame) * frame;
+  const bounds = [0, ...points, duration], tol = coverageTolerance(frame);
   const tracks = cameras.map((cam, index) => {
     const clips = [];
     for (const c of cam.clips) {
-      const start = Math.max(0, c.offset + c.trim), end = Math.min(duration, c.offset + c.duration);
+      const start = Math.max(0, c.offset + c.trim), end = Math.min(Math.max(duration, lastFrameTime), c.offset + c.duration);
       if (end > start) clips.push({ start, end, input: start - c.offset, file: c.file, supported: c.hasVideo, disabled: !c.hasVideo });
     }
     return { index, clips, coverageRanges: mergeCoverage(clips, tol) };
@@ -141,14 +158,30 @@ export function directorSnapshot(cameras, points, duration, frame) {
   const intervals = [];
   for (let i = 0; i < bounds.length - 1; i++) {
     const candidates = [], coverageNotes = [];
+    const need = i === bounds.length - 2 ? lastFrameTime : bounds[i + 1];
     for (const t of tracks) {
-      const full = t.coverageRanges.some((r) => r.start <= bounds[i] + tol && r.end >= bounds[i + 1] - tol);
+      const full = t.coverageRanges.some((r) => r.start <= bounds[i] + tol && r.end >= need - tol);
       coverageNotes.push(`V${t.index + 1}: ${full ? "covered" : "gap or disabled clips"}`);
       if (full) candidates.push(t.index);
     }
     intervals.push({ id: i, start: bounds[i], end: bounds[i + 1], candidates, coverageNotes });
   }
   return { sequenceID: "headless", projectPath: "", duration, frame, tracks, intervals, points, a1Signature: "headless", boundaryMode: "internal", signature: "headless" };
+}
+
+/**
+ * Frame-snap edit points like rp_parseInternalPoints(). A point must land strictly inside the
+ * timeline in FRAMES: one that rounds to frame 0 or to the last frame would leave a zero-length
+ * first/last shot, which the plan validator rejects.
+ */
+export function snapEditPoints(rawPoints, duration, frame) {
+  const durationFrames = Math.round(duration / frame), points = [];
+  let lastFrame = 0;
+  for (const t of rawPoints) {
+    const at = Math.round(t / frame);
+    if (at > lastFrame && at < durationFrames) { points.push(at * frame); lastFrame = at; }
+  }
+  return points;
 }
 
 const RANK = { high: 2, medium: 1, low: 0 };
@@ -171,22 +204,27 @@ export async function planMulticam(options) {
   if (!options || !options.music) throw new Error("music is required");
   if (!Array.isArray(options.cameras) || !options.cameras.length) throw new Error("at least one camera is required");
   const progress = options.progress || noop;
+  const signal = options.signal;
+  const musicFile = resolveMediaPath(options.music);
   const engine = loadEngine(options.pluginDir);
   const ffmpegPath = engine.RPAudio.executable(options.ffmpeg || process.env.RP_FFMPEG || "");
   const minRank = RANK[options.minSyncConfidence || "medium"] ?? 1;
 
   // Probe every clip first so the timeline frame rate follows the footage.
-  const specs = options.cameras.map((c, i) => {
+  const specs = [];
+  for (const [i, c] of options.cameras.entries()) {
     const files = (Array.isArray(c.files) && c.files.length ? c.files : [c.file]).filter(Boolean);
     if (!files.length) throw new Error(`camera ${i + 1} has no files`);
     if (Number.isFinite(Number(c.offset)) && files.length > 1) throw new Error(`camera ${i + 1}: offset can only be given for a single-file camera`);
-    return { src: c, probes: files.map((f) => probe(ffmpegPath, path.resolve(f))) };
-  });
+    const probes = [];
+    for (const f of files) probes.push(await probe(ffmpegPath, resolveMediaPath(f), { signal }));
+    specs.push({ src: c, probes });
+  }
   const firstVideo = specs.flatMap((s) => s.probes).find((p) => p.hasVideo) || {};
   const fpsValue = options.fps || firstVideo.fps || 30;
 
   progress(0.02, "Analyzing music");
-  const analysis = await analyzeMusic(options.music, { ...options, engine, ffmpeg: ffmpegPath, fps: fpsValue, progress: (p, m) => progress(0.02 + 0.45 * p, m) });
+  const analysis = await analyzeMusic(musicFile, { ...options, engine, ffmpeg: ffmpegPath, fps: fpsValue, progress: (p, m) => progress(0.02 + 0.45 * p, m) });
   const { result, duration, fps } = analysis;
   const frame = fps.den / fps.num;
 
@@ -195,15 +233,26 @@ export async function planMulticam(options) {
   const totalClips = specs.reduce((n, s) => n + s.probes.length, 0);
   let done = 0;
   const cameras = [], syncOnly = [];
+  // Raw sync results are cached; the audio-stream start correction is applied on the way out. Only
+  // deterministic failures ("too short") are cached: a stalled FFmpeg or a busy disk is retried next run.
   const syncClip = async (info, extra, version) => {
-    const name = `sync-${fileKey(options.music, info.file, excerptFor(info.duration), extra || null, version)}.v8`;
+    signal?.throwIfAborted();
+    const excerpt = excerptFor(info.duration), adj = audioStartCorrection(info, excerpt.excerptStart);
+    const raw = extra && Number.isFinite(extra.expectedOffset) ? { ...extra, expectedOffset: extra.expectedOffset + adj } : extra;
+    const name = `sync-${fileKey(musicFile, info.file, excerpt, raw || null, version)}.v8`;
     let s = cacheGet(options.cacheDir, name);
+    if (s && s.error && !s.deterministic) s = undefined;
     if (!s) {
-      try { s = await syncByAudio(ffmpegPath, path.resolve(options.music), info.file, { cache, cacheDir: options.cacheDir, ...excerptFor(info.duration), ...(extra || {}) }); }
-      catch (e) { s = { error: String(e.message || e) }; }
+      try { s = await syncByAudio(ffmpegPath, musicFile, info.file, { cache, cacheDir: options.cacheDir, signal, ...excerpt, ...(raw || {}) }); }
+      catch (e) {
+        if (signal?.aborted) throw e;
+        s = { error: String(e.message || e) };
+        if (e.deterministic) { s.deterministic = true; cachePut(options.cacheDir, name, s); }
+        return s;
+      }
       cachePut(options.cacheDir, name, s);
     }
-    return s;
+    return s.error || !adj ? s : { ...s, offset: Math.round((s.offset - adj) * 1000) / 1000 };
   };
   for (let i = 0; i < specs.length; i++) {
     const { src, probes } = specs[i];
@@ -280,27 +329,28 @@ export async function planMulticam(options) {
   // Pacing exactly like makeAIPlan() in panel.js.
   progress(0.67, "Building section-aware pacing");
   const state = { cancelled: false, process: null };
-  let pacing = await engine.RPDirector.pace({ key: "agent-ai", model: MODEL, music: result.music || [], musicAnalysis: musicContext(result), duration }, state, noop);
-  pacing = constrainPacing(pacing, options.cadences);
-  engine.RPAudio.applyPacing(result, pacing, duration, 6000);
-  if (!result.points || !result.points.length) throw new Error("Auto Music Map produced no usable beat-aligned edit points.");
+  const unbind = cancelOnAbort(signal, state);
+  try {
+    let pacing = await engine.RPDirector.pace({ key: "agent-ai", model: MODEL, music: result.music || [], musicAnalysis: musicContext(result), duration }, state, noop);
+    pacing = constrainPacing(pacing, options.cadences);
+    engine.RPAudio.applyPacing(result, pacing, duration, 6000);
+    if (!result.points || !result.points.length) throw new Error("Auto Music Map produced no usable beat-aligned edit points.");
 
-  // Frame-snap like rp_parseInternalPoints().
-  const points = [];
-  for (const t of result.points) { const snap = Math.round(t / frame) * frame; if (snap > 0 && snap < duration && (!points.length || snap > points[points.length - 1] + frame / 2)) points.push(snap); }
+    const points = snapEditPoints(result.points, duration, frame);
 
-  const enabledCameras = (options.enabledCameras || cameras.map((_, i) => i)).map(Number).filter((i) => i >= 0 && i < cameras.length && cameras[i].hasVideo);
-  if (!enabledCameras.length) throw new Error("No camera clip could be placed on this music (check that the cameras recorded sound during this set).");
-  const snapshot = directorSnapshot(cameras, points, duration, frame);
-  progress(0.7, "Choosing cameras");
-  const roles = cameras.map((c, i) => `V${i + 1}: ${c.role}`).join("\n");
-  const dropCamera = options.dropCamera == null || options.dropCamera === "auto" ? null : Number(options.dropCamera);
-  const director = await engine.RPDirector.run(snapshot, {
-    key: "agent-ai", model: MODEL, roles, enabledCameras, dropCamera,
-    vision: !!options.vision, budget: Number(options.visionBudget) || 120, ffmpeg: ffmpegPath,
-    music: result.music || [], musicAnalysis: musicContext(result)
-  }, state, (p, m) => progress(0.7 + 0.28 * p, m));
+    const enabledCameras = (options.enabledCameras || cameras.map((_, i) => i)).map(Number).filter((i) => i >= 0 && i < cameras.length && cameras[i].hasVideo);
+    if (!enabledCameras.length) throw new Error("No camera clip could be placed on this music (check that the cameras recorded sound during this set).");
+    const snapshot = directorSnapshot(cameras, points, duration, frame);
+    progress(0.7, "Choosing cameras");
+    const roles = cameras.map((c, i) => `V${i + 1}: ${c.role}`).join("\n");
+    const dropCamera = options.dropCamera == null || options.dropCamera === "auto" ? null : Number(options.dropCamera);
+    const director = await engine.RPDirector.run(snapshot, {
+      key: "agent-ai", model: MODEL, roles, enabledCameras, dropCamera,
+      vision: !!options.vision, budget: Number(options.visionBudget) || 120, ffmpeg: ffmpegPath,
+      music: result.music || [], musicAnalysis: musicContext(result)
+    }, state, (p, m) => progress(0.7 + 0.28 * p, m));
 
-  progress(1, "Plan ready");
-  return buildPlan({ engine, analysis, cameras, points, snapshot: director.snapshot || snapshot, director, fps, frame, duration, musicFile: path.resolve(options.music), cadences: normaliseCadences(options.cadences), musicContext: musicContext(result) });
+    progress(1, "Plan ready");
+    return buildPlan({ engine, analysis, cameras, points, snapshot: director.snapshot || snapshot, director, fps, frame, duration, musicFile, cadences: normaliseCadences(options.cadences), musicContext: musicContext(result) });
+  } finally { unbind(); }
 }

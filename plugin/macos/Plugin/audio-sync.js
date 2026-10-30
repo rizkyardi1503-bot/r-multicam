@@ -8,6 +8,10 @@
 'use strict';
 var RATE=100,SR=8000,HOP=SR/RATE;
 var RANK={high:2,medium:1,low:0};
+// Shortest single clip whose high-confidence match is trusted as the camera clock (see syncCameraSteps).
+var SINGLE_CLOCK_MIN=120;
+// Seconds the start and end matches of one long take may differ and still confirm each other (clock drift is ~0.1 s/h).
+var SINGLE_END_AGREE=1;
 
 // ---- envelopes ----
 // onset + level are the rp-engine cues (lib/media.mjs onsetEnvelope). The band contours add what a few
@@ -113,16 +117,24 @@ function matchFullLegacy(master,cam,opts){return scanFull(master,cam,opts).legac
  * shortlists candidates: the best FULL_CANDIDATES peaks at least 2 s apart are rescored with all
  * 7 cues, and the winner must be agreed by the cues AND clearly beat the runner-up.
  */
-var FULL_CANDIDATES=8;
+// Candidates are 2 s apart, so a lag 0.5-2 s from a shortlisted peak (the true beat next to a louder wrong one) is
+// never shortlisted itself: the winner is searched again over +-FULL_REFINE s, which covers that exclusion radius.
+// Only the winner: widening every candidate lifts wrong ones too (best of 4x more lags) and lost correct matches on
+// the benchmark; widening the winner can only raise its score, so its margin never drops.
+var FULL_CANDIDATES=8,FULL_REFINE=2;
 function matchFull(master,cam,opts){
  var scan=scanFull(master,cam,opts),sc=scan.sumCorr,taken=[],cands=[],i,k;
  for(k=0;k<FULL_CANDIDATES;k++){
   var best=-Infinity,at=-1;
   for(i=0;i<sc.length;i++){var v=sc[i];if(!(v>best))continue;var lag=scan.lagOf(i),near=false;for(var j=0;j<taken.length;j++)if(Math.abs(taken[j]-lag)<2*RATE){near=true;break;}if(!near){best=v;at=lag;}}
   if(at===-1&&best===-Infinity)break;taken.push(at);
-  cands.push(matchWindow(master,cam,{excerptStart:scan.excerptStart,expectedOffset:at/RATE-scan.excerptStart,radius:.3,clockBound:Infinity}));
+  var cand=matchWindow(master,cam,{excerptStart:scan.excerptStart,expectedOffset:at/RATE-scan.excerptStart,radius:.3,clockBound:Infinity});cand.center=at/RATE-scan.excerptStart;cands.push(cand);
  }
  cands.sort(function(a,b){return b.score-a.score;});
+ var wide=matchWindow(master,cam,{excerptStart:scan.excerptStart,expectedOffset:cands[0].center,radius:FULL_REFINE,clockBound:Infinity});
+ if(wide.score>cands[0].score)cands[0]=wide;
+ // The widened winner may climb onto a runner-up's peak: that runner-up is then the same position, not a rival.
+ cands=cands.filter(function(a,i){return i===0||Math.abs(a.offset-cands[0].offset)>=.5;});
  var top=cands[0],margin=cands.length>1?top.score-cands[1].score:top.score,T=SYNC_THRESHOLDS,need=agreementNeeded(scan.seconds);
  // Below fullMinSeconds a wrong match can look fully agreed and clear (benchmark): such clips need the camera clock.
  var confidence=scan.seconds<T.fullMinSeconds||top.score<T.minScore||top.agree<need||margin<T.fullMargin?'low':top.agree>=Math.max(need,T.highAgree)&&margin>=2*T.fullMargin?'high':'medium';
@@ -161,18 +173,22 @@ function matchWindow(master,cam,opts){
  // The audio peak may sit only as far from the clock position as the clock itself can be off (creation_time is
  // whole seconds plus record-start latency); a peak further out, e.g. at the window edge, is a different beat or bar.
  var margin=isFinite(s.second)?s.best-s.second:s.best,deviation=Math.abs(s.bestLag-center)/RATE,clockBound=opts.clockBound===undefined?T.maxClockDeviation:Number(opts.clockBound);
- var confidence=s.best<T.minScore||agree<need||margin<T.windowMargin||deviation>clockBound?'low':agree>=Math.max(need,T.highAgree)&&seconds>=3?'high':'medium';
+ // High also needs the peak to beat its best rival at least 0.5 s away (another beat or bar) by highWindowMargin: on
+ // loop-based music a rival beat can tie the true one in all cues. A narrow win stays placed, but as medium ([CHECK]).
+ var confidence=s.best<T.minScore||agree<need||deviation>clockBound?'low':agree>=Math.max(need,T.highAgree)&&seconds>=3&&margin>=T.highWindowMargin?'high':'medium';
  var r=result(s,excerptStart,confidence,'audio+clock');r.agree=agree;r.cues=keys.length;r.margin=Math.round(margin*1000)/1000;return r;
 }
 // Window confidence = how many of the 7 cues agree on the peak, stricter for short clips. Calibrated on a
 // synthetic benchmark (6 seeds, 330 window matches): the smallest agreement with no wrong placement per length.
-var SYNC_THRESHOLDS={agree:[[3,7],[10,5],[Infinity,4]],highAgree:6,minScore:.2,windowMargin:0,fullMargin:.09,fullMinSeconds:10,maxClockDeviation:1.5};
+// highWindowMargin: on the benchmark (60 min --short seeds 1-8, 20 min seeds 1-5) correct high windows beat their
+// rival by >= 0.026 while correct medium ones win by as little as 0.000, so a margin can only lower high to medium.
+var SYNC_THRESHOLDS={agree:[[3,7],[10,5],[Infinity,4]],highAgree:6,minScore:.2,highWindowMargin:.02,fullMargin:.09,fullMinSeconds:10,maxClockDeviation:1.5};
 function agreementNeeded(seconds){var t=SYNC_THRESHOLDS.agree;for(var q=0;q<t.length;q++)if(seconds<t[q][0])return t[q][1];return t[t.length-1][1];}
 function result(s,excerptStart,confidence,method){return {offset:Math.round((s.bestLag/RATE-excerptStart)*1000)/1000,confidence:confidence,score:Math.round(s.best*1000)/1000,prominence:Math.round(s.z*10)/10,peakRatio:Math.round(s.ratio*100)/100,method:method};}
 
 // ---- per camera ----
 /**
- * clips: [{id, duration, created (unix s or null), env:{onset,level,band*}, excerptStart, sourceIn?, mediaDuration? (whole file, for split recordings), endEnv?, endExcerptStart?}]
+ * clips: [{id, duration, created (unix s or null), env:{onset,level,band*}, excerptStart, sourceIn?, file? (same file + In = one clip for the clock), mediaDuration? (whole file, for split recordings), endEnv?, endExcerptStart?}]
  *   duration/sourceIn describe the part that will be placed (a trimmed timeline clip: sourceIn = its In point);
  *   excerptStart and created are in media time from the file's first frame.
  * Returns {anchor, clips:[{id, status:'placed'|'review'|'excluded', offset, confidence, method, reason, drift?}]}
@@ -191,15 +207,31 @@ function* syncCameraSteps(master,clips,opts){
  // 1. Anchor from the longest clips with a clock (full search only for these).
  var probes=timed.slice().sort(function(a,b){return b.duration-a.duration;}).slice(0,anchorClips),full={},pi;
  for(pi=0;pi<probes.length;pi++){try{full[probes[pi].id]=matchFull(master,probes[pi].env,{excerptStart:probes[pi].excerptStart});}catch(e){}yield;}
- function anchorFrom(list){var best=null,bestW=0,bestN=0;list.forEach(function(c){var a0=c.created-c.offset,support=list.filter(function(d){return Math.abs(d.created-d.offset-a0)<=2.5;}),w=support.reduce(function(n,d){return n+weight(d.confidence);},0);if(w>bestW){bestW=w;bestN=support.length;best=support.reduce(function(n,d){return n+(d.created-d.offset)*weight(d.confidence);},0)/w;}});return {anchor:best,weight:bestW,support:bestN};}
- var seeds=probes.filter(function(c){return full[c.id]&&weight(full[c.id].confidence)>0;}).map(function(c){return {created:c.created,offset:full[c.id].offset,confidence:full[c.id].confidence};}),A=anchorFrom(seeds);
+ // Two project items of one file with the same In point are one piece of evidence, not two agreeing clips.
+ function anchorFrom(all){var best=null,bestW=0,bestN=0,seen={},list=all.filter(function(d){var k=(d.clip.file||d.clip.fileName||'#'+d.clip.id)+'|'+(Number(d.clip.sourceIn)||0)+'|'+d.clip.created;if(seen[k])return false;seen[k]=true;return true;});list.forEach(function(c){var a0=c.created-c.offset,support=list.filter(function(d){return Math.abs(d.created-d.offset-a0)<=2.5;}),w=support.reduce(function(n,d){return n+weight(d.confidence);},0);if(w>bestW){bestW=w;bestN=support.length;best=support.reduce(function(n,d){return n+(d.created-d.offset)*weight(d.confidence);},0)/w;}});return {anchor:best,weight:bestW,support:bestN,distinct:list.length};}
+ var seeds=probes.filter(function(c){return full[c.id]&&weight(full[c.id].confidence)>0;}).map(function(c){return {created:c.created,offset:full[c.id].offset,confidence:full[c.id].confidence,duration:c.duration,clip:c};}),A=anchorFrom(seeds);
  // Not enough agreeing long clips: try the next ones before giving up on the clock.
  for(var more=anchorClips;!(A.weight>=3&&A.support>=2)&&more<timed.length&&more<anchorClips+8;more++){
   var c2=timed.slice().sort(function(a,b){return b.duration-a.duration;})[more];if(!c2)break;try{full[c2.id]=matchFull(master,c2.env,{excerptStart:c2.excerptStart});}catch(e){continue;}
-  if(weight(full[c2.id].confidence)>0){seeds.push({created:c2.created,offset:full[c2.id].offset,confidence:full[c2.id].confidence});A=anchorFrom(seeds);}
+  if(weight(full[c2.id].confidence)>0){seeds.push({created:c2.created,offset:full[c2.id].offset,confidence:full[c2.id].confidence,duration:c2.duration,clip:c2});A=anchorFrom(seeds);}
   yield;
  }
- var clock=A.weight>=3&&A.support>=2?A.anchor:null;
+ // A camera filmed in one long take has no second clip to cross-check its clock. When it is the only clip that
+ // matched, it is trusted on its own (drones bridge through it). A take with an end excerpt (over 600 s, see
+ // sync-ui.js LONG_CLIP) is trusted only when a separate whole-music search of that end lands on the same offset
+ // (medium or better, within SINGLE_END_AGREE), whether its start matched high or medium: a high start alone can
+ // still be a wrong region, and the end is a second, independent check (the halloween cams: one 1 h take each,
+ // medium at the start, end within 0.1 s). A take without an end excerpt needs a high-confidence match of at least
+ // SINGLE_CLOCK_MIN seconds; so does a take whose end excerpt is too short to search (audio shorter than the video)
+ // or, placed at the start's offset, lies mostly outside the music (after its end, in an A1 gap): nothing to check.
+ // Two or more matching clips still have to agree, so a camera with a wrong clock is not trusted.
+ var single=false;
+ if(!(A.weight>=3&&A.support>=2)&&A.distinct===1){
+  var s1=seeds[0],sc=s1.clip;
+  if(endUsable(sc)&&endInMusic(sc,s1.offset)){yield;var e1=null;try{e1=matchFull(master,sc.endEnv,{excerptStart:sc.endExcerptStart});}catch(e){e1=null;}single=!!e1&&RANK[e1.confidence]>=1&&Math.abs(e1.offset-s1.offset)<=SINGLE_END_AGREE;}
+  else single=s1.confidence==='high'&&s1.duration>=SINGLE_CLOCK_MIN;
+ }
+ var clock=(A.weight>=3&&A.support>=2)||single?A.anchor:null;
  // 2. Every clip: clock-guided window when the camera clock is trusted, whole-music search otherwise.
  for(var ci=0;ci<clips.length;ci++){
   yield;
@@ -210,6 +242,22 @@ function* syncCameraSteps(master,clips,opts){
    if(expected+(c.sourceIn||0)>=musicDuration+2||expected+(c.sourceIn||0)+c.duration<=-2){out[c.id]={id:c.id,status:'excluded',offset:expected,reason:'camera clock places it outside the music'};continue;}
    try{r=matchWindow(master,c.env,{excerptStart:c.excerptStart,expectedOffset:expected,radius:radius});}catch(e){out[c.id]={id:c.id,status:'review',offset:expected,confidence:'low',method:'clock',reason:c.duration<1?'clip shorter than 1 s':String(e.message||e)};continue;}
    r.clockOffset=Math.round(expected*1000)/1000;
+   // One clip's creation_time can be off while the camera clock is right for the others (C0242: +231.7 s). Its own
+   // whole-music match then wins over the clock window. Probes already have it; any other clip of at least
+   // fullMinSeconds gets the search now when its window is not high; a clip with a high window keeps it (a narrow,
+   // beat-periodic win is medium, see highWindowMargin, so it is searched; one search per clip would slow sets with
+   // hundreds of clips; clips over 600 s are also checked at their end). Clips under fullMinSeconds are never high in a whole-music
+   // search, so they keep the clock. When the window is also high (it
+   // is then near the clock), both are 7-cue scores of the same kind, and the clock position is kept only when it
+   // scores clearly better (by fullMargin): the whole-music search ranks its candidates on that score, so a clearly
+   // better clock peak is one it missed; otherwise the clip's own audio wins.
+   var own=full[c.id]||null,T=SYNC_THRESHOLDS;
+   if(!own&&c.duration>=T.fullMinSeconds&&r.confidence!=='high'){yield;try{own=full[c.id]=matchFull(master,c.env,{excerptStart:c.excerptStart});}catch(e){own=null;}}
+   if(own&&own.confidence==='high'&&Math.abs(own.offset-expected)>T.maxClockDeviation&&!(r.confidence==='high'&&r.score>=own.score+T.fullMargin)){
+    var off=Math.round((own.offset-expected)*10)/10;
+    out[c.id]={id:c.id,status:'placed',offset:own.offset,confidence:own.confidence,method:'audio',score:own.score,agree:own.agree,margin:own.margin,clockOffset:r.clockOffset,reason:'camera clock disagrees with this clip\'s audio (clock off by '+(off>0?'+':'')+off+' s); placed by audio',clockWindow:r};
+    driftCheck(c,own);continue;
+   }
    // Too short or unclear near the clock: keep the clock position, flag for review.
    if(RANK[r.confidence]<minRank){out[c.id]={id:c.id,status:'review',offset:expected,confidence:'low',method:'clock',reason:c.duration<3?'clip shorter than 3 s':'audio match unclear near the clock position',audio:r};continue;}
   }else{
@@ -220,7 +268,23 @@ function* syncCameraSteps(master,clips,opts){
   driftCheck(c,r);
  }
  // Long clips: compare the start and end placement; a camera clock that runs fast/slow shows up as drift.
- function driftCheck(c,r){if(c.endEnv&&isFinite(c.endExcerptStart)){var e2=null;try{e2=matchWindow(master,c.endEnv,{excerptStart:c.endExcerptStart,expectedOffset:r.offset,radius:1,clockBound:Infinity});}catch(endError){e2=null;}if(e2&&RANK[e2.confidence]>=1){var drift=Math.round((e2.offset-r.offset)*1000)/1000;out[c.id].drift=drift;if(frame&&Math.abs(drift)>frame)out[c.id].reason='audio drifts '+drift.toFixed(3)+' s over the clip';}}}
+ // An end that does not match near the start's position, while that position puts the end inside the music, means the
+ // start match (or the clip) is wrong: review. An end mostly past the music, before it or in an A1 gap (master level
+ // flat at its floor) has nothing to match, so the clip stays placed; so does one whose end excerpt is under 3 s
+ // (camera audio shorter than its video, a truncated tail).
+ function endUsable(c){return !!c.endEnv&&isFinite(c.endExcerptStart)&&c.endEnv.onset.length>=RATE*3;}
+ function endInMusic(c,offset){
+  var t0=Math.round((offset+c.endExcerptStart)*RATE),t1=t0+c.endEnv.onset.length,lv=master.level,music=0;
+  for(var t=Math.max(1,t0+1);t<Math.min(master.n,t1);t++)if(lv[t]!==lv[t-1])music++;
+  return music>=(t1-t0)/2;
+ }
+ function driftCheck(c,r){
+  if(!endUsable(c))return;
+  var e2=null;try{e2=matchWindow(master,c.endEnv,{excerptStart:c.endExcerptStart,expectedOffset:r.offset,radius:1,clockBound:Infinity});}catch(endError){e2=null;}
+  if(e2&&RANK[e2.confidence]>=1){var drift=Math.round((e2.offset-r.offset)*1000)/1000;out[c.id].drift=drift;if(frame&&Math.abs(drift)>frame)out[c.id].reason='audio drifts '+drift.toFixed(3)+' s over the clip';return;}
+  if(!endInMusic(c,r.offset))return;
+  out[c.id].status='review';out[c.id].reason='start and end of this clip disagree (its end audio is not found where its start places it)';
+ }
  // 2b. Split recordings: a camera that splits one long take into files (DJI ~35 min, GoPro, Sony 4 GB) writes the
  // next file's creation_time up to ~3 s after the previous file really ended, so the clock window above misses
  // the audio (Kaehla cam 1: DJI_0004/0005 sat 2.8/3.2 s late). A file whose clock starts within 4 s of the

@@ -8,6 +8,9 @@ var session=null,profile=null,entitlement=null,busy=false,restoring=true,listene
 var refreshFlight=null,authGeneration=0,verified=false,storageWarning='',sessionSavedAt=0,oauthPending=false;
 /* Offline grace: the last server-verified entitlement stays usable for 72 h when the account server cannot be reached (network/timeout/5xx only). */
 var GRACE_MS=72*3600000,CLOCK_SLACK_MS=300000,verifiedMeta=null,offline=false,offlineReason='',pendingLogin=null;
+/* Clock handling. SKEW_MAX_MS: a server/PC clock difference larger than this is ignored. highWater: latest PC time (UTC ms) seen,
+   saved in every session copy; offline use stops while the PC clock is more than ROLLBACK_SLACK_MS before it (clock set back). */
+var SKEW_MAX_MS=24*3600000,ROLLBACK_SLACK_MS=3600000,HW_PERSIST_MS=600000,highWater=0,hwSavedAt=0;
 /* Signed offline grace: once a real key is embedded, offline use needs an entitlement signed by plugin-entitlement-signed (Ed25519).
    SIGN_KEYS = {key_id: base64 of the raw 32-byte Ed25519 public key}. PLACEHOLDER = signing not deployed yet: unsigned grace as before. */
 var SIGN_KEYS={'k1-2026-10':'fULotW3Lu1EYyfk3ZkEOjgOI+H0mGvWf59SsDTq83lg='},SIGN_AUD='r-multicam-plugin-entitlement',SIGN_REFRESH_MS=3600000,signedEnt=null,signedCheck=null,signedFlight=null;
@@ -20,16 +23,37 @@ function legacySessionFile(){storageInit();var d=storageDir();return d&&npath?np
 function v2SessionFile(){storageInit();var d=storageDir();return d&&npath?npath.join(d,'account-session-v2.json'):'';}
 function legacyStorageKey(){storageInit();if(!ncrypto||!nos)return null;var seed='RProjectMulticam|'+String(nos.hostname())+'|'+String(nos.platform())+'|session-v1';return ncrypto.createHash('sha256').update(seed).digest();}
 function legacyDecrypt(text){storageInit();var b=Buffer.from(String(text||'').trim(),'base64');if(b.length<32||b.slice(0,4).toString()!=='RPS1')return null;var key=legacyStorageKey(),iv=b.slice(4,16),tag=b.slice(16,32),enc=b.slice(32),d=ncrypto.createDecipheriv('aes-256-gcm',key,iv);d.setAuthTag(tag);return JSON.parse(Buffer.concat([d.update(enc),d.final()]).toString('utf8'));}
+/* Tokens at rest: AES-256-GCM under a random data key that DPAPI (Windows) or the login Keychain (macOS) protects, the same OS stores
+   online-music-ai.js uses for the OpenAI key. The OS store is asked once per panel run, not on every save. Without Node or a working
+   OS store the tokens are saved as before (plain JSON), so nobody is signed out by this. */
+var DK_SERVICE='RProjectMulticamAI',DK_ACCOUNT='Account Session Key',DK_AAD='rp-session-v1',dataKey=null,dataKeyFailed=false,sealConfirmed=false;
+function winCrypt(input,decrypt){
+ var common="$ErrorActionPreference='Stop';Add-Type -AssemblyName System.Security;$s=[Console]::In.ReadToEnd();";
+ var script=common+(decrypt?"$b=[Convert]::FromBase64String($s);$v=[Security.Cryptography.ProtectedData]::Unprotect($b,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser);[Console]::Out.Write([Text.Encoding]::UTF8.GetString($v));":"$b=[Text.Encoding]::UTF8.GetBytes($s);$v=[Security.Cryptography.ProtectedData]::Protect($b,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser);[Console]::Out.Write([Convert]::ToBase64String($v));");
+ var exe=npath.join(nproc.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+ var r=nreq('child_process').spawnSync(exe,['-NoProfile','-NonInteractive','-Command',script],{input:input,encoding:'utf8',windowsHide:true,timeout:decrypt?12000:8000,maxBuffer:16384});
+ if(r.error||r.status!==0||!r.stdout)throw Error('secure_storage_unavailable');return String(r.stdout).trim();}
+function macRun(args,allowMissing,input){var r=nreq('child_process').spawnSync('/usr/bin/security',args,{input:input,encoding:'utf8',timeout:12000,maxBuffer:16384});if(r.error)throw Error('secure_storage_unavailable');if(r.status!==0){if(allowMissing)return '';throw Error('secure_storage_unavailable');}return String(r.stdout||'').trim();}
+/* read(): the stored key text, '' when there is none. create(v): stores v only if no key exists yet (another panel may have made one first). */
+function keyStore(){storageInit();if(!nfs||!npath||!nproc||!nreq('child_process'))return null;
+ if(nproc.platform==='win32'){var d=storageDir();if(!d)return null;var f=npath.join(d,'account-key.dpapi');return {read:function(){return nfs.existsSync(f)?winCrypt(nfs.readFileSync(f,'utf8'),true):'';},create:function(v){var blob=winCrypt(v,false);try{nfs.writeFileSync(f,blob,{encoding:'utf8',flag:'wx',mode:384});}catch(e){if(!e||e.code!=='EEXIST')throw e;}}};}
+ /* The key goes to `security -i` on stdin, never argv (visible in ps). No -U: an existing key is never replaced. */
+ if(nproc.platform==='darwin')return {read:function(){return macRun(['find-generic-password','-s',DK_SERVICE,'-a',DK_ACCOUNT,'-w'],true);},create:function(v){macRun(['-i'],true,'add-generic-password -s "'+DK_SERVICE+'" -a "'+DK_ACCOUNT+'" -w "'+v+'"\n');}};
+ return null;}
+function dataKeyGet(create){if(dataKey)return dataKey;if(dataKeyFailed)return null;try{storageInit();var ks=keyStore(),B=nbuf();if(!ks||!ncrypto||!B)return null;var v;/* One retry: a slow first PowerShell start must not cost the saved login. */try{v=ks.read();}catch(re){v=ks.read();}if(!v){if(!create)return null;ks.create(ncrypto.randomBytes(32).toString('base64'));v=ks.read();}var raw=B.from(String(v||'').trim(),'base64');if(raw.length!==32)throw Error('bad session key');dataKey=raw;return dataKey;}catch(e){dataKeyFailed=true;return null;}}
+function sealSession(s){var k=dataKeyGet(true);if(!k)return null;try{var B=nbuf(),iv=ncrypto.randomBytes(12),c=ncrypto.createCipheriv('aes-256-gcm',k,iv);c.setAAD(B.from(DK_AAD));var enc=B.concat([c.update(JSON.stringify(s),'utf8'),c.final()]);return {v:1,iv:iv.toString('base64'),tag:c.getAuthTag().toString('base64'),data:enc.toString('base64')};}catch(e){return null;}}
+function openSession(x){if(!x||x.v!==1)return null;var k=dataKeyGet(false);if(!k)return null;try{var B=nbuf(),d=ncrypto.createDecipheriv('aes-256-gcm',k,B.from(String(x.iv),'base64'),{authTagLength:16});d.setAAD(B.from(DK_AAD));d.setAuthTag(B.from(String(x.tag),'base64'));return JSON.parse(B.concat([d.update(B.from(String(x.data),'base64')),d.final()]).toString('utf8'));}catch(e){return null;}}
+/* Two-phase migration: the plain copy is kept next to the sealed one until a later run has opened a sealed copy (sealConfirmed). */
+function sessionPayload(obj,sealed,full){var p={schema:4,saved_at:sessionSavedAt,hw:highWater};if(sealed)p.session_enc=sealed;if(!sealed||!sealConfirmed)p.session=obj;if(full){p.profile=profile;p.entitlement=entitlement;p.verified_meta=verifiedMeta;p.signed_entitlement=signedEnt;}return p;}
+function payloadSession(x){return x?(x.session_enc&&openSession(x.session_enc))||x.session||null:null;}
 function atomicSessionWrite(text){storageInit();var f=sessionFile();if(!f||!nfs)throw Error('Node persistent storage unavailable');var t=f+'.tmp-'+String(Date.now());nfs.writeFileSync(t,text,{encoding:'utf8',mode:384});try{nfs.renameSync(t,f);}catch(e){try{nfs.unlinkSync(f);}catch(x){}nfs.renameSync(t,f);}}
-function persistentWrite(obj){var payload={schema:4,saved_at:sessionSavedAt,session:obj,profile:profile,entitlement:entitlement,verified_meta:verifiedMeta,signed_entitlement:signedEnt};atomicSessionWrite(JSON.stringify(payload));var verify=JSON.parse(nfs.readFileSync(sessionFile(),'utf8'));if(!verify||verify.schema!==4||!verify.session||verify.session.refresh_token!==obj.refresh_token)throw Error('Persistent session read-back verification failed.');}
+function persistentWrite(obj,sealed){atomicSessionWrite(JSON.stringify(sessionPayload(obj,sealed,true)));var verify=JSON.parse(nfs.readFileSync(sessionFile(),'utf8')),vs=payloadSession(verify);if(!verify||verify.schema!==4||!vs||vs.refresh_token!==obj.refresh_token)throw Error('Persistent session read-back verification failed.');}
 function cepRoot(){try{var cs=new global.CSInterface(),u=cs.getSystemPath(global.SystemPath.USER_DATA)||'';u=decodeURIComponent(String(u).replace(/^file:\/\//i,''));if(/^\/[A-Za-z]:\//.test(u))u=u.slice(1);return u.replace(/\\/g,'/').replace(/\/$/,'')+'/RProjectMulticam';}catch(e){return '';}}
 function cepFs(){try{return global.cep&&global.cep.fs?global.cep.fs:null;}catch(e){return null;}}
 function cepSessionFile(){var d=cepRoot();return d?d+'/'+PERSIST:'';}
 function cepEnsureDir(){var fs=cepFs(),d=cepRoot();if(!fs||!d)return false;try{var r=fs.makedir(d);return !r||r.err===0||r.err===3;}catch(e){return false;}}
-function cepPersistentWrite(obj){var fs=cepFs(),f=cepSessionFile();if(!fs||!f)throw Error('CEP persistent storage unavailable');cepEnsureDir();var payload={schema:4,saved_at:sessionSavedAt,session:obj,profile:profile,entitlement:entitlement,verified_meta:verifiedMeta,signed_entitlement:signedEnt};var text=JSON.stringify(payload),w=fs.writeFile(f,text);if(w&&w.err)throw Error('CEP session write failed '+w.err);var r=fs.readFile(f);if(!r||r.err||!r.data)throw Error('CEP session read-back failed '+(r&&r.err));var v=JSON.parse(r.data);if(!v||v.schema!==4||!v.session||v.session.refresh_token!==obj.refresh_token)throw Error('CEP session verification mismatch');return true;}
-function cepPersistentRead(){var fs=cepFs(),f=cepSessionFile();if(!fs||!f)return null;try{var r=fs.readFile(f);if(!r||r.err||!r.data)return null;var x=JSON.parse(r.data);if(x&&x.schema===4&&x.session&&x.session.access_token&&x.session.refresh_token){profile=x.profile||null;entitlement=x.entitlement||null;if(entitlement){entitlementBase=Number(entitlement.remaining_seconds||0);entitlementTick=(global.performance&&performance.now)?performance.now():Date.now();}return x.session;}}catch(e){}return null;}
+function cepPersistentWrite(obj,sealed){var fs=cepFs(),f=cepSessionFile();if(!fs||!f)throw Error('CEP persistent storage unavailable');cepEnsureDir();var text=JSON.stringify(sessionPayload(obj,sealed,true)),w=fs.writeFile(f,text);if(w&&w.err)throw Error('CEP session write failed '+w.err);var r=fs.readFile(f);if(!r||r.err||!r.data)throw Error('CEP session read-back failed '+(r&&r.err));var v=JSON.parse(r.data),vs=payloadSession(v);if(!v||v.schema!==4||!vs||vs.refresh_token!==obj.refresh_token)throw Error('CEP session verification mismatch');return true;}
 function cepPersistentDelete(){try{var fs=cepFs(),f=cepSessionFile();if(fs&&f)fs.deleteFile(f);}catch(e){}}
-function persistentRead(){storageInit();var f=sessionFile();if(!f||!nfs||!nfs.existsSync(f))return null;var x=JSON.parse(nfs.readFileSync(f,'utf8'));if(x&&x.session&&x.session.access_token&&x.session.refresh_token){profile=x.profile||null;entitlement=x.entitlement||null;if(entitlement){entitlementBase=Number(entitlement.remaining_seconds||0);entitlementTick=(global.performance&&performance.now)?performance.now():Date.now();}return x.session;}return null;}
 
 function notify(){for(var i=0;i<listeners.length;i++)try{listeners[i](status());}catch(e){}}
 var restoreDiagnostic='NOT_RUN';
@@ -37,10 +61,12 @@ function save(){
  /* A sign-in is persisted only after the device bind + entitlement step succeeded. */
  if(session&&pendingLogin&&pendingLogin.session===session)return;
  if(session){
-  sessionSavedAt=Math.max(Date.now(),sessionSavedAt+1);storageWarning='';var cepOK=false,nodeOK=false,localOK=false;
-  try{cepPersistentWrite(session);cepOK=true;}catch(cx){}
-  try{persistentWrite(session);nodeOK=true;}catch(nx){}
-  try{localStorage.setItem(STORE,JSON.stringify({schema:4,saved_at:sessionSavedAt,session:session}));localOK=true;}catch(e){}
+  sessionSavedAt=Math.max(Date.now(),sessionSavedAt+1);hwObserve();hwSavedAt=Date.now();storageWarning='';var cepOK=false,nodeOK=false,localOK=false,sealed=sealSession(session);
+  try{cepPersistentWrite(session,sealed);cepOK=true;}catch(cx){}
+  try{persistentWrite(session,sealed);nodeOK=true;}catch(nx){}
+  try{localStorage.setItem(STORE,JSON.stringify(sessionPayload(session,sealed,false)));localOK=true;}catch(e){}
+  /* Encrypted copy saved and sealed copies proven readable: remove copies that may still hold plain tokens (a copy whose write failed, pre-encryption files). */
+  if(sealed&&sealConfirmed&&(cepOK||nodeOK)){if(!cepOK)cepPersistentDelete();if(!localOK)try{localStorage.removeItem(STORE);}catch(e3){}try{storageInit();[nodeOK?'':sessionFile(),legacySessionFile(),v2SessionFile()].forEach(function(old){try{if(old&&nfs&&nfs.existsSync(old))nfs.unlinkSync(old);}catch(x4){}});}catch(x3){}}
   storageWarning=cepOK||nodeOK?'':localOK?'Login is saved only in the panel cache. Permanent storage is unavailable; login may be required after restarting Premiere.':'Login could not be saved. Check write permissions for your user application-data folder.';restoreDiagnostic=cepOK?'SESSION_SAVED_CEP_VERIFIED':nodeOK?'SESSION_SAVED_NODE_VERIFIED':localOK?'SESSION_SAVED_LOCAL_FALLBACK':'SESSION_SAVE_FAILED';
  }else{
   try{localStorage.removeItem(STORE);}catch(e2){}
@@ -49,8 +75,9 @@ function save(){
  }
 }
 function storedCandidates(){
- var candidates=[];
- function add(text,source){try{var x=JSON.parse(text||'null'),v=x&&x.session?x.session:x;if(v&&v.access_token&&v.refresh_token)candidates.push({session:v,profile:x.profile||null,entitlement:x.entitlement||null,meta:x.verified_meta||null,signed:x.signed_entitlement||null,saved:Number(x.saved_at)||0,expires:Number(v.expires_at)||0,source:source});}catch(e){}}
+ var candidates=[],hw=0,plain=false,opened=false;
+ /* hw: highest clock high-water mark of all readable copies (older copies without one: their save time). */
+ function add(text,source){try{var x=JSON.parse(text||'null');if(!x||typeof x!=='object')return;var h=Number(x.hw!=null?x.hw:x.saved_at)||0;if(h>hw)hw=h;/* A sealed copy that cannot be opened falls back to the plain copy kept beside it (phase 1). */var v=x.session_enc?openSession(x.session_enc):null;if(v)opened=true;if(x.session||!x.session_enc)plain=true;if(!v)v=x.session?x.session:x.session_enc?null:x;if(v&&v.access_token&&v.refresh_token){candidates.push({session:v,profile:x.profile||null,entitlement:x.entitlement||null,meta:x.verified_meta||null,signed:x.signed_entitlement||null,saved:Number(x.saved_at)||0,expires:Number(v.expires_at)||0,source:source});}}catch(e){}}
  try{var cf=cepFs(),cp=cepSessionFile(),cr=cf&&cp?cf.readFile(cp):null;if(cr&&!cr.err)add(cr.data,'CEP');}catch(e0){}
  try{storageInit();var nf=sessionFile();if(nfs&&nf&&nfs.existsSync(nf))add(nfs.readFileSync(nf,'utf8'),'NODE');}catch(e1){}
  try{add(localStorage.getItem(STORE),'LOCAL');}catch(e2){}
@@ -63,15 +90,38 @@ function storedCandidates(){
  candidates.sort(function(a,b){return b.expires-a.expires||b.saved-a.saved;});
  /* The panel-cache copy carries only tokens; borrow entitlement/verification from a file copy of the same token. */
  if(candidates.length&&!candidates[0].entitlement)for(var i=1;i<candidates.length;i++)if(candidates[i].entitlement&&candidates[i].session.refresh_token===candidates[0].session.refresh_token){candidates[0].profile=candidates[i].profile;candidates[0].entitlement=candidates[i].entitlement;candidates[0].meta=candidates[i].meta;candidates[0].signed=candidates[i].signed;break;}
- return candidates;
+ candidates.hw=hw;candidates.plain=plain;candidates.opened=opened;return candidates;
 }
 function load(){
  verified=false;offline=false;offlineReason='';session=null;profile=null;entitlement=null;verifiedMeta=null;signedEnt=null;storageWarning='';restoreDiagnostic='SESSION_NOT_FOUND';
  var candidates=storedCandidates();
  if(candidates.length){var best=candidates[0];session=best.session;profile=best.profile;entitlement=best.entitlement;verifiedMeta=best.meta&&typeof best.meta==='object'?best.meta:null;signedEnt=best.signed&&typeof best.signed==='object'?best.signed:null;sessionSavedAt=best.saved;var since=verifiedMeta?Math.max(0,(Date.now()-Number(verifiedMeta.at||0))/1000):0;entitlementBase=Number(entitlement&&entitlement.remaining_seconds||0)-since;entitlementTick=(global.performance&&performance.now)?performance.now():Date.now();restoreDiagnostic='SESSION_LOADED_'+best.source;}
+ highWater=Number(candidates.hw)||0;hwSavedAt=Date.now();sealConfirmed=!!candidates.opened;
+ /* Migration: plain tokens found and the OS key store works -> phase 1 writes sealed + plain; once a later run has opened a sealed
+    copy (phase 2) every copy is rewritten sealed only and the plain files are removed. A failed key read writes plain and deletes nothing. */
+ if(session&&candidates.plain&&dataKeyGet(true)){save();restoreDiagnostic='SESSION_LOADED_'+candidates[0].source+'_ENCRYPTED';}
 }
 function userKey(s){return s&&s.user?String(s.user.id||s.user.email||''):'';}
-function markVerified(ent){var local=Date.now(),srv=Date.parse(ent&&ent.server_time||'');verifiedMeta={at:local,server_at:isFinite(srv)?srv:0,skew:isFinite(srv)?srv-local:0,user:userKey(session),device:device(),allowed:!!(ent&&ent.allowed===true)};}
+/* An online answer restarts the high-water mark at the true time: a PC clock that was fast and has since been corrected does not count as set back. */
+function markVerified(ent){var local=Date.now(),srv=Date.parse(ent&&ent.server_time||'');verifiedMeta={at:local,server_at:isFinite(srv)?srv:0,skew:isFinite(srv)?srv-local:0,user:userKey(session),device:device(),allowed:!!(ent&&ent.allowed===true)};highWater=isFinite(srv)?Math.min(local,srv):local;}
+function perfNow(){return global.performance&&performance.now?performance.now():0;}
+var monoWall=Date.now(),monoPerf=perfNow();
+/* PC time (UTC ms), never earlier than the time this panel has already seen pass (performance.now is monotonic). */
+function observedNow(){return Math.max(Date.now(),monoWall+(perfNow()-monoPerf));}
+/* Skew measured online in this run is used as is; a skew read from the (editable) cache only within SKEW_MAX_MS. */
+function skewMs(){var s=Number(verifiedMeta&&verifiedMeta.skew);if(!isFinite(s))return 0;return verified||Math.abs(s)<=SKEW_MAX_MS?s:0;}
+/* Server time estimated from the last online answer: a PC clock a few minutes slow does not make a fresh grant look issued in the future. */
+function srvNow(){return observedNow()+skewMs();}
+/* The later of PC time and server estimate: a grant counts as issued in the future only if it is in the future by both (a slow PC,
+   or a fast PC corrected after the last online check, is not a clock set back; the high-water mark catches real rollbacks). */
+function latestNow(){return Math.max(observedNow(),srvNow());}
+/* For expiry: the skew measured this run is trusted; a cached (editable) skew may only move the deadline earlier, never later. */
+function expNow(){return verified?srvNow():latestNow();}
+/* PC clock set back more than ROLLBACK_SLACK_MS before the latest time seen (DST / time-zone changes do not move UTC ms). */
+function hwObserve(){var t=Date.now(),o=verified?Math.min(t,srvNow()):t;if(o>highWater)highWater=o;return t;}
+function rolledBack(){return hwObserve()<highWater-ROLLBACK_SLACK_MS;}
+/* Persist the high-water mark every 10 min while in use, so a restart after a long offline session cannot rewind it far. */
+function keepHighWater(){if(!session||(pendingLogin&&pendingLogin.session===session)||Date.now()-hwSavedAt<HW_PERSIST_MS)return;var d=restoreDiagnostic;try{save();}catch(e){}restoreDiagnostic=d;}
 /* Network errors, timeouts and 5xx/408/429 are transient. Auth rejections and explicit server answers are not. */
 function transient(e){if(!e||e.code==='SESSION_REPLACED'||authRejected(e))return false;var s=Number(e.status||0);if(s)return s>=500||s===408||s===429;return true;}
 function goOffline(e){offline=true;offlineReason=String(e&&e.message||e||'');}
@@ -83,24 +133,25 @@ function nbuf(){var m=nreq('buffer');return m&&m.Buffer?m.Buffer:(typeof Buffer!
 function signingKey(id){if(!own(SIGN_KEYS,id)||/PLACEHOLDER/.test(id+SIGN_KEYS[id]))return null;storageInit();var B=nbuf(),raw=B.from(SIGN_KEYS[id],'base64');if(raw.length!==32)return null;return ncrypto.createPublicKey({key:B.concat([B.from('302a300506032b6570032100','hex'),raw]),format:'der',type:'spki'});}
 function verifySigned(se){if(!se||typeof se.payload!=='string'||typeof se.signature!=='string')return null;if(signedCheck&&signedCheck.src===se)return signedCheck.payload;var p=null;try{var B=nbuf(),key=signingKey(String(se.key_id||''));if(key&&ncrypto.verify(null,B.from(se.payload,'utf8'),key,B.from(se.signature,'base64'))){p=JSON.parse(se.payload);if(!p||p.v!==1||p.aud!==SIGN_AUD||p.key_id!==se.key_id)p=null;}}catch(e){p=null;}signedCheck={src:se,payload:p};return p;}
 function signedFor(p){return !!(p&&session&&p.user_id===String(session.user&&session.user.id||'')&&p.device_id===device()&&device());}
-/* Valid signature, this user and device, issued_at - slack <= now < expires_at, allowed. */
-function signedGrant(){var p=verifySigned(signedEnt);if(!p||p.allowed!==true||!signedFor(p))return null;var now=Date.now(),iss=Date.parse(p.issued_at),exp=Date.parse(p.expires_at);if(!isFinite(iss)||!isFinite(exp)||now<iss-CLOCK_SLACK_MS||now>=exp)return null;return p;}
+/* Valid signature, this user and device, issued_at - slack <= server-time estimate, deadline < expires_at, allowed. */
+function signedGrant(){var p=verifySigned(signedEnt);if(!p||p.allowed!==true||!signedFor(p))return null;var iss=Date.parse(p.issued_at),exp=Date.parse(p.expires_at);if(!isFinite(iss)||!isFinite(exp)||latestNow()<iss-CLOCK_SLACK_MS||expNow()>=exp)return null;return p;}
 function sameTime(a,b){return (Date.parse(a||'')||0)===(Date.parse(b||'')||0);}
 /* After an online check: drop a signed copy that disagrees with the server's answer, fetch a fresh one when missing or older than 1 h. Failures only cost offline grace. */
 function refreshSigned(generation){
  if(!signingActive()||!session||!entitlement||entitlement.session_replaced||signedFlight)return null;
- var p=verifySigned(signedEnt),now=Date.now();
+ var p=verifySigned(signedEnt),now=srvNow();
  if(p&&!(signedFor(p)&&p.allowed===(entitlement.allowed===true)&&p.license_status===entitlement.license_status&&sameTime(p.trial_expires_at,entitlement.trial_expires_at))){signedEnt=null;p=null;}
  if(p){var iss=Date.parse(p.issued_at);if(now-iss<SIGN_REFRESH_MS&&iss<=now+CLOCK_SLACK_MS)return null;}
  signedFlight=(async function(){try{var d=await request('/functions/v1/plugin-entitlement-signed',{method:'POST',auth:true,body:rpcBody()});if(generation!==authGeneration||!session)return;var se=d&&d.signed,q=verifySigned(se);if(q&&signedFor(q)){signedEnt={payload:se.payload,signature:se.signature,key_id:se.key_id};save();notify();}}catch(e){}finally{signedFlight=null;}}());
  return signedFlight;
 }
 function graceState(){
- if(signedOnly()){var g=signedGrant();if(!g)return null;var t=Date.now();return {ageMs:Math.max(0,t-Date.parse(g.issued_at)),leftMs:Math.max(0,Date.parse(g.expires_at)-t)};}
+ if(!verified&&rolledBack())return null;
+ if(signedOnly()){var g=signedGrant();if(!g)return null;return {ageMs:Math.max(0,srvNow()-Date.parse(g.issued_at)),leftMs:Math.max(0,Date.parse(g.expires_at)-expNow())};}
  if(!session||!entitlement||entitlement.allowed!==true||!verifiedMeta||verifiedMeta.allowed===false)return null;
  if(String(verifiedMeta.user||'')!==userKey(session))return null;
  var dev=device();if(verifiedMeta.device&&dev&&verifiedMeta.device!==dev)return null;
- var age=Date.now()-Number(verifiedMeta.at||0);
+ var age=observedNow()-Number(verifiedMeta.at||0);
  /* Clock moved back before the last verification, or past the 72 h window: no grace. */
  if(!(age>=-CLOCK_SLACK_MS&&age<=GRACE_MS))return null;
  age=Math.max(0,age);return {ageMs:age,leftMs:GRACE_MS-age};
@@ -114,7 +165,10 @@ function accountFetch(url,opt){
  Promise.resolve().then(function(){return fetch(url,opt);}).then(function(res){return res.text().then(function(body){done(null,{ok:res.ok,status:res.status,text:function(){return Promise.resolve(body);}});});}).catch(function(e){done(e);});
  });
 }
-async function request(path,opt){opt=opt||{};var r=await accountFetch(URL+path,{method:opt.method||'GET',headers:opt.headers||headers(opt.auth),body:opt.body?JSON.stringify(opt.body):undefined});var text=await r.text(),data=null;try{data=text?JSON.parse(text):{};}catch(e){data={message:text};}if(!r.ok){var er=Error(data.msg||data.message||data.error_description||data.error||('HTTP '+r.status));er.status=r.status;throw er;}return data;}
+/* The account server always answers JSON. Any other body (a proxy, firewall or captive-portal page, whatever its HTTP status) is a
+   transient error without a status, never an answer: it must not lock the account or replace the signed copy. */
+function unreadableResponse(){var e=Error('The account server could not be reached cleanly (a proxy, firewall or hotspot login page answered instead). Check your connection and retry.');e.code='UNREADABLE_RESPONSE';return e;}
+async function request(path,opt){opt=opt||{};var r=await accountFetch(URL+path,{method:opt.method||'GET',headers:opt.headers||headers(opt.auth),body:opt.body?JSON.stringify(opt.body):undefined});var text=await r.text(),data=null;try{data=text?JSON.parse(text):{};}catch(e){throw unreadableResponse();}if(!r.ok){var d=data&&typeof data==='object'?data:{},er=Error(d.msg||d.message||d.error_description||d.error||('HTTP '+r.status));er.status=r.status;if(typeof d.code==='string')er.pgCode=d.code;throw er;}return data;}
 function authRejected(e){var m=String(e&&e.message||'').toLowerCase();return !!(e&&e.status===401)||(/refresh[_ ]?token/.test(m)&&/(invalid|expired|revoked|not found|already used)/.test(m))||/invalid[_ ]?grant/.test(m);}
 async function refresh(){if(refreshFlight)return refreshFlight;refreshFlight=refreshOnce();try{return await refreshFlight;}finally{refreshFlight=null;}}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
@@ -129,13 +183,19 @@ async function refreshOnce(){if(!session||!session.refresh_token)return false;va
 /* deviceId() directly: RPLicense.status() reads RPAccountAuth.status(), which needs device() for the offline-grace check. */
 function device(){try{var L=global.RPLicense;return (L.deviceId?L.deviceId():L.status().deviceId)||'';}catch(e){return '';}}
 function platform(){try{var p=nreq('process').platform;return p==='darwin'?'macOS':p==='win32'?'Windows':p;}catch(e){return 'Unknown';}}
-function rpcBody(){return {p_device_id:device(),p_platform:platform(),p_plugin_version:'2.3.11.13-public-v19'};}
+function rpcBody(){return {p_device_id:device(),p_platform:platform(),p_plugin_version:'2.3.11.14-public-v19'};}
 /* Refresh shortly before the access token expires, so heartbeat/entitlement calls do not hit the server with an expired JWT (401) first. */
 async function freshen(){var exp=session&&Number(session.expires_at||0);if(exp&&exp<=Math.floor(Date.now()/1000)+60){try{await refresh();}catch(e){}}}
 async function rpc(name){await freshen();var body=rpcBody();try{return await request('/rest/v1/rpc/'+name,{method:'POST',auth:true,headers:Object.assign(headers(true),{'Accept':'application/vnd.pgrst.object+json'}),body:body});}catch(e){if(/jwt|token|expired/i.test(e.message)&&await refresh())return request('/rest/v1/rpc/'+name,{method:'POST',auth:true,headers:Object.assign(headers(true),{'Accept':'application/vnd.pgrst.object+json'}),body:body});throw e;}}
 function sessionReplacedError(){var e=Error('Your account was signed in on another device. Only one device can use this account at a time.');e.code='SESSION_REPLACED';return e;}
 function clearReplacedSession(){authGeneration++;verified=false;offline=false;session=null;profile=null;entitlement=null;verifiedMeta=null;signedEnt=null;save();restoreDiagnostic='SESSION_REPLACED_BY_ANOTHER_DEVICE';notify();}
-async function syncEntitlement(){if(!session)return null;var generation=authGeneration,received;try{received=await rpc('plugin_entitlement');}catch(e){if(generation===authGeneration&&session){if(transient(e))goOffline(e);else offline=false;notify();}throw e;}if(generation!==authGeneration||!session)return null;entitlement=received;verified=true;offline=false;offlineReason='';if(entitlement&&entitlement.session_replaced){clearReplacedSession();throw sessionReplacedError();}markVerified(entitlement);entitlementBase=Number(entitlement.remaining_seconds||0);entitlementTick=(global.performance&&performance.now)?performance.now():Date.now();refreshSigned(generation);if(session)save();notify();return entitlement;}
+/* A real entitlement answer always has a boolean allowed and a license status (a replaced-session answer at least the flag). */
+function entitlementAnswer(x){return !!x&&typeof x==='object'&&typeof x.allowed==='boolean'&&(typeof x.license_status==='string'||x.session_replaced===true);}
+/* Only a 403 in the account server's own JSON error shape ({code,message}) is a denial; a renamed RPC (404), a bad deploy (400/405)
+   or a gateway page must not lock running panels, so those take the offline-grace path like a network error. */
+function entitlementDenied(e){return !!e&&Number(e.status)===403&&typeof e.pgCode==='string';}
+/* Transient failure or a server-side fault: offline grace. A denial ends "verified" for this run. An expired login (401) is left to the refresh/logout path. */
+async function syncEntitlement(){if(!session)return null;var generation=authGeneration,received;try{received=await rpc('plugin_entitlement');if(!entitlementAnswer(received))throw unreadableResponse();}catch(e){if(generation===authGeneration&&session){if(entitlementDenied(e)){offline=false;verified=false;}else if(authRejected(e))offline=false;else if(e&&e.code!=='SESSION_REPLACED')goOffline(e);else offline=false;notify();}throw e;}if(generation!==authGeneration||!session)return null;entitlement=received;verified=true;offline=false;offlineReason='';if(entitlement&&entitlement.session_replaced){clearReplacedSession();throw sessionReplacedError();}markVerified(entitlement);entitlementBase=Number(entitlement.remaining_seconds||0);entitlementTick=(global.performance&&performance.now)?performance.now():Date.now();refreshSigned(generation);if(session)save();notify();return entitlement;}
 async function bind(){if(!session)return null;var generation=authGeneration,received=await rpc('register_plugin_device');if(generation!==authGeneration||!session)return null;profile=received;await syncEntitlement();if(session)save();notify();return profile;}
 /* Bind the device and verify entitlement while the new session is held in memory only; persist on success, wipe on failure. */
 async function commitLogin(generation){var p={session:session};pendingLogin=p;var ok=false,err=null;try{await bind();ok=generation===authGeneration&&!!session&&session===p.session;}catch(e){err=e;}finally{if(pendingLogin===p)pendingLogin=null;}
@@ -162,12 +222,12 @@ async function heartbeatOnce(){if(!session)return null;try{profile=await rpc('pl
 function cancelSocial(){if(!oauthPending)return;authGeneration++;oauthPending=false;busy=false;if(global.RPPluginGoogle)global.RPPluginGoogle.cancel();notify();}
 function signOut(){cancelSocial();authGeneration++;pendingLogin=null;verified=false;offline=false;session=null;profile=null;entitlement=null;verifiedMeta=null;signedEnt=null;save();notify();}
 /* Server-verified this run, or offline (transient failure) within 72 h of the last verification. Explicit answers (allowed:false, replaced, rejected) lock immediately. */
-function canUse(){if(signedOnly()){var g=offline&&signedGrant();return !!g&&(g.license_status==='lifetime'||remainingMs()>0);}if(!session||!entitlement||entitlement.allowed!==true)return false;if(!verified&&!offline)return false;if(!graceState())return false;return entitlement.license_status==='lifetime'||remainingMs()>0;}
-function remainingMs(){if(signedOnly()){var g=signedGrant();if(!g)return 0;if(g.license_status==='lifetime')return null;var te=Date.parse(g.trial_expires_at||'');return isFinite(te)?Math.max(0,te-Date.now()):0;}if(!entitlement)return 0;if(entitlement.license_status==='lifetime')return null;var elapsed=Math.max(0,((global.performance&&performance.now?performance.now():Date.now())-entitlementTick)/1000),ms=Math.max(0,(entitlementBase-elapsed)*1000),exp=Date.parse(entitlement.trial_expires_at||'');if(isFinite(exp))ms=Math.min(ms,Math.max(0,exp-(Date.now()+Number(verifiedMeta&&verifiedMeta.skew||0))));return ms;}
+function canUse(){keepHighWater();if(signedOnly()){var g=offline&&graceState()&&signedGrant();return !!g&&(g.license_status==='lifetime'||remainingMs()>0);}if(!session||!entitlement||entitlement.allowed!==true)return false;if(!verified&&!offline)return false;if(!graceState())return false;return entitlement.license_status==='lifetime'||remainingMs()>0;}
+function remainingMs(){if(signedOnly()){var g=signedGrant();if(!g)return 0;if(g.license_status==='lifetime')return null;var te=Date.parse(g.trial_expires_at||'');return isFinite(te)?Math.max(0,te-expNow()):0;}if(!entitlement)return 0;if(entitlement.license_status==='lifetime')return null;var elapsed=Math.max(0,((global.performance&&performance.now?performance.now():Date.now())-entitlementTick)/1000),ms=Math.max(0,(entitlementBase-elapsed)*1000),exp=Date.parse(entitlement.trial_expires_at||'');if(isFinite(exp))ms=Math.min(ms,Math.max(0,exp-expNow()));return ms;}
 /* Offline with signing deployed: license fields shown to the panel come from the signed copy, not the editable cache. */
 function shownEntitlement(){if(!signedOnly()||!entitlement)return entitlement;var g=signedGrant(),e=Object.assign({},entitlement);if(g){e.allowed=true;e.license_status=g.license_status;e.trial_started_at=g.trial_started_at;e.trial_expires_at=g.trial_expires_at;}return e;}
-function shownVerifiedAt(){if(!signedOnly())return verifiedMeta?Number(verifiedMeta.at||0):0;var g=signedGrant();return g?Date.parse(g.issued_at):0;}
-function status(){return {signedIn:!!session,email:session&&session.user?session.user.email:'',profile:profile,entitlement:shownEntitlement(),busy:busy,oauthPending:oauthPending,restoring:restoring,canUse:canUse(),remainingMs:remainingMs(),restoreDiagnostic:restoreDiagnostic,storageWarning:storageWarning,verified:verified,offline:offline,offlineReason:offlineReason,verifiedAt:shownVerifiedAt(),graceRemainingMs:(function(){var g=graceState();return g?g.leftMs:0;}())};}
+function shownVerifiedAt(){if(!signedOnly())return verifiedMeta?Number(verifiedMeta.at||0):0;var g=signedGrant();return g?Date.parse(g.issued_at)-skewMs():0;}
+function status(){return {signedIn:!!session,email:session&&session.user?session.user.email:'',profile:profile,entitlement:shownEntitlement(),busy:busy,oauthPending:oauthPending,restoring:restoring,canUse:canUse(),remainingMs:remainingMs(),restoreDiagnostic:restoreDiagnostic,storageWarning:storageWarning,verified:verified,offline:offline,offlineReason:offlineReason,verifiedAt:shownVerifiedAt(),clockRolledBack:!verified&&!!session&&rolledBack(),graceRemainingMs:(function(){var g=graceState();return g?g.leftMs:0;}())};}
 function onChange(fn){listeners.push(fn);}
 async function restore(){restoring=true;load();if(!session){restoring=false;restoreDiagnostic='NO_SAVED_SESSION';notify();return;}busy=true;notify();try{var now=Math.floor(Date.now()/1000),exp=Number(session.expires_at||0);if(exp&&exp<=now+120){var refreshed=await refresh();if(!refreshed&&!session){restoring=false;busy=false;notify();return;}}/* Existing saved account is restored automatically and entitlement is verified without requiring logout/login. */if(session){await syncEntitlement();restoreDiagnostic='SESSION_RESTORED_ENTITLEMENT_OK';}}catch(e){restoreDiagnostic='RESTORE_ENTITLEMENT_FAILED_PRESERVED:'+String(e&&e.message||e);/* Only an explicit auth rejection may trigger one token refresh attempt. Device/RPC/network failures preserve the saved login. */if(session&&authRejected(e)){var ok=await refresh();if(ok)try{await syncEntitlement();restoreDiagnostic='SESSION_REFRESHED_ENTITLEMENT_OK';}catch(e2){restoreDiagnostic='RESTORE_ENTITLEMENT_RETRY_FAILED:'+String(e2&&e2.message||e2);}}}finally{busy=false;restoring=false;notify();}}
 async function providerSettings(){try{return await request('/auth/v1/settings');}catch(e){return {external:{}};}}

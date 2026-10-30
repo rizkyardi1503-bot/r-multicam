@@ -1,4 +1,4 @@
-/* ES3 ExtendScript. v2.3.11.13 single-pass low-memory timeline engine. */
+/* ES3 ExtendScript. v2.3.11.14 single-pass low-memory timeline engine. */
 var rp_job=null;
 var RP_LOW_MEMORY=true;
 var rp_stepRanges=null;
@@ -50,11 +50,11 @@ function rp_manual(s){
 }
 function rp_getActiveInfo(){
  try{var s=app.project.activeSequence,marks={points:[],ignored:0};if(s){try{marks=rp_manual(s);}catch(me){marks={points:[],ignored:0};}}
- return rp_encode({ok:true,version:'2.3.11.13',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:'',syncPendingID:rp_syncBusy()?rp_syncJob.id:''});}
+ return rp_encode({ok:true,version:'2.3.11.14',name:s?s.name:'',duration:s?rp_duration(s):0,manual:marks.points.length,ignored:marks.ignored,pendingID:rp_job&&rp_job.status==='running'?rp_job.id:'',pendingKind:rp_job&&rp_job.status==='running'?rp_job.kind:'',pendingPhase:rp_job&&rp_job.status==='running'?rp_job.phase:'',syncPendingID:rp_syncBusy()?rp_syncJob.id:''});}
  catch(e){return rp_encode({ok:false,message:String(e)});}
 }
 function rp_ping(){
- try{return rp_encode({ok:true,version:'2.3.11.13',host:'R Project Multicam',sequence:!!(app&&app.project&&app.project.activeSequence)});}
+ try{return rp_encode({ok:true,version:'2.3.11.14',host:'R Project Multicam',sequence:!!(app&&app.project&&app.project.activeSequence)});}
  catch(e){return rp_encode({ok:false,message:'ExtendScript host is not ready: '+String(e)});}
 }
 function rp_state(){
@@ -62,8 +62,8 @@ function rp_state(){
  phase:j.phase,done:j.done,total:j.total,point:j.point||0,track:j.track||0,verifyPoint:j.verifyPoint||0,prepScene:j.prepScene||0,task:j.task||0,tracks:j.tracks||[],seqID:j.seqID||'',projectPath:j.projectPath||'',created:j.created||0,cuts:j.cuts,changed:j.changed,removed:j.removed,skipped:j.skipped,
  waitMs:Math.max(0,(j.waitUntil||0)-new Date().getTime()),cameraMediaSignature:j.cameraMediaSignature||'',lastRazor:j.lastRazor||null,verifyTrack:j.verifyTrack||0,uiKind:j.uiKind||'',queued:j.queued||0,outputFolder:j.outputFolder||'',outputs:j.outputs||[],zoomIn:j.zoomIn||0,zoomOut:j.zoomOut||0,zoomErrors:j.zoomErrors||[],warning:!!j.warning,timing:j.timing||null,message:j.message});
 }
-function rp_coverage(track,a,b,eps){
- var cursor=a,any=false,rows=rp_nearRanges(track,a,b,eps);
+function rp_coverage(track,a,b,eps,ti){
+ var cursor=a,any=false,rows=rp_nearRanges(track,a,b,eps,ti);
  for(var c=0;c<rows.length;c++){var l=rows[c].a,r=rows[c].b;
   if(l<b-eps&&r>a+eps)any=true;
   if(l<=cursor+eps&&r>cursor)cursor=r;
@@ -76,7 +76,7 @@ function rp_plan(s,tracks,bounds,eps){
  for(i=0;i<bounds.length-1;i++){
   var candidates=[],any=false;
   for(v=0;v<tracks.length;v++){
-   var cover=rp_coverage(s.videoTracks[tracks[v]],bounds[i],bounds[i+1],eps);
+   var cover=rp_coverage(s.videoTracks[tracks[v]],bounds[i],bounds[i+1],eps,tracks[v]);
    if(cover.full)candidates.push(tracks[v]);if(cover.any)any=true;
   }
   if(!candidates.length){
@@ -88,17 +88,19 @@ function rp_plan(s,tracks,bounds,eps){
   out.push(chosen);prev=chosen;
  }return out;
 }
-function rp_ranges(track){
- var i,key='';if(rp_stepRanges){for(i=0;i<rp_stepRanges.length;i++)if(rp_stepRanges[i].track===track)return rp_stepRanges[i].rows;}
+// rp_stepRanges caches one step's sorted clip ranges by track INDEX: Premiere may hand out a new Track wrapper on every
+// videoTracks[i] access, so object identity would never hit. Callers without an index (ti undefined) are not cached.
+function rp_ranges(track,ti){
+ var i,key=ti===undefined||ti===null?'':'v'+Number(ti);if(rp_stepRanges&&key&&rp_stepRanges.hasOwnProperty(key))return rp_stepRanges[key];
  var rows=[],clips=track.clips;for(i=0;i<clips.numItems;i++){var x=clips[i],a=rp_seconds(x.start),b=rp_seconds(x.end);if(!isFinite(a)||!isFinite(b)||b<a)throw Error('Invalid clip timing.');rows.push({a:a,b:b,index:i});}
  rows.sort(function(a,b){return a.a-b.a||a.b-b.b;});var max=-Infinity;for(i=0;i<rows.length;i++){max=Math.max(max,rows[i].b);rows[i].maxEnd=max;}
- if(rp_stepRanges)rp_stepRanges.push({track:track,rows:rows});return rows;
+ if(rp_stepRanges&&key)rp_stepRanges[key]=rows;return rows;
 }
-function rp_nearRanges(track,a,b,eps){
- var rows=rp_ranges(track),lo=0,hi=rows.length;while(lo<hi){var m=Math.floor((lo+hi)/2);if(rows[m].maxEnd<a-eps)lo=m+1;else hi=m;}
+function rp_nearRanges(track,a,b,eps,ti){
+ var rows=rp_ranges(track,ti),lo=0,hi=rows.length;while(lo<hi){var m=Math.floor((lo+hi)/2);if(rows[m].maxEnd<a-eps)lo=m+1;else hi=m;}
  var out=[];for(var i=lo;i<rows.length&&rows[i].a<=b+eps;i++)if(rows[i].b>=a-eps)out.push(rows[i]);return out;
 }
-function rp_invalidateRange(track){if(!rp_stepRanges)return;for(var i=rp_stepRanges.length-1;i>=0;i--)if(rp_stepRanges[i].track===track)rp_stepRanges.splice(i,1);}
+function rp_invalidateRange(ti){if(rp_stepRanges&&ti!==undefined&&ti!==null)delete rp_stepRanges['v'+Number(ti)];}
 function rp_requiredTracksAtBoundary(j,p){
  // v2.3.11.2 V82-FAST PHYSICAL CUT CORE:
  // Music-map edit points are CAMERA DECISION boundaries, not mandatory razors on every selected track.
@@ -114,24 +116,28 @@ function rp_requiredTracksAtBoundary(j,p){
  for(i=0;i<2;i++){var t=i===0?a:b;if(t>=0&&!seen['v'+t]){seen['v'+t]=true;out.push(t);}}
  return out;
 }
-function rp_cutBatch(j,start){
- var required=rp_requiredTracksAtBoundary(j,j.point),batch=j.cutBatch;
+function rp_cutBatch(j,start,slice){
+ // Re-cut pass (a scene lost its winner): only the listed boundaries are checked.
+ if(j.cutOnly&&!j.cutOnly['p'+j.point]){j.point++;j.done=j.point;j.track=0;j.cutBatch=null;return {ops:0,waiting:false};}
+ // Points before rescanTo were already processed before a Stop/resume: they are re-checked (a cut may be missing) but not
+ // counted again, and a check that needs no razor costs no step operation.
+ var required=rp_requiredTracksAtBoundary(j,j.point),batch=j.cutBatch,quiet=j.point<(j.rescanTo||0);
  if(!batch||batch.point!==j.point)batch=j.cutBatch={point:j.point,done:[],attempts:[],required:required};
  var count=0,issued=0,complete=true,time=j.points[j.point],s=app.project.activeSequence;
  // Same-camera decision boundary: no physical cut is required.
- if(!required.length){j.point++;j.done=j.point;j.track=0;j.cutBatch=null;j.skipped++;return {ops:1,waiting:false};}
+ if(!required.length){j.point++;j.done=j.point;j.track=0;j.cutBatch=null;if(!quiet)j.skipped++;return {ops:quiet?0:1,waiting:false};}
  for(var v=0;v<required.length;v++){
   if(batch.done[v])continue;
-  if(new Date().getTime()-start>=75){complete=false;break;}
+  if(new Date().getTime()-start>=(quiet&&slice>75?slice:75)){complete=false;break;}
   var ti=required[v],tr=s.videoTracks[ti];count++;j.track=v;
   if(rp_boundaryNeedsCut(tr,time,j.frame,ti)){
    if((batch.attempts[v]||0)>=2)throw Error('Razor not confirmed on V'+(ti+1)+' @ '+time.toFixed(3)+'s after 2 attempts. Cleanup has not started.');
    rp_razorAt(j,ti,time);batch.attempts[v]=(batch.attempts[v]||0)+1;issued++;complete=false;
-  }else{batch.done[v]=true;if(batch.attempts[v])j.cuts++;else j.skipped++;}
+  }else{batch.done[v]=true;if(batch.attempts[v])j.cuts++;else if(!quiet)j.skipped++;}
  }
  if(complete){j.point++;j.done=j.point;j.track=0;j.cutBatch=null;}
  else j.message='Camera transition cut at '+time.toFixed(3)+'s';
- return {ops:Math.max(1,count),waiting:issued>0||!complete};
+ return {ops:quiet&&!issued?0:Math.max(1,count),waiting:issued>0||!complete};
 }
 
 function rp_boundaryEpsilon(frame){return Math.max(frame/10,0.000001);}
@@ -151,7 +157,7 @@ function rp_trackCrossesBoundary(track,time,frame,trackIndex){
   }
   return false;
  }
- var eps=rp_boundaryEpsilon(frame),rows=rp_nearRanges(track,time,time,eps);
+ var eps=rp_boundaryEpsilon(frame),rows=rp_nearRanges(track,time,time,eps,trackIndex);
  for(var c=0;c<rows.length;c++)if(rows[c].a+eps<time&&rows[c].b-eps>time)return true;
  return false;
 }
@@ -180,7 +186,7 @@ function rp_razorAt(j,index,time){
  if(!/^\d+:\d{2}:\d{2}[:;]\d{2}$/.test(tc))throw Error('Invalid razor timecode: '+tc);
  var q=qe.project.getActiveSequence();if(!q||!q.getVideoTrackAt(index))throw Error('QE camera track unavailable.');
  j.lastRazor={sequenceZeroPoint:String(s.zeroPoint||'0'),track:index,time:time,frame:Math.round(time/j.frame),timecode:tc,fps:fps,display:Number(s.videoDisplayFormat)};
- q.getVideoTrackAt(index).razor(tc);rp_invalidateRange(tr);j.waitUntil=new Date().getTime()+20;
+ q.getVideoTrackAt(index).razor(tc);rp_invalidateRange(index);j.waitUntil=new Date().getTime()+20;
 }
 function rp_clipIdentity(x){
  var file='',node='',input=rp_seconds(x.inPoint),output=rp_seconds(x.outPoint),speed=1;
@@ -198,7 +204,7 @@ function rp_resolveTask(s,task,frame){
   var at=hint-removed,fast=at>=0&&at<tr.clips.numItems?tr.clips[at]:null;
   if(fast&&Math.abs(rp_seconds(fast.start)-task.start)<=eps&&Math.abs(rp_seconds(fast.end)-task.end)<=eps&&rp_clipIdentity(fast)===task.identity)return fast;
  }
- var candidates=rp_nearRanges(tr,task.start,task.end,eps);for(c=0;c<candidates.length;c++){
+ var candidates=rp_nearRanges(tr,task.start,task.end,eps,task.track);for(c=0;c<candidates.length;c++){
   var x=tr.clips[candidates[c].index];if(Math.abs(rp_seconds(x.start)-task.start)<=eps&&Math.abs(rp_seconds(x.end)-task.end)<=eps){
    if(found)throw Error('Ambiguous camera piece. Cleanup stopped.');if(task.identity&&rp_clipIdentity(x)!==task.identity)throw Error('Camera media or source timing changed. Resume to rebuild the map.');found=x;
   }
@@ -249,7 +255,7 @@ function rp_startJob(kind,points,sourceSignature,boundaryMode,a1Signature,choice
    var w=Number(winners[v]);
    if(!isFinite(w)||Math.floor(w)!==w)throw Error('Camera plan contains an invalid winner.');
    if(w!==-1&&!trackSet['v'+w]){winners[v]=-1;degradedWinners++;continue;}
-   // Full scene coverage is validated in bounded prepare steps before any deletion.
+   // Full winner coverage is re-checked in rp_finishPrepare (every run and resume) before any deletion.
   }
  }
  app.enableQE();
@@ -289,56 +295,118 @@ function rp_parseInternalPoints(csv,frame,duration){
  if(out.length>100000)throw Error('Maximum 100,000 internal edit points per AI plan. The AI pacing plan is too dense for this sequence.');
  return out;
 }
-/* v2.3.11.13 Keep Clips registry: camera pieces disabled by an Apply · Keep Clips job stay
-   available for re-planning; pieces the user disabled are still treated as unavailable. */
-var rp_pluginDisabled={};
-function rp_pdRecord(seqID,track,clip){
- var k='s'+String(seqID)+'|v'+Number(track),list=rp_pluginDisabled[k]||(rp_pluginDisabled[k]={rows:[],sorted:true}),f='';if(list.rows.length>=200000)return;
- try{f=String(clip.projectItem.getMediaPath());}catch(e){}var a=rp_seconds(clip.start),last=list.rows.length?list.rows[list.rows.length-1]:null;
- if(last&&a<last.a)list.sorted=false;list.rows.push({a:a,b:rp_seconds(clip.end),f:f});
+/* v2.3.11.14 Keep Clips registry: camera pieces disabled by an Apply · Keep Clips job stay
+   available for re-planning; pieces the user disabled are still treated as unavailable.
+   v2.3.11.15: ownership survives a Premiere restart in a sidecar file (one per project path + sequence ID, beside the
+   resume checkpoint). A row is a piece's track, sequence range, source alignment (In - start) and media file. Every AI
+   snapshot rebuilds the rows from the pieces that are still disabled and still match, so stale rows are pruned; a piece
+   the plugin re-enables is forgotten at once. */
+var rp_pluginDisabled={},rp_pdState={};
+function rp_pdKey(seqID){return 'p'+String(app.project.path)+'|s'+String(seqID);}
+function rp_pdList(seqID,track){var k=rp_pdKey(seqID)+'|v'+Number(track);return rp_pluginDisabled[k]||(rp_pluginDisabled[k]={rows:[],sorted:true});}
+function rp_pdFile(seqID){
+ try{
+  var base='';if($.os&&String($.os).toLowerCase().indexOf('windows')>=0)base=String($.getenv('LOCALAPPDATA')||'');else base=String(new Folder('~/Library/Application Support').fsName||'');
+  if(!base)return null;var dir=new Folder(base+'/RProjectMulticamAI/keep-clips');if(!dir.exists&&!dir.create())return null;
+  return new File(dir.fsName+'/'+rp_digest(String(app.project.path)+'|'+String(seqID)).replace(/[^0-9A-Za-z]/g,'_')+'.txt');
+ }catch(e){return null;}
 }
-function rp_pdOwned(seqID,track,a,b,file,tol){
- var list=rp_pluginDisabled['s'+String(seqID)+'|v'+Number(track)];if(!list||!list.rows.length)return false;var rows=list.rows,lo=0,hi=rows.length,i,n=0;
+function rp_pdLoad(seqID){
+ var key=rp_pdKey(seqID),st=rp_pdState[key];if(st)return st;st=rp_pdState[key]={dirty:false,savedAt:0};
+ var f=rp_pdFile(seqID);if(!f)return st;
+ try{
+  if(!f.exists)return st;f.encoding='UTF-8';if(!f.open('r'))return st;var text=String(f.read()).replace(/^\uFEFF/,'');f.close();
+  var lines=text.split(/\r\n|\r|\n/),head=lines[0].split('\t'),i;if(head[0]!=='RPKC1'||head[1]!==String(app.project.path)||head[2]!==String(seqID))return st;
+  for(i=1;i<lines.length;i++){var p=lines[i].split('\t');if(p.length<5)continue;var v=Number(p[0]),a=Number(p[1]),b=Number(p[2]),z=Number(p[3]);if(!isFinite(v)||!isFinite(a)||!isFinite(b)||!isFinite(z))continue;
+   var list=rp_pdList(seqID,v),last=list.rows.length?list.rows[list.rows.length-1]:null;if(last&&a<last.a)list.sorted=false;list.rows.push({a:a,b:b,z:z,f:p.slice(4).join('\t')});}
+ }catch(e){try{f.close();}catch(closeError){}}
+ return st;
+}
+function rp_pdSave(seqID){
+ var key=rp_pdKey(seqID),st=rp_pdState[key];if(!st||!st.dirty)return;st.savedAt=new Date().getTime();
+ var f=rp_pdFile(seqID);if(!f)return;var out=['RPKC1\t'+String(app.project.path)+'\t'+String(seqID)],k,i,prefix=key+'|v';
+ for(k in rp_pluginDisabled)if(rp_pluginDisabled.hasOwnProperty(k)&&k.indexOf(prefix)===0){var v=k.substring(prefix.length),rows=rp_pluginDisabled[k].rows;for(i=0;i<rows.length;i++)out.push(v+'\t'+rows[i].a+'\t'+rows[i].b+'\t'+rows[i].z+'\t'+rows[i].f);}
+ try{
+  // dirty is cleared only after the file really changed, so a failed write is retried at the next save point.
+  if(out.length===1){if(f.exists&&!f.remove())return;st.dirty=false;return;}
+  var tmp=new File(f.fsName+'.tmp');tmp.encoding='UTF-8';tmp.lineFeed='Unix';if(!tmp.open('w'))return;var wrote=tmp.write(out.join('\n'));if(!tmp.close()||wrote===false)return;if(f.exists&&!f.remove())return;if(tmp.rename(f.name)===false)return;st.dirty=false;
+ }catch(e){}
+}
+function rp_pdRecord(seqID,track,clip){
+ var st=rp_pdLoad(seqID),list=rp_pdList(seqID,track),f='';if(list.rows.length>=200000)return;
+ try{f=String(clip.projectItem.getMediaPath());}catch(e){}var a=rp_seconds(clip.start),last=list.rows.length?list.rows[list.rows.length-1]:null;
+ if(last&&a<last.a)list.sorted=false;list.rows.push({a:a,b:rp_seconds(clip.end),z:rp_seconds(clip.inPoint)-a,f:f});st.dirty=true;
+}
+// A piece the plugin enables again is no longer plugin-disabled: drop the part of any row it overlaps.
+function rp_pdForget(seqID,track,a,b,tol){
+ rp_pdLoad(seqID);var list=rp_pluginDisabled[rp_pdKey(seqID)+'|v'+Number(track)];if(!list||!list.rows.length)return;var rows=list.rows,lo=0,hi=rows.length,i,changed=false;
+ if(!list.sorted){rows.sort(function(x,y){return x.a-y.a;});list.sorted=true;}
+ while(lo<hi){var m=Math.floor((lo+hi)/2);if(rows[m].b<=a+tol)lo=m+1;else hi=m;}
+ for(i=Math.max(0,lo-64);i<rows.length&&rows[i].a<b-tol;i++){var r=rows[i];if(r.b<=a+tol)continue;var keep=[];
+  if(r.a<a-tol)keep.push({a:r.a,b:a,z:r.z,f:r.f});if(r.b>b+tol)keep.push({a:b,b:r.b,z:r.z,f:r.f});
+  rows.splice.apply(rows,[i,1].concat(keep));i+=keep.length-1;changed=true;}
+ if(changed)rp_pdLoad(seqID).dirty=true;
+}
+function rp_pdOwned(seqID,track,a,b,file,tol,z){
+ rp_pdLoad(seqID);var list=rp_pluginDisabled[rp_pdKey(seqID)+'|v'+Number(track)];if(!list||!list.rows.length)return false;var rows=list.rows,lo=0,hi=rows.length,i,n=0;
  if(!list.sorted){rows.sort(function(x,y){return x.a-y.a;});list.sorted=true;}
  while(lo<hi){var m=Math.floor((lo+hi)/2);if(rows[m].a<=a+tol)lo=m+1;else hi=m;}
- for(i=lo-1;i>=0&&n<64;i--,n++)if(rows[i].b>=b-tol&&rows[i].f===String(file||''))return true;
+ for(i=lo-1;i>=0&&n<64;i--,n++)if(rows[i].b>=b-tol&&rows[i].f===String(file||'')&&Math.abs(rows[i].z-z)<=tol)return true;
  return false;
+}
+// Snapshot pass: the rows of a scanned track become exactly the pieces that are still disabled and plugin-owned.
+function rp_pdReplace(seqID,track,owned){
+ rp_pdLoad(seqID);var list=rp_pdList(seqID,track),rows=list.rows,same=rows.length===owned.length,i;
+ for(i=0;same&&i<owned.length;i++)if(rows[i].a!==owned[i].a||rows[i].b!==owned[i].b||rows[i].z!==owned[i].z||rows[i].f!==owned[i].f)same=false;
+ if(same)return;list.rows=owned;list.sorted=true;for(i=1;i<owned.length;i++)if(owned[i].a<owned[i-1].a){list.sorted=false;break;}rp_pdLoad(seqID).dirty=true;
 }
 function rp_mergeCameraCoverage(clips,tol){
  var ranges=[],out=[],i;for(i=0;i<clips.length;i++){var c=clips[i];if(!c.disabled&&isFinite(c.start)&&isFinite(c.end)&&c.end>c.start)ranges.push({start:c.start,end:c.end});}
  ranges.sort(function(a,b){return a.start-b.start||a.end-b.end;});
  for(i=0;i<ranges.length;i++){var last=out.length?out[out.length-1]:null;if(last&&ranges[i].start<=last.end+tol)last.end=Math.max(last.end,ranges[i].end);else out.push(ranges[i]);}return out;
 }
-function rp_buildAISnapshot(points,a1Signature,boundaryMode){
+// lean (rp_aiStage): only what staging needs -- media files, coverage and per-interval candidates; no AI Vision clip
+// details, no coverage notes. Internal (Auto Music Map) snapshots are never compared by signature, so none is digested.
+function rp_buildAISnapshot(points,a1Signature,boundaryMode,lean){
  var s=app.project.activeSequence;if(!s)throw Error('Open a sequence first.');
- var frame=Number(s.timebase)/254016000000,d=rp_duration(s),bounds=[0].concat(points).concat([d]),tracks=[],intervals=[],cameraDiagnostics=[],v,c,i,processingRange=boundaryMode==='internal'?rp_processingRange(s):null;
+ var frame=Number(s.timebase)/254016000000,d=rp_duration(s),bounds=[0].concat(points).concat([d]),tracks=[],intervals=[],cameraDiagnostics=[],v,c,i,processingRange=boundaryMode==='internal'?rp_processingRange(s):null,tol=frame/4,seqID=String(s.sequenceID);
  if(bounds.length>100002)throw Error('Maximum 100,000 edit points per AI plan. The AI pacing plan is too dense for this sequence.');
+ rp_pdLoad(seqID); // sidecar rows first: every track below is rebuilt against them (and stale rows pruned)
  for(v=0;v<s.videoTracks.numTracks;v++){
-  var tr=s.videoTracks[v],locked=!!(tr.isLocked&&tr.isLocked()),muted=!!(tr.isMuted&&tr.isMuted());cameraDiagnostics.push({index:v,locked:locked,muted:muted,clipCount:tr.clips.numItems});if(locked||muted||!tr.clips.numItems)continue;
-  var clips=[];
+  var tr=s.videoTracks[v],locked=!!(tr.isLocked&&tr.isLocked()),muted=!!(tr.isMuted&&tr.isMuted());cameraDiagnostics.push({index:v,locked:locked,muted:muted,clipCount:tr.clips.numItems});
+  if(!locked&&!muted&&!tr.clips.numItems)rp_pdReplace(seqID,v,[]);
+  if(locked||muted||!tr.clips.numItems)continue;
+  var clips=[],owned=[];
   for(c=0;c<tr.clips.numItems;c++){
-   var item=tr.clips[c],file='',supported=false,pi=item.projectItem;
-   try{file=pi.getMediaPath();supported=!!file&&!(pi.isSequence&&pi.isSequence())&&!(pi.isOffline&&pi.isOffline())&&!(item.isSpeedReversed&&item.isSpeedReversed())&&(!item.getSpeed||Math.abs(Number(item.getSpeed())-1)<0.0001);}catch(e){}
-   var cs0=rp_seconds(item.start),ce0=rp_seconds(item.end),pluginOff=!!item.disabled&&rp_pdOwned(s.sequenceID,v,cs0,ce0,file,frame/4);
-   clips.push({start:cs0,end:ce0,input:rp_seconds(item.inPoint),file:file,supported:supported,disabled:!!item.disabled&&!pluginOff,pluginDisabled:pluginOff});
+   var item=tr.clips[c],file='',supported=false,pi=item.projectItem,off=!!item.disabled;
+   if(lean){try{file=pi.getMediaPath();}catch(e){}}
+   else{try{file=pi.getMediaPath();supported=!!file&&!(pi.isSequence&&pi.isSequence())&&!(pi.isOffline&&pi.isOffline())&&!(item.isSpeedReversed&&item.isSpeedReversed())&&(!item.getSpeed||Math.abs(Number(item.getSpeed())-1)<0.0001);}catch(e){}}
+   var cs0=rp_seconds(item.start),ce0=rp_seconds(item.end),in0=lean&&!off?0:rp_seconds(item.inPoint),pluginOff=off&&rp_pdOwned(seqID,v,cs0,ce0,file,tol,in0-cs0);
+   if(pluginOff)owned.push({a:cs0,b:ce0,z:in0-cs0,f:String(file||'')});
+   clips.push(lean?{start:cs0,end:ce0,file:file,disabled:off&&!pluginOff}:{start:cs0,end:ce0,input:in0,file:file,supported:supported,disabled:off&&!pluginOff,pluginDisabled:pluginOff});
   }
-  tracks.push({index:v,clips:clips,coverageRanges:rp_mergeCameraCoverage(clips,frame/4)});
+  rp_pdReplace(seqID,v,owned);
+  tracks.push({index:v,clips:clips,coverageRanges:rp_mergeCameraCoverage(clips,tol)});
  }
+ rp_pdSave(seqID);
  if(!tracks.length)throw Error('No unlocked camera tracks.');
+ // Bounds and merged coverage ranges are both ascending: one forward cursor per camera (O(intervals + ranges)).
+ var cursors=[];for(v=0;v<tracks.length;v++)cursors.push(0);
  for(i=0;i<bounds.length-1;i++){
-  var candidates=[],coverageNotes=[];
+  var candidates=[],coverageNotes=lean?null:[],lo=bounds[i]+tol,hi=bounds[i+1]-tol;
   for(v=0;v<tracks.length;v++){
-   var cached=tracks[v].coverageRanges,full=false,tol=frame/4;
-   for(c=0;c<cached.length;c++){var cc=cached[c];if(cc.start<=bounds[i]+tol&&cc.end>=bounds[i+1]-tol){full=true;break;}}
-   coverageNotes.push('V'+(tracks[v].index+1)+': '+(full?'covered':'gap or disabled clips'));
+   var cached=tracks[v].coverageRanges,k=cursors[v];
+   while(k<cached.length&&cached[k].end<hi)k++;cursors[v]=k;
+   var full=k<cached.length&&cached[k].start<=lo;
+   if(!lean)coverageNotes.push('V'+(tracks[v].index+1)+': '+(full?'covered':'gap or disabled clips'));
    if(full)candidates.push(tracks[v].index);
   }
-  for(v=0;v<cameraDiagnostics.length;v++){var cd=cameraDiagnostics[v];if(cd.locked||cd.muted||!cd.clipCount)coverageNotes.push('V'+(cd.index+1)+': '+(cd.locked?'locked':cd.muted?'muted':'empty'));}
-  if(processingRange&&(bounds[i]<processingRange.start-frame/4||bounds[i+1]>processingRange.end+frame/4)){candidates=[];coverageNotes=['Outside In/Out: preserve existing clips'];}
-  intervals.push({id:i,start:bounds[i],end:bounds[i+1],candidates:candidates,coverageNotes:coverageNotes});
+  if(!lean)for(v=0;v<cameraDiagnostics.length;v++){var cd=cameraDiagnostics[v];if(cd.locked||cd.muted||!cd.clipCount)coverageNotes.push('V'+(cd.index+1)+': '+(cd.locked?'locked':cd.muted?'muted':'empty'));}
+  if(processingRange&&(bounds[i]<processingRange.start-tol||bounds[i+1]>processingRange.end+tol)){candidates=[];if(!lean)coverageNotes=['Outside In/Out: preserve existing clips'];}
+  intervals.push(lean?{id:i,start:bounds[i],end:bounds[i+1],candidates:candidates}:{id:i,start:bounds[i],end:bounds[i+1],candidates:candidates,coverageNotes:coverageNotes});
  }
- var data={sequenceID:String(s.sequenceID),projectPath:String(app.project.path),duration:d,frame:frame,tracks:tracks,intervals:intervals,points:points,a1Signature:a1Signature||'',boundaryMode:boundaryMode||'markers'};
- data.signature=rp_digest(rp_encode(data));return data;
+ var data={sequenceID:seqID,projectPath:String(app.project.path),duration:d,frame:frame,tracks:tracks,intervals:intervals,points:points,a1Signature:a1Signature||'',boundaryMode:boundaryMode||'markers'};
+ data.signature=data.boundaryMode==='internal'?'internal|'+data.a1Signature+'|'+points.length:rp_digest(rp_encode(data));return data;
 }
 function rp_aiSnapshot(){
  var s=app.project.activeSequence;if(!s)throw Error('Open a sequence first.');
@@ -346,12 +414,12 @@ function rp_aiSnapshot(){
  var a1='';try{a1=rp_a1Snapshot().signature;}catch(audioError){}
  return rp_buildAISnapshot(marks.points,a1,'markers');
 }
-function rp_aiInternalSnapshot(a1Signature,csv){
+function rp_aiInternalSnapshot(a1Signature,csv,lean){
  var a1=rp_a1Snapshot();if(a1.signature!==a1Signature)throw Error('A1 or sequence changed. Analyze the music again.');
  var points=rp_parseInternalPoints(csv,a1.frame,a1.duration);
  var range=rp_processingRange(app.project.activeSequence),pe=a1.frame/4;
  if(range.selected){var inside=[],pi;for(pi=0;pi<points.length;pi++)if(points[pi]>range.start+pe&&points[pi]<range.end-pe)inside.push(points[pi]);points=inside;if(range.start>pe)points.unshift(range.start);if(range.end<a1.duration-pe)points.push(range.end);if(!points.length)throw Error('No music cuts fall inside the sequence In/Out. Widen In/Out or clear it.');}
- return rp_buildAISnapshot(points,a1.signature,'internal');
+ return rp_buildAISnapshot(points,a1.signature,'internal',!!lean);
 }
 function rp_getAI(){try{var d=rp_aiSnapshot();d.ok=true;return rp_encode(d);}catch(e){return rp_encode({ok:false,message:String(e)});}}
 function rp_getAIInternal(a1Signature,csv){try{var d=rp_aiInternalSnapshot(a1Signature,csv);d.ok=true;return rp_encode(d);}catch(e){return rp_encode({ok:false,message:String(e)});}}
@@ -360,7 +428,7 @@ function rp_aiStage(signature,a1Signature,csv,enabledCsv){
  try{
   if((rp_job&&rp_job.status==='running')||rp_syncBusy())throw Error('A process is already active.');
   var internal=arguments.length>1&&String(a1Signature||'').length>0;
-  var d=internal?rp_aiInternalSnapshot(a1Signature,csv):rp_aiSnapshot();
+  var d=internal?rp_aiInternalSnapshot(a1Signature,csv,true):rp_aiSnapshot();
   // v2.3.11.2 PLAN-STAGE FIX:
   // Auto Music Map passes its exact beat-aligned edit points back in csv and rp_aiInternalSnapshot
   // already verifies A1, sequence duration/frame base, and rebuilds LIVE camera coverage. The old
@@ -404,10 +472,20 @@ function rp_aiApply(kind,noBackup){
   if(String(rp_a1Snapshot().signature)!==String(p.a1Signature))throw Error('A1 changed. Analyze the music again.');
   if(rp_razorFormat(rp_frame(live))===null)throw Error('Sequence frame rate '+Math.round(100/rp_frame(live))/100+' fps is not supported yet. Use 23.976, 24, 25, 29.97, 30, 48, 50, 59.94 or 60 fps. No edits were made.');
   // The backup copy is optional (panel setting): on long sets a full sequence copy adds memory pressure in Premiere.
-  var backupMade=false,backupSkipped=String(noBackup)==='1';if(!backupSkipped){try{live.clone();backupMade=true;var back=app.project.activeSequence;if(!back||String(back.sequenceID)!==String(p.sequenceID))app.project.openSequence(String(p.sequenceID));}catch(be){}}
+  // When the user asked for the backup, a failed copy stops the job before any cut or delete. Some builds return nothing
+  // from clone() even on success, so success is a new sequence in the project.
+  var backupMade=false,backupSkipped=String(noBackup)==='1',backupError='';
+  if(!backupSkipped){
+   try{var seqsBefore=app.project.sequences?Number(app.project.sequences.numSequences):NaN,cloned=live.clone(),seqsAfter=app.project.sequences?Number(app.project.sequences.numSequences):NaN;
+    backupMade=isFinite(seqsBefore)&&isFinite(seqsAfter)?seqsAfter>seqsBefore:cloned!==false;
+    var back=app.project.activeSequence;if(!back||String(back.sequenceID)!==String(p.sequenceID))app.project.openSequence(String(p.sequenceID));
+   }catch(be){backupError=String(be&&be.message?be.message:be);}
+   if(!backupMade)throw Error('The backup copy of the sequence could not be created'+(backupError?' ('+backupError+')':'')+'. No edits were made. Free memory and try again, or untick "Save a backup copy of the sequence before applying" to edit without a copy.');
+  }
   if(!app.project.activeSequence||String(app.project.activeSequence.sequenceID)!==String(p.sequenceID))throw Error('Could not return to the original sequence after backup. No edits were made.');
   var result=rp_startJob(kind,p.points,p.boundaryMode==='markers'?p.points.join('|'):p.signature,p.boundaryMode,p.a1Signature,p.choices,true,p.enabledTracks,false,p.cameraMediaSignature);
-  if(rp_job&&rp_job.status==='running'){rp_job.winners=p.choices;rp_job.message='Applying AI camera plan'+(backupMade?' · backup copy saved in the project':backupSkipped?' · no backup copy (turned off)':' · backup copy could not be created');result=rp_state();}
+  // Keep rp_startJob's winners: unavailable/out-of-range winners there are already downgraded to -1 (preserved).
+  if(rp_job&&rp_job.status==='running'){rp_job.message='Applying AI camera plan'+(backupMade?' · backup copy saved in the project':backupSkipped?' · no backup copy (turned off)':' · backup copy could not be created');result=rp_state();}
   rp_ai_pending=null;return result;
  }catch(e){rp_ai_pending=null;return rp_encode({ok:false,message:String(e)});}
 }
@@ -448,7 +526,10 @@ function rp_resume(id){
   if(rp_job.status==='done')return rp_state();
   if(rp_job.cameraMediaSignature&&rp_cameraMediaSignature(s,rp_job.tracks)!==rp_job.cameraMediaSignature)throw Error('Camera media changed after stopping.');
   if(Math.abs(rp_duration(s)-rp_job.duration)>rp_boundaryEpsilon(rp_job.frame)||Math.abs(rp_frame(s)-rp_job.frame)>0.00000001)throw Error('Sequence duration or frame rate changed.');
-  rp_job.seq=s;rp_job.cutPending=null;rp_job.tasks=[];rp_job.status='running';rp_job.warning=!!rp_job.cameraWarning;if(rp_job.point<rp_job.points.length){rp_job.phase='cut';rp_job.done=rp_job.point;rp_job.total=rp_job.points.length;rp_job.message='Resuming cutting from the saved position.';}else if(rp_job.kind==='cut'){rp_job.status='done';rp_job.message='Cutting complete.';}else{rp_beginPrepare(rp_job);}rp_gc();return rp_state();
+  rp_job.seq=s;rp_job.cutPending=null;rp_job.tasks=[];rp_job.status='running';rp_job.warning=!!rp_job.cameraWarning;
+  // Razor cuts can be missing after a Stop (Undo, project reopened from an older save): re-check every boundary from the
+  // first point with fresh cut cursors (clip indices change after deletions); existing cuts are skipped cheaply.
+  rp_restartCuts(rp_job,rp_job.point);rp_job.message='Resuming: checking transition cuts from the start.';rp_gc();return rp_state();
  }catch(e){rp_gc();return rp_encode({ok:false,status:'error',message:String(e)});}
 }
 function rp_resumeSaved(projectPath,sequenceID,a1Signature,pointsCsv,choicesCsv,phase,point,track,cuts,removed,skipped,verifyPoint,prepScene,task,enabledCsv,cameraMediaSignature,savedDuration,savedKind){
@@ -457,7 +538,7 @@ function rp_resumeSaved(projectPath,sequenceID,a1Signature,pointsCsv,choicesCsv,
   if(rp_job&&rp_job.status==='running')throw Error('Another process is already active.');
   var s=app.project.activeSequence;if(!s)throw Error('Open the sequence you want to continue.');
   if(String(app.project.path)!==String(projectPath))throw Error('This checkpoint belongs to a different Premiere project. Open the saved project first.');
-  // v2.3.11.13: a checkpoint is bound to the sequence it was started in. A backup clone has the same
+  // v2.3.11.14: a checkpoint is bound to the sequence it was started in. A backup clone has the same
   // A1 and camera media, so media identity alone could resume cuts/deletes in the wrong sequence.
   if(String(sequenceID||'')&&String(s.sequenceID)!==String(sequenceID))throw Error('This saved job belongs to a different sequence. Open the sequence the job was started in, then continue. Nothing was changed.');
   var a1=rp_a1Snapshot();if(String(a1.signature)!==String(a1Signature))throw Error('A1 does not match the saved job. Resume stopped before any timeline change.');
@@ -473,11 +554,9 @@ function rp_resumeSaved(projectPath,sequenceID,a1Signature,pointsCsv,choicesCsv,
   var restoredKind=String(savedKind||'delete');
   rp_startJob(restoredKind,points,'resume-checkpoint','internal',a1.signature,choices,true,enabled,Number(removed)>0);
   var j=rp_job;j.aiChoices=choices;j.cuts=Math.max(0,Number(cuts)||0);j.removed=Math.max(0,Number(removed)||0);j.skipped=Math.max(0,Number(skipped)||0);
-  // v2.3.11.2: resume from the saved cut position without a full post-cut verification pass.
-  j.point=Math.max(0,Math.min(points.length,Number(point)||0));
-  if(j.point<points.length){j.phase='cut';j.done=j.point;j.total=points.length;j.message='Saved plan restored. Resuming cutting.';}
-  else if(j.kind==='cut'){j.status='done';j.message='Cutting complete.';}
-  else{rp_beginPrepare(j);}
+  // The saved cut position may be ahead of the project (Premiere crashed or the last save predates the razors): re-check
+  // every boundary from point 0; cuts that exist are skipped cheaply and are not counted again.
+  rp_restartCuts(j,Math.max(0,Math.min(points.length,Number(point)||0)));j.message='Saved plan restored. Checking transition cuts from the start.';
   rp_gc();return rp_state();
  }catch(e){rp_gc();rp_job=previousJob;return rp_encode({ok:false,status:'error',message:String(e)});}
 }
@@ -505,21 +584,55 @@ function rp_prepareTrack(j,trackListIndex){
  if(stop>=tr.clips.numItems){j.prepClip=0;j.trackSizes['v'+ti]=tr.clips.numItems;j.liveCounts['v'+ti]=tr.clips.numItems;return true;}
  return false;
 }
+function rp_restartCuts(j,processed){
+ j.rescanTo=Math.max(Number(j.rescanTo)||0,Number(processed)||0);j.point=0;j.track=0;j.cutOnly=null;j.cutCursors=null;j.cutBatch=null;j.tasks=[];
+ j.phase='cut';j.done=0;j.total=j.points.length;
+}
 function rp_beginPrepare(j){
+ j.cutOnly=null;j.rescanTo=0;j.cutCursors=null;j.cutBatch=null;
  j.phase='prepare';j.prepScene=j.winners.length;j.prepTrack=0;j.prepClip=0;j.tasks=[];j.mediaCounts={};j.trackSizes={};j.liveCounts={};j.removalTrees={};j.task=0;j.done=0;j.total=j.tracks.length;
  j.message='Transition cuts complete. Building compact cleanup map.';
 }
 function rp_mediaKey(track,clip){var f='';try{f=String(clip.projectItem.getMediaPath());}catch(e){}return 'v'+track+'|'+f;}
+// Full coverage of [a,b] by enabled pieces of the winner track; a disabled piece counts only when the plugin disabled it
+// (Keep Clips): the user's disabled piece must never become the visible winner while the other cameras are deleted.
+function rp_winnerCovers(j,track,ti,a,b,eps){
+ var rows=rp_nearRanges(track,a,b,eps,ti),cursor=a,c;
+ for(c=0;c<rows.length;c++){var l=rows[c].a,r=rows[c].b;if(!(l<=cursor+eps&&r>cursor))continue;
+  var clip=track.clips[rows[c].index],off=false;try{off=!!clip.disabled;}catch(e){off=false;}
+  if(off){var f='';try{f=String(clip.projectItem.getMediaPath());}catch(e2){}if(!rp_pdOwned(j.seqID,ti,l,r,f,eps,rp_seconds(clip.inPoint)-l))continue;}
+  cursor=r;}
+ return cursor>=b-eps;
+}
 function rp_finishPrepare(j){
  // Compact keep/loser tasks were built once in bounded prepare batches.
  j.cameraMediaSignature=rp_cameraMediaSignature(app.project.activeSequence,j.tracks);
+ // Coverage guard before any delete/disable (also after Stop -> Continue, where the user may have trimmed or deleted a winner):
+ // a scene whose winner no longer fully covers it becomes -1 (every camera kept there). rp_ranges is step-cached.
+ // Track wrappers are fetched once per track (cache keyed by index), and a winner piece the USER disabled does not cover.
+ var s=app.project.activeSequence,eps=j.frame/4,lost=[0],uncovered=0,i,trs={};
+ for(i=0;i<j.winners.length;i++){var w=j.winners[i],wt=null;if(w>=0){wt=trs['v'+w];if(wt===undefined)wt=trs['v'+w]=s.videoTracks[w]||null;}
+  if(w>=0&&(!wt||!rp_winnerCovers(j,wt,w,j.bounds[i],j.bounds[i+1],eps))){j.winners[i]=-1;uncovered++;}lost.push(uncovered);}
+ if(uncovered){
+  if(j.warningBase===undefined)j.warningBase=String(j.cameraWarning||'').replace(/\s+$/,'');
+  j.uncoveredScenes=(Number(j.uncoveredScenes)||0)+uncovered;var nu=j.uncoveredScenes;
+  j.cameraWarning=(j.warningBase?j.warningBase+' ':'')+nu+' scene'+(nu===1?'':'s')+' kept unchanged: winning camera no longer covers '+(nu===1?'it':'them')+'.';j.warning=true;
+  // A loser piece reaching into such a scene was never cut at its edges (only the old winner tracks were). Cut every
+  // track at the edges of those scenes (a -1 scene is bounded on all tracks), then rebuild the map: neighbouring scenes
+  // still lose their unused pieces, the scene itself keeps every camera, and a later Stop -> Continue stays consistent.
+  var only={},first=-1;
+  for(i=0;i<j.winners.length;i++)if(lost[i+1]>lost[i]){if(i>0){only['p'+(i-1)]=true;if(first<0)first=i-1;}if(i<j.points.length){only['p'+i]=true;if(first<0)first=i;}}
+  j.cutOnly=only;j.rescanTo=j.points.length;j.point=first;j.track=0;j.cutCursors=null;j.cutBatch=null;j.tasks=[];
+  j.phase='cut';j.done=j.point;j.total=j.points.length;j.message='Cutting every camera at the edges of '+uncovered+' scene'+(uncovered===1?'':'s')+' whose winning camera no longer covers '+(uncovered===1?'it':'them')+'.';
+  return;
+ }
  // No stale clip objects are stored. Every delete re-resolves by track/start/end.
  // Reverse loser order only after preparation; winner tasks remain harmless guards.
  j.tasks.sort(function(a,b){if(a.keep!==b.keep)return a.keep?-1:1;if(!a.keep&&j.kind==='delete'){if(a.start!==b.start)return b.start-a.start;return b.track-a.track;}return a.start-b.start;});
  j.phase=j.kind==='angle'?'angle':'delete';j.done=0;j.total=j.tasks.length;j.task=0;
  j.message=j.kind==='delete'?'Protected cleanup map ready. Removing unused camera pieces in batches.':'Camera map ready.';
 }
-/* v2.3.11.13 batch cleanup: losers are resolved and guarded first, the whole batch is selected and unlinked with ONE
+/* v2.3.11.14 batch cleanup: losers are resolved and guarded first, the whole batch is selected and unlinked with ONE
    unlinkSelection, then each piece is re-resolved (identity checked) and removed. One selection save/restore per batch
    instead of per piece: on long sets the per-piece select/unlink/restore round trip dominated cleanup time. */
 var RP_DELETE_BATCH=12;
@@ -567,7 +680,7 @@ function rp_deleteBatch(j,s,maxTasks,T,deadline){
     var tr2=s.videoTracks[tk2.track];t0=rp_now();var live=rp_resolveAfterUnlink(s,tk2,j.frame,b.node);T.resolve+=rp_now()-t0;
     if(!live)throw Error('Camera piece changed before cleanup. Resume to rebuild the map.');
     var n=tr2.clips.numItems,mkey=rp_mediaKey(tk2.track,live);
-    t0=rp_now();var liveNode=String(live.nodeId);live.remove(false,false);T.remove+=rp_now()-t0;rp_invalidateRange(tr2);removedIds[b.node]=true;removedIds[liveNode]=true;removedHere++;
+    t0=rp_now();var liveNode=String(live.nodeId);live.remove(false,false);T.remove+=rp_now()-t0;rp_invalidateRange(tk2.track);removedIds[b.node]=true;removedIds[liveNode]=true;removedHere++;
     t0=rp_now();var confirmed=app.project.activeSequence.videoTracks[tk2.track].clips.numItems<n;T.verify+=rp_now()-t0;
     if(!confirmed)throw Error('Removal was not confirmed. Resume to inspect the live timeline.');
     j.removed++;j.liveCounts['v'+tk2.track]--;
@@ -912,7 +1025,7 @@ function rp_step(id,light){
   if(j.boundaryMode==='markers'){if(rp_manual(active).signature!==j.signature)throw Error('Manual markers changed or removed. Process stopped.');}
   else if(j.boundaryMode==='internal'&&rp_a1Snapshot().signature!==j.a1Signature)throw Error('A1 changed during processing. Process stopped.');
   if(j.waitUntil&&new Date().getTime()<j.waitUntil)return rp_state();
-  var start=new Date().getTime(),cleanup=j.phase!=='cut'&&j.phase!=='prepare',limit=light?2:j.phase==='prepare'?48:j.phase==='cut'?16:j.kind==='delete'?24:12,budget=cleanup&&!light?1200:90;rp_stepRanges=[];
+  var start=new Date().getTime(),cleanup=j.phase!=='cut'&&j.phase!=='prepare',limit=light?2:j.phase==='prepare'?48:j.phase==='cut'?16:j.kind==='delete'?24:12,budget=cleanup&&!light?1200:j.phase==='cut'&&j.point<(j.rescanTo||0)&&!light?400:90;rp_stepRanges={};
   T.checks+=start-stepStart;
   while(j.status==='running'&&ops<limit&&new Date().getTime()-start<budget){
    phaseAt=rp_now();
@@ -923,7 +1036,7 @@ function rp_step(id,light){
      if(j.kind==='cut'){j.status='done';j.message='Cutting complete.';break;}
      rp_beginPrepare(j);break;
     }
-    var batchResult=rp_cutBatch(j,start);ops+=batchResult.ops;T.cut+=rp_now()-phaseAt;if(batchResult.waiting)break;
+    var batchResult=rp_cutBatch(j,start,budget-15);ops+=batchResult.ops;T.cut+=rp_now()-phaseAt;if(batchResult.waiting)break;
 
    }else if(j.phase==='prepare'){
     if(j.prepTrack<j.tracks.length){if(rp_prepareTrack(j,j.prepTrack))j.prepTrack++;j.done=j.prepTrack;ops++;j.message='Building compact cleanup map · camera '+j.prepTrack+' / '+j.tracks.length;T.prepare+=rp_now()-phaseAt;continue;}
@@ -935,7 +1048,7 @@ function rp_step(id,light){
     if(task.keep||j.kind==='angle'){
      var currentClip=rp_resolveTask(liveCleanup,task,j.frame);
      if(!currentClip)throw Error('Camera piece changed before switching. Resume to rebuild the map.');
-     if(Boolean(currentClip.disabled)!==!task.keep){currentClip.disabled=!task.keep;if(!task.keep)rp_pdRecord(j.seqID,task.track,currentClip);}
+     if(Boolean(currentClip.disabled)!==!task.keep){currentClip.disabled=!task.keep;if(!task.keep)rp_pdRecord(j.seqID,task.track,currentClip);else rp_pdForget(j.seqID,task.track,task.start,task.end,j.frame/4);}
      if(Boolean(currentClip.disabled)!==!task.keep)throw Error('Camera change was not confirmed.');
      j.changed++;T.keep+=rp_now()-phaseAt;
     }else{
@@ -952,12 +1065,15 @@ function rp_step(id,light){
  }
  // $.gc() on a large ExtendScript heap is not free: run it at most every 2 s while the job runs, always at the end.
  rp_stepRanges=null;var gcAt=rp_now();if(j.status!=='running'||gcAt-(j.lastGcAt||0)>=2000){rp_gc();j.lastGcAt=rp_now();T.gc+=j.lastGcAt-gcAt;}
+ // Keep Clips ownership reaches the sidecar at most every 5 s while the job runs (a crash loses at most that), and at the end.
+ var pdState=rp_pdState[rp_pdKey(j.seqID)];if(pdState&&pdState.dirty&&(j.status!=='running'||rp_now()-pdState.savedAt>=5000))rp_pdSave(j.seqID);
  T.steps++;T.lastStepMs=rp_now()-stepStart;T.stepMs+=T.lastStepMs;T.lastOps=ops;T.lastPhase=String(j.phase);
  if(j.status!=='running'){j.tasks=[];j.removalTrees=null;j.mediaCounts=null;j.seq=null;}return rp_state();
 }
 function rp_stop(id){
  if(!rp_job||rp_job.id!==id)return rp_encode({ok:false,message:'Process not found.'});
  if(rp_job.status==='running'){if(rp_job.kind==='best15')rp_best15Restore(rp_job);rp_job.status='stopped';rp_job.warning=true;rp_job.message='Stopped. Partial results remain.';}
+ if(rp_job.seqID)rp_pdSave(rp_job.seqID);
  rp_gc();rp_job.tasks=[];rp_job.removalTrees=null;rp_job.mediaCounts=null;rp_job.seq=null;return rp_state();
 }
 
@@ -1138,7 +1254,8 @@ function rp_syncSources(){
 /** Project-item In/Out for a placement. Premiere converts seconds to its tick clock and rounds DOWN to a whole frame, and
     the conversion can land a hair under an exact frame boundary (155.100 s became 155.067 s at 30 fps). 1 ms above the
     boundary always lands on the intended frame, whether Premiere floors or rounds; In and Out move together. */
-function rp_syncSetMarks(item,inSec,outSec){var e=0.001;item.setInPoint(Number(inSec)+e,4);item.setOutPoint(Number(outSec)+e,4);}
+// The item may carry the user's marks: when the new In lies after the current Out, Out moves first (never In > Out).
+function rp_syncSetMarks(item,inSec,outSec){var e=0.001,a=Number(inSec)+e,b=Number(outSec)+e,cur=null;try{cur=item.getOutPoint(4);}catch(x){}if(cur&&a>Number(cur.seconds)){item.setOutPoint(b,4);item.setInPoint(a,4);}else{item.setInPoint(a,4);item.setOutPoint(b,4);}}
 function rp_syncTime(seconds){var t=new Time();t.ticks=String(Math.round(Number(seconds)*254016000000));return t;}
 /** rowsCsv rows "camera,nodeId,sourceIn,sourceOut,start,flag" joined by ';'. camera 1..n (0 = review); flag h|m|r|c (c = drone placed by its camera clock). */
 function rp_syncParseRows(rowsCsv,cameraCount,frame){
@@ -1218,14 +1335,19 @@ function rp_syncBegin(name,cameraCount,rowsCsv,expectSequenceID,expectA1){
 }
 function rp_syncState(){var j=rp_syncJob;if(!j)return rp_encode({ok:true,status:'idle'});return rp_encode({ok:j.status!=='error',status:j.status,id:j.id,sequenceID:j.sequenceID,sequenceName:j.sequenceName,done:j.next,total:j.rows.length,placed:j.placed,checks:j.checks,review:j.review,clock:j.clock||0,message:j.message});}
 function rp_syncFindPlaced(tr,nodeId,start,frame){for(var c=0;c<tr.clips.numItems;c++){var it=tr.clips[c];if(Math.abs(rp_seconds(it.start)-start)<=frame/4&&it.projectItem&&String(it.projectItem.nodeId)===nodeId)return it;}return null;}
-// Put a project item's In/Out back exactly: clear it, and only set it again if the cleared value differs
-// (so a clip that had no marks does not suddenly show In/Out marks in the Source Monitor).
-function rp_syncRestoreMark(item,which,old){
- if(!old)return;
- try{
-  if(typeof item['clear'+which+'Point']==='function'){item['clear'+which+'Point'](4);var now=item['get'+which+'Point'](4);if(now&&String(now.ticks)===String(old.ticks))return;}
-  item['set'+which+'Point'](Number(old.seconds),4);
- }catch(restoreError){}
+// Put a project item's In/Out back exactly: clear both, and only set a mark again if the cleared value differs (so a clip
+// that had no marks does not suddenly show In/Out marks in the Source Monitor). Restoring In while the placement Out is
+// still set could ask for In > Out and lose the user's mark: both are cleared first, and when Premiere cannot clear,
+// the mark that keeps In <= Out at every moment is set first.
+function rp_syncRestoreMarks(item,oldIn,oldOut){
+ var nowIn=null,nowOut=null,cleared=false;
+ try{if(typeof item.clearInPoint==='function'&&typeof item.clearOutPoint==='function'){item.clearOutPoint(4);item.clearInPoint(4);cleared=true;}}catch(clearError){}
+ try{nowIn=item.getInPoint(4);}catch(e1){}try{nowOut=item.getOutPoint(4);}catch(e2){}
+ var needIn=!!oldIn&&!(cleared&&nowIn&&String(nowIn.ticks)===String(oldIn.ticks)),needOut=!!oldOut&&!(cleared&&nowOut&&String(nowOut.ticks)===String(oldOut.ticks));
+ var outFirst=needIn&&nowOut&&Number(oldIn.seconds)>Number(nowOut.seconds);
+ if(outFirst&&needOut){try{item.setOutPoint(Number(oldOut.seconds),4);}catch(e3){}needOut=false;}
+ if(needIn){try{item.setInPoint(Number(oldIn.seconds),4);}catch(e4){}}
+ if(needOut){try{item.setOutPoint(Number(oldOut.seconds),4);}catch(e5){}}
 }
 /** Frame duration of a clip's own media (seconds), or `fallback` when Premiere cannot tell (stills, audio, old versions). */
 function rp_syncMediaFrame(item,fallback){try{var fi=item.getFootageInterpretation(),r=fi&&Number(fi.frameRate);if(r>1&&r<1000)return 1/r;}catch(e){}return fallback;}
@@ -1243,7 +1365,7 @@ function rp_syncPlace(j,row){
  try{
   rp_syncSetMarks(item,sIn,sOut);
   tr.overwriteClip(item,rp_syncTime(start));
- }finally{rp_syncRestoreMark(item,'In',oldIn);rp_syncRestoreMark(item,'Out',oldOut);}
+ }finally{rp_syncRestoreMarks(item,oldIn,oldOut);}
  var placed=rp_syncFindPlaced(tr,row.nodeId,start,f);
  if(!placed)throw Error('Premiere did not place '+item.name+' at '+start.toFixed(3)+' s.');
  // The placed piece must start at the planned source In (that is what keeps it in sync). Premiere may include the
@@ -1313,7 +1435,7 @@ function rp_syncShiftDrone(sequenceID,track,clipsCsv,delta){
  function put(m,start,inP,len){
    var item=m.item,oldIn=null,oldOut=null;try{oldIn=item.getInPoint(4);oldOut=item.getOutPoint(4);}catch(e){}
    try{rp_syncSetMarks(item,inP,inP+len);tr.overwriteClip(item,rp_syncTime(start));}
-   finally{rp_syncRestoreMark(item,'In',oldIn);rp_syncRestoreMark(item,'Out',oldOut);}
+   finally{rp_syncRestoreMarks(item,oldIn,oldOut);}
    var placed=rp_syncFindPlaced(tr,m.node,start,frame);if(!placed)return null;
    // Premiere may include the Out frame: keep the length, so repeated nudges never grow a clip.
    if(rp_seconds(placed.end)-rp_seconds(placed.start)>len+frame/2){try{placed.end=rp_syncTime(start+len);}catch(e){}}
@@ -1355,9 +1477,17 @@ function rp_syncShiftDrone(sequenceID,track,clipsCsv,delta){
   for(i=0;i<moving.length;i++){m=moving[i];var placed=null;try{placed=put(m,m.ns,m.nIn,m.nLen);}catch(e){placed=null;}
    if(!placed){failed=m;break;}out[m.ask.i]={start:rp_seconds(placed.start),inPoint:rp_seconds(placed.inPoint)};done++;}
   if(failed){
-   // Put the clips that were not moved yet back where they were; report what happened.
-   for(k=i;k<moving.length;k++){try{put(moving[k],moving[k].start,moving[k].inP,moving[k].end-moving[k].start);}catch(e){}}
-   throw Error('Premiere did not place '+failed.name+'. '+done+' of '+moving.length+' drone clips moved; the rest were put back. Use Undo (Ctrl/Cmd+Z) to undo the moved ones, then Build again.');
+   // Roll back atomically. A clip already moved can sit where a clip not moved yet used to be (moving clips are only
+   // checked against the clips that stay), so putting that one back first would overwrite it. Take the moved clips (and
+   // whatever the failed overwrite left at its target) off the track again, then put every moving clip back where it
+   // was: those places never overlapped each other or the clips that stay. A place that is not free is left alone.
+   for(k=0;k<=i&&k<moving.length;k++){var mk=moving[k],there=rp_syncFindPlaced(tr,mk.node,mk.ns,frame);if(there){try{there.remove(false,false);}catch(e){}}}
+   var lost=[];
+   for(k=0;k<moving.length;k++){var mb=moving[k],len0=mb.end-mb.start,busy=false,back=null;
+    for(c=0;c<tr.clips.numItems;c++){var ex=tr.clips[c];if(Math.min(mb.start+len0,rp_seconds(ex.end))-Math.max(mb.start,rp_seconds(ex.start))>frame/4){busy=true;break;}}
+    if(!busy){try{back=put(mb,mb.start,mb.inP,len0);}catch(e){back=null;}}
+    if(!back)lost.push(mb.name);}
+   throw Error('Premiere did not place '+failed.name+'. '+(lost.length?lost.length+' of '+moving.length+' drone clips could not be put back ('+lost.join(', ')+'): use Undo (Ctrl/Cmd+Z) to restore them, then Build again.':'None of the '+moving.length+' drone clips moved: all were put back where they were. Try the correction again.'));
   }
   return rp_encode({ok:true,moved:done,missing:missing,delta:Math.round(d*1e6)/1e6,clips:out});
  }catch(e){return rp_encode({ok:false,message:String(e)});}
@@ -1369,7 +1499,7 @@ function rp_syncGuardStep(fn){return function(id){try{var j=rp_syncJob;if(!(j&&j
 // Sync to Master Music (cameras, drone, FPV) is a lifetime-only feature: trial sessions are refused here too.
 function rp_guardLifetime(fn){return function(){try{rp_requireLicense();if(rp_license_tier!=='lifetime')return rp_encode({ok:false,status:'error',code:'LIFETIME_REQUIRED',message:'Sync Cameras to Music is available with the lifetime license only.'});return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
 function rp_guardLicensed(fn){return function(){try{rp_requireLicense();var out=fn.apply(this,arguments);if(rp_job&&rp_job.status==='running'){rp_job.licensed=true;rp_job.licensedAt=new Date().getTime();}return out;}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
-/* v2.3.11.13: a job started under a valid session may run to completion (its own step/upload calls only)
+/* v2.3.11.14: a job started under a valid session may run to completion (its own step/upload calls only)
    if the trial/session ends mid-job. Every new job, plan, resume or analysis still needs a live session. */
 function rp_jobContinuation(id){var j=rp_job;return !!(j&&j.licensed&&j.status==='running'&&String(j.id)===String(id)&&new Date().getTime()-Number(j.licensedAt||0)<86400000);}
 function rp_guardJob(fn){return function(id){try{if(!rp_jobContinuation(id))rp_requireLicense();return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}

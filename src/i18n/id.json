@@ -262,7 +262,14 @@
   "Download DaVinci Resolve": "Unduh DaVinci Resolve",
   "DaVinci Resolve · Coming soon": "DaVinci Resolve · Segera hadir",
   "Choose Windows, macOS or DaVinci Resolve.": "Pilih Windows, macOS, atau DaVinci Resolve.",
-  "DaVinci Resolve download started. Extract the ZIP, run Install-DaVinci.bat, then in DaVinci Resolve choose Workspace > Scripts > R Project Multicam AI.": "Unduhan DaVinci Resolve dimulai. Ekstrak ZIP, jalankan Install-DaVinci.bat, lalu di DaVinci Resolve pilih Workspace > Scripts > R Project Multicam AI."
+  "DaVinci Resolve download started. Extract the ZIP, run Install-DaVinci.bat, then in DaVinci Resolve choose Workspace > Scripts > R Project Multicam AI.": "Unduhan DaVinci Resolve dimulai. Ekstrak ZIP, jalankan Install-DaVinci.bat, lalu di DaVinci Resolve pilih Workspace > Scripts > R Project Multicam AI.",
+  "GOOGLE SIGN-IN": "MASUK DENGAN GOOGLE",
+  "Open this page in Safari or Chrome to continue with Google.": "Buka halaman ini di Safari atau Chrome untuk lanjut dengan Google.",
+  "Google does not allow sign-in inside the Instagram, Facebook or TikTok app. Tap the ••• menu and choose Open in browser, or copy the link below and paste it into Safari or Chrome.": "Google tidak mengizinkan login di dalam aplikasi Instagram, Facebook, atau TikTok. Ketuk menu ••• lalu pilih Buka di browser, atau salin link di bawah dan tempel di Safari atau Chrome.",
+  "Link to this page": "Link ke halaman ini",
+  "Copy link": "Salin link",
+  "Link copied. Open Safari or Chrome and paste it into the address bar.": "Link sudah disalin. Buka Safari atau Chrome lalu tempel di kolom alamat.",
+  "Press and hold the link above, choose Copy, then paste it into Safari or Chrome.": "Tekan lama link di atas, pilih Salin, lalu tempel di Safari atau Chrome."
  },
  "patterns": [
   [
