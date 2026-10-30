@@ -213,7 +213,9 @@ function* syncCameraSteps(master,clips,opts){
  // A medium match whose end excerpt, searched separately over the whole music, lands on the same offset (within
  // SINGLE_END_AGREE) is two independent matches of one clip: it weighs as high for the clock (the single-take rule below
  // trusts the same evidence). New zumana cam 2 (DJI Osmo, split take 0003 + 0004, both medium): 0003 start -41.31 s,
- // end -41.34 s, so the DJI clock is trusted and the drone bridges through it. Only the anchor weight changes.
+ // end -41.34 s, so the DJI clock is trusted and the drone bridges through it. Only the anchor (its weight and the
+ // weighted mean inside the 2.5 s cluster) changes; placed clips keep their own confidence. A second agreeing clip is
+ // still required for a camera of several clips.
  for(pi=0;pi<seeds.length;pi++){if(seeds[pi].confidence!=='medium')continue;yield;if(endAgrees(seeds[pi]))seeds[pi].confidence='high';}
  var A=anchorFrom(seeds);
  // Not enough agreeing long clips: try the next ones before giving up on the clock.
@@ -278,7 +280,8 @@ function* syncCameraSteps(master,clips,opts){
      if(s4&&RANK[s4.confidence]>=minRank&&Math.abs(s4.offset-e4.offset)<=.25)r={offset:s4.offset,confidence:RANK[s4.confidence]<RANK[e4.confidence]?s4.confidence:e4.confidence,method:'audio (start+end)',score:s4.score,agree:s4.agree,margin:s4.margin};
      // Placed at the end's offset, the start excerpt lies mostly before the music or in an A1 gap: nothing there to confirm
      // (new zumana cam 1, a 73 min take that began 27 min before the recording: end -1608.69 s high 7/7). A high end
-     // places it alone, as an end past the music leaves a placed start alone in driftCheck.
+     // places it alone, as an end past the music leaves a placed start alone in driftCheck. That is one match, not two
+     // (driftCheck then finds the same end again); it only places this clip and never sets the camera clock.
      else if(e4.confidence==='high'&&!excerptInMusic(e4.offset+c.excerptStart,c.env.onset.length))r={offset:e4.offset,confidence:e4.confidence,method:'audio (end)',score:e4.score,agree:e4.agree,margin:e4.margin};
      else{out[c.id]={id:c.id,status:'review',offset:e4.offset,confidence:'low',method:'audio (end)',agree:e4.agree,margin:e4.margin,reason:'audio at the start of this clip is unclear; its end matches at '+e4.offset.toFixed(2)+' s but the start does not confirm it'};continue;}}
    }

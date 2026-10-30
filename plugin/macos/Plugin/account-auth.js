@@ -183,7 +183,7 @@ async function refreshOnce(){if(!session||!session.refresh_token)return false;va
 /* deviceId() directly: RPLicense.status() reads RPAccountAuth.status(), which needs device() for the offline-grace check. */
 function device(){try{var L=global.RPLicense;return (L.deviceId?L.deviceId():L.status().deviceId)||'';}catch(e){return '';}}
 function platform(){try{var p=nreq('process').platform;return p==='darwin'?'macOS':p==='win32'?'Windows':p;}catch(e){return 'Unknown';}}
-function rpcBody(){return {p_device_id:device(),p_platform:platform(),p_plugin_version:'2.3.11.15-public-v19'};}
+function rpcBody(){return {p_device_id:device(),p_platform:platform(),p_plugin_version:'2.3.11.16-public-v19'};}
 /* Refresh shortly before the access token expires, so heartbeat/entitlement calls do not hit the server with an expired JWT (401) first. */
 async function freshen(){var exp=session&&Number(session.expires_at||0);if(exp&&exp<=Math.floor(Date.now()/1000)+60){try{await refresh();}catch(e){}}}
 async function rpc(name){await freshen();var body=rpcBody();try{return await request('/rest/v1/rpc/'+name,{method:'POST',auth:true,headers:Object.assign(headers(true),{'Accept':'application/vnd.pgrst.object+json'}),body:body});}catch(e){if(/jwt|token|expired/i.test(e.message)&&await refresh())return request('/rest/v1/rpc/'+name,{method:'POST',auth:true,headers:Object.assign(headers(true),{'Accept':'application/vnd.pgrst.object+json'}),body:body});throw e;}}

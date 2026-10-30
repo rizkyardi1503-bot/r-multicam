@@ -1,3 +1,9 @@
+v2.3.11.16 PUBLIC validation — 2026-10-31
+- Real shoot (DJI Osmo split take, Sony 73 min take, 19 drone clips, 51 min master WAV): DJI clock trusted, every drone
+  clip placed within 0.74 s of reference positions; Sony take placed at its end match (independent cross-correlation
+  agrees within 0.05 s). Earlier real shoots (FULL MOON parts 1 and 2, Kaehla, Artbat drone) and the sync benchmark
+  unchanged; plugin suites pass on both trees.
+
 v2.3.11.15 PUBLIC validation — 2026-10-30
 - Real shoot (3 cameras, 43 min master WAV): every camera placed within 0.02 s of an independent audio
   cross-correlation (cam 3 DJI handheld take was 162.6 s late before). Real Kaehla and Artbat shoots and the sync

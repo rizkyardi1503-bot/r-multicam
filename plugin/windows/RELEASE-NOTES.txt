@@ -1,3 +1,13 @@
+v2.3.11.16 PUBLIC — Drones sync through DJI cameras
+New in this release:
+- Sync Cameras to Music: a camera whose clips all match the music with medium confidence now gives a trusted camera
+  clock when a clip's end, searched separately over the whole music, lands on the same position as its start (two
+  independent matches of one clip) and a second clip agrees. Drones bridge through it: on a shoot with a DJI Osmo
+  split take, all 19 drone clips were excluded before and are now placed by the DJI clock.
+- A long take that started well before the music (its start excerpt has no music to match) is placed by a high
+  match of its end instead of going to Review.
+- Optional update for v2.3.11.11 and later. Macs older than v2.3.11.11 install once from r-multicam.pages.dev.
+
 v2.3.11.15 PUBLIC — Sync long takes by audio, Camera roles check
 New in this release:
 - Sync Cameras to Music: a camera with audio but no trusted clock, filmed in one long take, is now placed by its audio

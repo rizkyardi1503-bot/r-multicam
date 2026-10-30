@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.11";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.15",
-    download: base + "?platform=windows&version=2.3.11.15",
-    sha256: "3d3794414204bcf38f1d16fb5f9659d76ad68c01affaa4231e4e0be97f2deb36"
+    version: "2.3.11.16",
+    download: base + "?platform=windows&version=2.3.11.16",
+    sha256: "9554376d73e79882e64f065b50229811d001bf78cfaa6288e8120fc3541abb0d"
   },
   macos: {
-    version: "2.3.11.15",
-    download: base + "?platform=macos&version=2.3.11.15",
-    sha256: "c40e8b12a4f993f0012919663ace0454a115dbb3f132428e7e8595d8912b4247"
+    version: "2.3.11.16",
+    download: base + "?platform=macos&version=2.3.11.16",
+    sha256: "60d1d86dc86d007b6d05590f3791ccd7c22af9aa72b1ce59811f8cc6f9547e3c"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.15 PUBLIC Windows and macOS: Sync Cameras to Music places a long single take by its audio even when its start is unclear (the end is found in the music and the start must match it), instead of sending it to Review at a wrong position; Auto Cut Multicam stops before any change when Camera roles leave only one camera with footage and names the tracks to use. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.15 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
+    release_notes: "v2.3.11.16 PUBLIC Windows and macOS: Sync Cameras to Music trusts a camera clock when a clip's start and end are found at the same place in the music and a second clip agrees, so drones sync through DJI cameras whose clips match with medium confidence; a long take that started before the music is placed by its end. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.16 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
