@@ -262,6 +262,16 @@ function* syncCameraSteps(master,clips,opts){
    if(RANK[r.confidence]<minRank){out[c.id]={id:c.id,status:'review',offset:expected,confidence:'low',method:'clock',reason:c.duration<3?'clip shorter than 3 s':'audio match unclear near the clock position',audio:r};continue;}
   }else{
    try{r=full[c.id]||matchFull(master,c.env,{excerptStart:c.excerptStart});}catch(e){out[c.id]={id:c.id,status:'review',offset:null,confidence:'low',method:'none',reason:String(e.message||e)};continue;}
+   // A long take whose start excerpt is unclear can still be found by its end excerpt (FULL MOON cam 3, one DJI take:
+   // start searched to 346.7 s low, end 184.07 s high 7/7, the start re-checked there 184.10 s high). The end is searched
+   // over the whole music and the start then has to match within 0.25 s of it (camera drift over a take is tens of ms;
+   // one beat is ~0.47 s at 128 BPM), so a start that only fits a beat away goes to review instead.
+   if(RANK[r.confidence]<minRank&&endUsable(c)){
+    yield;var e4=null,s4=null;try{e4=matchFull(master,c.endEnv,{excerptStart:c.endExcerptStart});}catch(e){e4=null;}
+    if(e4&&RANK[e4.confidence]>=minRank){try{s4=matchWindow(master,c.env,{excerptStart:c.excerptStart,expectedOffset:e4.offset,radius:1,clockBound:Infinity});}catch(e){s4=null;}
+     if(s4&&RANK[s4.confidence]>=minRank&&Math.abs(s4.offset-e4.offset)<=.25)r={offset:s4.offset,confidence:RANK[s4.confidence]<RANK[e4.confidence]?s4.confidence:e4.confidence,method:'audio (start+end)',score:s4.score,agree:s4.agree,margin:s4.margin};
+     else{out[c.id]={id:c.id,status:'review',offset:e4.offset,confidence:'low',method:'audio (end)',agree:e4.agree,margin:e4.margin,reason:'audio at the start of this clip is unclear; its end matches at '+e4.offset.toFixed(2)+' s but the start does not confirm it'};continue;}}
+   }
    if(RANK[r.confidence]<minRank){out[c.id]={id:c.id,status:'review',offset:r.offset,confidence:r.confidence,method:'audio',agree:r.agree,margin:r.margin,reason:'audio match unclear and no trusted camera clock'};continue;}
   }
   out[c.id]={id:c.id,status:'placed',offset:r.offset,confidence:r.confidence,method:r.method,score:r.score,agree:r.agree,margin:r.margin,clockOffset:r.clockOffset};
