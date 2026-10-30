@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.11";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.14",
-    download: base + "?platform=windows&version=2.3.11.14",
-    sha256: "426068b0321aa42d2db1651c0fd750841a88e5322774b55e1b116d87fa59914b"
+    version: "2.3.11.15",
+    download: base + "?platform=windows&version=2.3.11.15",
+    sha256: "3d3794414204bcf38f1d16fb5f9659d76ad68c01affaa4231e4e0be97f2deb36"
   },
   macos: {
-    version: "2.3.11.14",
-    download: base + "?platform=macos&version=2.3.11.14",
-    sha256: "3ceb2ff7bc8b089615c5f5b14491abf93f3e088a8627e9752af02c1b4b36d7cc"
+    version: "2.3.11.15",
+    download: base + "?platform=macos&version=2.3.11.15",
+    sha256: "c40e8b12a4f993f0012919663ace0454a115dbb3f132428e7e8595d8912b4247"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.14 PUBLIC Windows and macOS: Sync Cameras to Music syncs drones through single-take cameras and places clips by their own audio when the camera clock is wrong; Auto Cut Multicam no longer blocks Apply when footage cannot meet the 4-beat minimum (switches camera, moves the cut or keeps the camera through a weaker drop) and is safer on Stop, Continue and resume; Analyze Music finds bars per section and fixes tempo misreads; the panel steps fold to one line. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.14 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
+    release_notes: "v2.3.11.15 PUBLIC Windows and macOS: Sync Cameras to Music places a long single take by its audio even when its start is unclear (the end is found in the music and the start must match it), instead of sending it to Review at a wrong position; Auto Cut Multicam stops before any change when Camera roles leave only one camera with footage and names the tracks to use. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.15 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

@@ -14,7 +14,7 @@
  }
  if(googleCallback)history.replaceState(null,'',window.location.pathname);
  const SESSION_KEY='rp_multicam_refresh_v1';
- const LATEST_VERSIONS=Object.freeze({windows:'2.3.11.14',macos:'2.3.11.14'});
+ const LATEST_VERSIONS=Object.freeze({windows:'2.3.11.15',macos:'2.3.11.15'});
  // Stored plugin versions can carry a build suffix ("2.3.11.13-public-v19"); only the numbers are compared and shown.
  const baseVersion=v=>String(v).trim().replace(/-.*$/,'');
  const newerVersion=(installed,latest)=>{const a=String(installed).split('.').map(Number),b=latest.split('.').map(Number);if(a.length!==b.length||a.some(n=>!Number.isFinite(n)))return false;for(let i=0;i<b.length;i++){if(b[i]!==a[i])return b[i]>a[i];}return false;};

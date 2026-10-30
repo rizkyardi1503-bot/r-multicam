@@ -1,3 +1,13 @@
+v2.3.11.15 PUBLIC — Sync long takes by audio, Camera roles check
+New in this release:
+- Sync Cameras to Music: a camera with audio but no trusted clock, filmed in one long take, is now placed by its audio
+  even when the start of the take is unclear: the end of the take is searched over the whole music and the start must
+  match within 0.25 s of it. Before, such a take went to the Review track at a wrong position (a handheld DJI take was
+  162 s late). The panel now says "audio only" for cameras synced by audio.
+- Auto Cut Multicam: when Camera roles name tracks that are empty in this sequence and leave only one camera with
+  footage, Auto Cut stops before the backup copy and any cut and names the tracks to use (for example V3, V2).
+- Optional update for v2.3.11.11 and later. Macs older than v2.3.11.11 install once from r-multicam.pages.dev.
+
 v2.3.11.14 PUBLIC — Sync, Auto Cut and Analyze Music fixes
 New in this release:
 - Sync Cameras to Music (Lifetime): drones sync through a camera filmed in one long take; a clip whose own audio
