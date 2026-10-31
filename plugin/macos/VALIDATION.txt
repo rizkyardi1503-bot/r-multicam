@@ -1,3 +1,7 @@
+v2.3.11.17 PUBLIC validation — 2026-11-01
+- Real shoot (31 OCTOBER: drone built on V5, empty V1 deleted, drone on V4): the case reproduces with the previous
+  panel code and passes with this one; 19 drone host/panel tests and the sync suites pass on both trees.
+
 v2.3.11.16 PUBLIC validation — 2026-10-31
 - Real shoot (DJI Osmo split take, Sony 73 min take, 19 drone clips, 51 min master WAV): DJI clock trusted, every drone
   clip placed within 0.74 s of reference positions; Sony take placed at its end match (independent cross-correlation

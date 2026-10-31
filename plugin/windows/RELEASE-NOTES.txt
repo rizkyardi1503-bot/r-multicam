@@ -1,3 +1,11 @@
+v2.3.11.17 PUBLIC — Drone correction works after tracks move
+New in this release:
+- Sync Cameras to Music, drone [CLOCK] clips: "Use selected clip" now finds the drone clip you moved even when the
+  tracks moved after the build (for example after deleting the empty V1, which shifts every track down). Before, it
+  answered "not a [CLOCK] drone clip" and the correction was neither applied to the other drone clips nor remembered.
+  The drone then follows its new track for later moves and the -1 s / +1 s buttons.
+- Optional update for v2.3.11.11 and later. Macs older than v2.3.11.11 install once from r-multicam.pages.dev.
+
 v2.3.11.16 PUBLIC — Drones sync through DJI cameras
 New in this release:
 - Sync Cameras to Music: a camera whose clips all match the music with medium confidence now gives a trusted camera
