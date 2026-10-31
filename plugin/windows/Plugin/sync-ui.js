@@ -326,8 +326,11 @@ async function useSelected(){
   var s=await host('rp_syncSelected()',30000);
   if(String(s.sequenceID)!==ui.built.sequenceID)throw Error('Open the synced sequence and select the drone clip you moved.');
   // The same file can appear twice: take the piece of that file whose recorded start is nearest to the selection.
-  var hit=null;ui.built.drones.forEach(function(d,i){if(Number(d.track)!==Number(s.track))return;d.clips.forEach(function(c){if(c.nodeId!==String(s.nodeId))return;var dd=Math.abs(c.start-Number(s.start));if(!hit||dd<hit.dist)hit={d:d,i:i,c:c,dist:dd};});});
+  // Tracks can move after the build (deleting the empty V1 shifts every track down: 31 OCTOBER drone built on V5, now V4),
+  // so the clip is found by its file on any track, a clip on the built track first; the drone then follows that track.
+  var hit=null;ui.built.drones.forEach(function(d,i){var same=Number(d.track)===Number(s.track)?0:1;d.clips.forEach(function(c){if(c.nodeId!==String(s.nodeId))return;var dd=Math.abs(c.start-Number(s.start));if(!hit||same<hit.same||(same===hit.same&&dd<hit.dist))hit={d:d,i:i,c:c,dist:dd,same:same};});});
   if(!hit)throw Error('The selected clip is not a [CLOCK] drone clip of this synced sequence.');
+  hit.d.track=Number(s.track);
   // Sync lives in where the file's time 0 sits (start - In): a move, a slip or a head trim all count.
   // The correction is measured against the plan, so the other clips go to planned + correction wherever they are now.
   var zero=Number(s.start)-Number(s.inPoint),corr=zero-hit.c.planZero;
