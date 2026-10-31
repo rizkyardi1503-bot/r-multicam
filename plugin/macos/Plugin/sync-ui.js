@@ -327,14 +327,15 @@ async function useSelected(){
   if(String(s.sequenceID)!==ui.built.sequenceID)throw Error('Open the synced sequence and select the drone clip you moved.');
   // The same file can appear twice: take the piece of that file whose recorded start is nearest to the selection.
   // Tracks can move after the build (deleting the empty V1 shifts every track down: 31 OCTOBER drone built on V5, now V4),
-  // so the clip is found by its file on any track, a clip on the built track first; the drone then follows that track.
-  var hit=null;ui.built.drones.forEach(function(d,i){var same=Number(d.track)===Number(s.track)?0:1;d.clips.forEach(function(c){if(c.nodeId!==String(s.nodeId))return;var dd=Math.abs(c.start-Number(s.start));if(!hit||same<hit.same||(same===hit.same&&dd<hit.dist))hit={d:d,i:i,c:c,dist:dd,same:same};});});
+  // so the clip is found by its file on any track: the nearest recorded start wins, the built track only breaks a tie.
+  // The drone follows the selected clip's track only when the move there succeeds (the rest of it is on that track).
+  var hit=null;ui.built.drones.forEach(function(d,i){var same=Number(d.track)===Number(s.track)?0:1;d.clips.forEach(function(c){if(c.nodeId!==String(s.nodeId))return;var dd=Math.abs(c.start-Number(s.start));if(!hit||dd<hit.dist||(dd===hit.dist&&same<hit.same))hit={d:d,i:i,c:c,dist:dd,same:same};});});
   if(!hit)throw Error('The selected clip is not a [CLOCK] drone clip of this synced sequence.');
-  hit.d.track=Number(s.track);
   // Sync lives in where the file's time 0 sits (start - In): a move, a slip or a head trim all count.
   // The correction is measured against the plan, so the other clips go to planned + correction wherever they are now.
-  var zero=Number(s.start)-Number(s.inPoint),corr=zero-hit.c.planZero;
-  var r=await shiftDrone(hit.d,0,hit.c,corr);hit.c.zero=zero;hit.c.start=Number(s.start);$('syncFlight').value=String(hit.i);renderDrones();
+  var zero=Number(s.start)-Number(s.inPoint),corr=zero-hit.c.planZero,builtTrack=hit.d.track,r;hit.d.track=Number(s.track);
+  try{r=await shiftDrone(hit.d,0,hit.c,corr);}catch(moveError){hit.d.track=builtTrack;throw moveError;}
+  hit.c.zero=zero;hit.c.start=Number(s.start);$('syncFlight').value=String(hit.i);renderDrones();
   var msg=hit.d.cameraName+': '+(r.moved||0)+' other clip'+(r.moved===1?'':'s')+' placed '+(corr>=0?'+':'')+corr.toFixed(2)+' s from the camera-clock plan, following '+hit.c.name+'.'+missingNote(r)+remember(hit.d,hit.c);
   droneInfo(msg);setState(msg,'success');
  }catch(e){setState(e.message,'error');droneInfo(e.message);}
