@@ -1496,8 +1496,8 @@ function rp_syncStop(id){var j=rp_syncJob;if(j&&String(j.id)===String(id)&&j.sta
 function rp_syncGuardStep(fn){return function(id){try{var j=rp_syncJob;if(!(j&&j.licensed&&j.status==='running'&&String(j.id)===String(id)&&new Date().getTime()-Number(j.licensedAt||0)<86400000))rp_requireLicense();return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
 
 /* Commercial host gate: public entry points refuse work without a short-lived licensed session. */
-// Sync to Master Music (cameras, drone, FPV) is a lifetime-only feature: trial sessions are refused here too.
-function rp_guardLifetime(fn){return function(){try{rp_requireLicense();if(rp_license_tier!=='lifetime')return rp_encode({ok:false,status:'error',code:'LIFETIME_REQUIRED',message:'Sync Cameras to Music is available with the lifetime license only.'});return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
+// Sync to Master Music (cameras, drone, FPV) needs a live trial or lifetime session, like every other tool.
+function rp_guardSync(fn){return function(){try{rp_requireLicense();return fn.apply(this,arguments);}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
 function rp_guardLicensed(fn){return function(){try{rp_requireLicense();var out=fn.apply(this,arguments);if(rp_job&&rp_job.status==='running'){rp_job.licensed=true;rp_job.licensedAt=new Date().getTime();}return out;}catch(e){return rp_encode({ok:false,status:'error',code:'ACCOUNT_ACCESS_REQUIRED',message:String(e)});}};}
 /* v2.3.11.18: a job started under a valid session may run to completion (its own step/upload calls only)
    if the trial/session ends mid-job. Every new job, plan, resume or analysis still needs a live session. */
@@ -1524,9 +1524,9 @@ rp_a1Begin=rp_guardLicensed(rp_a1Begin);
 rp_a1Upload=rp_guardJob(rp_a1Upload);
 rp_a1DirectApply=rp_guardLicensed(rp_a1DirectApply);
 rp_a1Step=rp_guardJob(rp_a1Step);
-rp_syncSources=rp_guardLifetime(rp_syncSources);
-rp_syncBegin=rp_guardLifetime(rp_syncBegin);
+rp_syncSources=rp_guardSync(rp_syncSources);
+rp_syncBegin=rp_guardSync(rp_syncBegin);
 rp_syncStep=rp_syncGuardStep(rp_syncStep);
-rp_syncSelected=rp_guardLifetime(rp_syncSelected);
-rp_syncActive=rp_guardLifetime(rp_syncActive);
-rp_syncShiftDrone=rp_guardLifetime(rp_syncShiftDrone);
+rp_syncSelected=rp_guardSync(rp_syncSelected);
+rp_syncActive=rp_guardSync(rp_syncActive);
+rp_syncShiftDrone=rp_guardSync(rp_syncShiftDrone);

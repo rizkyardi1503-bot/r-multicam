@@ -1,4 +1,4 @@
-/* Sync to Master Music (lifetime license): pick cameras from bins and/or video tracks, sync every clip to the
+/* Sync to Master Music (7-day trial and lifetime license): pick cameras from bins and/or video tracks, sync every clip to the
    A1 master with RPSync, review, then build a NEW synced sequence through the host (rp_syncBegin/rp_syncStep).
    A source whose clips have video but no audio is a drone: once the cameras with audio are synced, RPDroneSync
    places its clips from their camera clock ([CLOCK]) and groups them into flights for one-click correction.
@@ -267,12 +267,13 @@ function reportCsv(analysis){
 var ui={sources:null,analysis:null,state:null,jobId:null,built:null};
 function $(id){return document.getElementById(id);}
 function P(){return root.RPPanel;}
-function isLifetime(){try{return !!(P()&&P().licenseCanUse()&&root.RPLicense&&root.RPLicense.status().mode==='lifetime');}catch(e){return false;}}
+// Any account that may use the plugin (trial or lifetime) may sync; an ended trial or no sign-in may not.
+function canSync(){try{return !!(P()&&P().licenseCanUse());}catch(e){return false;}}
 function host(code,timeoutMs){return new Promise(function(resolve,reject){P().invokeHost(code,function(r){if(r&&r.ok!==false)resolve(r);else reject(Error(r&&r.message||'Premiere did not answer.'));},timeoutMs);});}
 function setState(text,kind){P().setActiveTool('sync');P().state(text,kind==='error',kind);}
 function progress(p,msg){P().progressFor('sync',Math.round(p*100),100,Math.round(p*100)+'% · '+msg);}
 function controls(){
- var life=isLifetime(),busy=!!(P()&&P().isBusy());
+ var life=canSync(),busy=!!(P()&&P().isBusy());
  if($('syncLocked'))$('syncLocked').style.display=life?'none':'block';
  // Offer the purchase only while the account's Buy Lifetime button is offered (online checkout open).
  if($('syncBuyLifetime')){var buy=$('accountBuyLifetime');$('syncBuyLifetime').style.display=buy&&buy.style.display!=='none'?'':'none';}
@@ -319,13 +320,13 @@ function showResult(a){
 function begin(){ui.state={cancelled:false,process:null};P().setActiveTool('sync');P().setBusy(true);P().controls();}
 function end(){ui.state=null;P().setBusy(false);P().controls();}
 async function scan(){
- if(!P()||P().isBusy()||!isLifetime())return;begin();
+ if(!P()||P().isBusy()||!canSync())return;begin();
  try{setState('Reading the sequence and bins…','running');ui.sources=await host('rp_syncSources()',60000);ui.analysis=null;ui.built=null;renderDrones();renderSources(ui.sources);$('syncResult').textContent='Tick one source per camera, name it, then Analyze.';setState('Sources loaded.','success');}
  catch(e){setState(e.message,'error');}
  finally{end();}
 }
 async function analyzeClick(){
- if(!P()||P().isBusy()||!isLifetime()||!ui.sources)return;
+ if(!P()||P().isBusy()||!canSync()||!ui.sources)return;
  ui.picked=selection();var cams=planCameras(ui.sources,ui.picked);if(!cams.length){setState('Tick at least one camera source.','error');return;}
  ui.built=null;renderDrones();begin();
  try{
@@ -339,7 +340,7 @@ async function analyzeClick(){
  finally{end();}
 }
 async function build(){
- if(!P()||P().isBusy()||!isLifetime()||!ui.analysis)return;
+ if(!P()||P().isBusy()||!canSync()||!ui.analysis)return;
  var rows=buildRows(ui.analysis);if(!rows){setState('Nothing to place: every clip was excluded.','error');return;}
  begin();
  try{
@@ -406,7 +407,7 @@ function remember(d,clip){
  try{return saveLearned(d.key,total,d.shootDay,d.reference)?' Remembered for this drone'+(d.shootDay?' (shoot '+d.shootDay+')':'')+': '+(total>=0?'+':'')+total.toFixed(2)+' s (used on the next Analyze).':'';}catch(e){return ' (Could not remember the offset: '+e.message+')';}
 }
 async function useSelected(){
- if(!ui.built||!P()||P().isBusy()||!isLifetime())return;begin();
+ if(!ui.built||!P()||P().isBusy()||!canSync())return;begin();
  try{
   var s=await host('rp_syncSelected()',30000);
   if(String(s.sequenceID)!==ui.built.sequenceID)throw Error('Open the synced sequence and select the drone clip you moved.');
@@ -427,7 +428,7 @@ async function useSelected(){
  finally{end();}
 }
 async function nudge(step){
- if(!ui.built||!P()||P().isBusy()||!isLifetime())return;var d=ui.built.drones[Number($('syncFlight').value)||0];if(!d)return;
+ if(!ui.built||!P()||P().isBusy()||!canSync())return;var d=ui.built.drones[Number($('syncFlight').value)||0];if(!d)return;
  var delta=step==='f'?ui.built.frame:step==='-f'?-ui.built.frame:Number(step);begin();
  try{var r=await shiftDrone(d,delta,null);renderDrones();var msg=d.cameraName+' moved '+(Number(r.delta)>=0?'+':'')+Number(r.delta||0).toFixed(2)+' s ('+(r.moved||0)+' clips).'+missingNote(r)+remember(d,d.clips.filter(function(c){return c.onTrack!==false;})[0]||d.clips[0]);droneInfo(msg);setState(msg,'success');}
  catch(e){setState(e.message,'error');droneInfo(e.message);}
@@ -446,7 +447,7 @@ function wire(){
  if($('syncBuyLifetime'))$('syncBuyLifetime').onclick=function(){if($('accountBuyLifetime'))$('accountBuyLifetime').click();};
  controls();
 }
-root.RPSyncUI={untickedDrones:untickedDrones,bridgeHint:bridgeHint,saveLearned:saveLearned,planCameras:planCameras,analyze:analyze,buildRows:buildRows,summary:summary,reportCsv:reportCsv,builtDrones:builtDrones,useSelected:useSelected,nudge:nudge,forget:forget,loadLearned:loadLearned,_ui:ui,controls:controls,isLifetime:isLifetime,stop:stop};
+root.RPSyncUI={untickedDrones:untickedDrones,bridgeHint:bridgeHint,saveLearned:saveLearned,planCameras:planCameras,analyze:analyze,buildRows:buildRows,summary:summary,reportCsv:reportCsv,builtDrones:builtDrones,useSelected:useSelected,nudge:nudge,forget:forget,loadLearned:loadLearned,_ui:ui,controls:controls,canSync:canSync,stop:stop};
 if(typeof document!=='undefined'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();}
 if(typeof module!=='undefined'&&module.exports)module.exports=root.RPSyncUI;
 }(typeof window!=='undefined'?window:globalThis));

@@ -80,18 +80,18 @@ function txt(id){var x=el(id);return x?String(x.textContent||'').replace(/\s+/g,
 function kindOf(id){var c=String(el(id)&&el(id).className||'');return /\berror\b/.test(c)?'error':/\bwarning\b/.test(c)?'warning':/\bsuccess\b/.test(c)?'success':'';}
 function idle(t){return !t||/^ready\.?$/i.test(t);}
 function shown(id){var x=el(id);return !!x&&x.style.display!=='none'&&x.style.display!=='';}
-// Step 2 is Lifetime only. Locked = the lock note sync-ui.js shows from its isLifetime() (license mode + account access),
+// Step 2 is locked only without plugin access (trial ended, signed out). Locked = the lock note sync-ui.js shows from its canSync(),
 // so the card follows login, logout, purchase and trial expiry live. Undecided while the saved login is restoring.
 function syncLocked(){var a=null;try{a=window.RPAccountAuth&&window.RPAccountAuth.status();}catch(ignore){}if(a&&a.restoring)return false;return shown('syncLocked');}
 function unlock(){var buy=el('accountBuyLifetime');if(buy&&buy.style.display!=='none'&&!buy.disabled)buy.click();else if(el('openCustomerWebsite'))el('openCustomerWebsite').click();}
-function applyLock(on){var s=el('step2');if(!s||s.classList.contains('locked')===on)return;s.classList.toggle('locked',on);var b=el('syncUnlock');if(b)b.setAttribute('aria-hidden',on?'false':'true');var n=s.querySelector('.stepnum');if(n)n.title=on?'Lifetime members only':'';}
+function applyLock(on){var s=el('step2');if(!s||s.classList.contains('locked')===on)return;s.classList.toggle('locked',on);var b=el('syncUnlock');if(b)b.setAttribute('aria-hidden',on?'false':'true');var n=s.querySelector('.stepnum');if(n)n.title=on?'Sign in, or get Lifetime after the trial':'';}
 // One status per step, built only from text the panel already renders (no engine calls).
 function status(){var out={},owner=sect.owner||'step3';
  function tool(id,prefix,base){var k=kindOf(prefix+'Badge');if(sect.busy===id)return {text:txt(prefix+'State')||'Working…',kind:'running',att:'running'};if((k==='error'||k==='warning')&&(prefix!=='multi'||owner===id))return {text:txt(prefix+'State'),kind:k,att:k};return base;}
  var bpm=txt('miBpm'),drops=txt('miDrops');
  out.step1=tool('step1','multi',bpm&&bpm!=='—'?{text:bpm+' BPM'+(drops&&drops!=='—'?' · '+drops+' drops':''),kind:'success'}:{text:'Not analyzed yet',kind:''});
  var res=txt('syncResult'),cams=/^Synced (\d+) camera/.exec(res),placed=/On camera tracks: (\d+)/.exec(res),review=/Review track: (\d+)/.exec(res),ss=txt('syncState');
- out.step2=sect.locked?{text:'Lifetime members only',kind:'locked'}:tool('step2','sync',cams&&placed?{text:cams[1]+' cam'+(cams[1]==='1'?'':'s')+' · '+placed[1]+' placed · '+(review?review[1]:0)+' review',kind:'success'}:{text:idle(ss)?'Optional · not run yet':ss,kind:kindOf('syncBadge')});
+ out.step2=sect.locked?{text:'Sign in, or get Lifetime after the trial',kind:'locked'}:tool('step2','sync',cams&&placed?{text:cams[1]+' cam'+(cams[1]==='1'?'':'s')+' · '+placed[1]+' placed · '+(review?review[1]:0)+' review',kind:'success'}:{text:idle(ss)?'Optional · not run yet':ss,kind:kindOf('syncBadge')});
  var pace=txt('pacingSummary'),dc=txt('dropCameraSummary'),ms=txt('multiState'),base3={text:(pace?'Pace '+pace:'')+(dc&&dc!=='AUTO'?' · drop cam '+dc:'')+(sect.owner==='step3'&&!idle(ms)?' · '+ms:''),kind:sect.owner==='step3'?kindOf('multiBadge'):''};
  out.step3=shown('menuResume')&&sect.busy!=='step3'?{text:'Saved job · Continue available',kind:'warning',att:'resume'}:tool('step3','multi',base3);
  var ds=txt('dropState');out.step4=tool('step4','drop',{text:idle(ds)?'Not run yet':ds,kind:kindOf('dropBadge')});
@@ -114,8 +114,8 @@ function initSections(){if(sect.ready||!el('step1'))return;
   h.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '||e.keyCode===13||e.keyCode===32){e.preventDefault();setStep(s,!isOpen(s),'user');}});});
  var s2=el('step2'),body2=el('step2Body');if(s2&&body2){var lk='<span class="lockicon" aria-hidden="true"></span>',num=s2.querySelector('.stepnum'),badge=document.createElement('span');
   if(num)num.insertAdjacentHTML('beforeend',lk);badge.id='syncLockBadge';badge.className='badge lockbadge';badge.innerHTML=lk+'LIFETIME';s2.firstChild.insertBefore(badge,el('syncBadge')&&el('syncBadge').parentNode===s2.firstChild?el('syncBadge'):null);
-  var box=document.createElement('div');box.id='syncUnlock';box.setAttribute('aria-hidden','true');box.innerHTML='<button type="button" id="syncUnlockRun" class="main unlockbtn">'+lk+'Unlock with Lifetime</button><small>Included in Lifetime · sync every camera, drone and FPV clip to the music</small>';body2.insertBefore(box,body2.firstChild);
-  var shield=document.createElement('div');shield.id='syncShield';shield.setAttribute('aria-hidden','true');shield.title='Lifetime members only';body2.appendChild(shield);
+  var box=document.createElement('div');box.id='syncUnlock';box.setAttribute('aria-hidden','true');box.innerHTML='<button type="button" id="syncUnlockRun" class="main unlockbtn">'+lk+'Unlock with Lifetime</button><small>Included in the 7-day trial and Lifetime · sync every camera, drone and FPV clip to the music</small>';body2.insertBefore(box,body2.firstChild);
+  var shield=document.createElement('div');shield.id='syncShield';shield.setAttribute('aria-hidden','true');shield.title='Sign in, or get Lifetime after the trial';body2.appendChild(shield);
   el('syncUnlockRun').onclick=unlock;
   // any click on the dimmed controls points at the unlock button instead of doing nothing
   shield.onclick=function(){var u=el('syncUnlockRun');try{u.scrollIntoView({block:'nearest'});}catch(ignore){}u.focus();u.classList.remove('nudge');void u.offsetWidth;u.classList.add('nudge');};}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare plugin v2.3.11.18 (sync when the A1 music covers only part of the shoot).
+"""Prepare plugin v2.3.11.18 (Sync Cameras to Music in the trial; sync when the A1 music covers only part of the shoot).
 
 * bumps 2.3.11.17 -> 2.3.11.18 in the plugin trees (handshakes, labels, installers, guides)
 * prepends a v2.3.11.18 entry to RELEASE-NOTES.txt / VALIDATION.txt and the release pages (EN/ID)
@@ -30,8 +30,10 @@ PLUGIN_FILES = [
 ]
 PLATFORM_FILES = {"windows": ["Install-Windows.ps1", "README-Windows.txt"], "macos": ["Install-macOS.command", "README-macOS.txt", "MAC-INSTALL-GUIDE.txt"]}
 
-NOTES = f"""v{NEW} PUBLIC — Sync works when the master recording covers only part of the shoot
+NOTES = f"""v{NEW} PUBLIC — Sync Cameras to Music in the trial; sync when the master covers only part of the shoot
 New in this release:
+- Sync Cameras to Music is now included in the free 7-day trial (it was Lifetime only), so it can be tried before
+  buying. After the trial it stays part of the lifetime license.
 - Sync Cameras to Music: when the A1 music covers only part of the shoot (for example a recorder that stopped 12
   minutes into a 96 minute set), clips are no longer all sent to Review. A long clip whose usual excerpts miss the
   music is searched with excerpts spread over the whole clip, and a camera clip placed with high confidence that runs
@@ -44,22 +46,25 @@ VALIDATION = f"""v{NEW} PUBLIC validation — {DATE}
   before; now 11 placed within 0.08 s of an independent cross-correlation, none wrong, 3 left in Review (a 13 s clip,
   a near-silent clip, a 3 min action-cam chapter), about 1 minute of extra analysis. Earlier real shoots (FULL MOON
   parts 1 and 2, Kaehla, new zumana drone, Artbat drone) unchanged; plugin suites pass on both trees.
+- Trial access: a trial session reaches all 5 Sync/drone host entry points and the panel unlocks step 2; an ended
+  trial, a signed-out account and a forged lifetime tier stay refused.
 
 """
 
 EN_ENTRY = (
-    f'<h2 id="v231118-public-windows-macos-sync-partial-master">v{NEW} · PUBLIC · Windows &amp; macOS · Sync when the master covers only part of the shoot</h2>'
-    '<p>Sync Cameras to Music: when the A1 recording stops early or covers only part of the shoot, clips are no longer all sent to Review. Long clips are searched along their whole length, and a camera clip placed with high confidence lends its own audio past the end of the music so the other cameras sync against it. Optional update for v2.3.11.11 and later; Macs older than v2.3.11.11 install once from this website.</p>'
+    f'<h2 id="v231118-public-windows-macos-sync-partial-master">v{NEW} · PUBLIC · Windows &amp; macOS · Sync Cameras to Music in the trial; sync when the master covers only part of the shoot</h2>'
+    '<p>Sync Cameras to Music is now included in the free 7-day trial (it was Lifetime only), so you can try it before buying. Also, when the A1 recording stops early or covers only part of the shoot, clips are no longer all sent to Review. Long clips are searched along their whole length, and a camera clip placed with high confidence lends its own audio past the end of the music so the other cameras sync against it. Optional update for v2.3.11.11 and later; Macs older than v2.3.11.11 install once from this website.</p>'
 )
 ID_ENTRY = (
-    f'<h2 id="v231118-public-windows-macos-sync-partial-master">v{NEW} · PUBLIC · Windows &amp; macOS · Sync saat audio master hanya menutup sebagian shoot</h2>'
-    '<p>Sync Cameras to Music: kalau rekaman A1 berhenti lebih awal atau hanya menutup sebagian shoot, klip tidak lagi masuk Review semua. Klip panjang dicari di sepanjang durasinya, dan klip kamera yang sudah ter-sync dengan keyakinan tinggi meminjamkan audionya setelah musik berakhir, sehingga kamera lain ikut ter-sync. Update opsional untuk v2.3.11.11 ke atas; Mac di bawah v2.3.11.11 cukup instal sekali dari website ini.</p>'
+    f'<h2 id="v231118-public-windows-macos-sync-partial-master">v{NEW} · PUBLIC · Windows &amp; macOS · Sync Cameras to Music masuk trial; sync saat audio master hanya menutup sebagian shoot</h2>'
+    '<p>Sync Cameras to Music sekarang termasuk dalam trial gratis 7 hari (sebelumnya khusus Lifetime), jadi bisa dicoba sebelum membeli. Selain itu, kalau rekaman A1 berhenti lebih awal atau hanya menutup sebagian shoot, klip tidak lagi masuk Review semua. Klip panjang dicari di sepanjang durasinya, dan klip kamera yang sudah ter-sync dengan keyakinan tinggi meminjamkan audionya setelah musik berakhir, sehingga kamera lain ikut ter-sync. Update opsional untuk v2.3.11.11 ke atas; Mac di bawah v2.3.11.11 cukup instal sekali dari website ini.</p>'
 )
 EN_DESC_OLD = "v2.3.11.17 fixes the drone correction (Use selected clip) after the timeline tracks moved, for Windows and macOS."
-EN_DESC_NEW = "v2.3.11.18 syncs cameras even when the master recording covers only part of the shoot, for Windows and macOS."
+EN_DESC_NEW = "v2.3.11.18 opens Sync Cameras to Music to the 7-day trial and syncs cameras even when the master covers only part of the shoot, for Windows and macOS."
 ID_DESC_OLD = "v2.3.11.17 memperbaiki koreksi drone (Use selected clip) setelah track di timeline bergeser."
-ID_DESC_NEW = "v2.3.11.18 menyinkronkan kamera walau rekaman master hanya menutup sebagian shoot."
-MANIFEST_NOTES_NEW = ("v2.3.11.18 PUBLIC Windows and macOS: Sync Cameras to Music now places cameras when the A1 music covers only "
+ID_DESC_NEW = "v2.3.11.18 membuka Sync Cameras to Music untuk trial 7 hari dan menyinkronkan kamera walau rekaman master hanya menutup sebagian shoot."
+MANIFEST_NOTES_NEW = ("v2.3.11.18 PUBLIC Windows and macOS: Sync Cameras to Music is now included in the 7-day trial, and it now places "
+                      "cameras when the A1 music covers only "
                       "part of the shoot (a recorder that stopped early): long clips are searched along their whole length and a "
                       "camera clip placed with high confidence lends its audio past the music. On macOS the update installs while "
                       "Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel "
