@@ -12,6 +12,8 @@ var RANK={high:2,medium:1,low:0};
 var SINGLE_CLOCK_MIN=120;
 // Seconds the start and end matches of one long take may differ and still confirm each other (clock drift is ~0.1 s/h).
 var SINGLE_END_AGREE=1;
+// Seconds the whole-music matches of a clip's spread excerpts may differ and still agree (see extraMatch).
+var EXTRA_AGREE=.25;
 
 // ---- envelopes ----
 // onset + level are the rp-engine cues (lib/media.mjs onsetEnvelope). The band contours add what a few
@@ -274,8 +276,9 @@ function* syncCameraSteps(master,clips,opts){
    // start searched to 346.7 s low, end 184.07 s high 7/7, the start re-checked there 184.10 s high). The end is searched
    // over the whole music and the start then has to match within 0.25 s of it (camera drift over a take is tens of ms;
    // one beat is ~0.47 s at 128 BPM), so a start that only fits a beat away goes to review instead.
+   var e4=null,endReview=null;
    if(RANK[r.confidence]<minRank&&endUsable(c)){
-    yield;var e4=null,s4=null;try{e4=matchFull(master,c.endEnv,{excerptStart:c.endExcerptStart});}catch(e){e4=null;}
+    yield;var s4=null;try{e4=matchFull(master,c.endEnv,{excerptStart:c.endExcerptStart});}catch(e){e4=null;}
     if(e4&&RANK[e4.confidence]>=minRank){try{s4=matchWindow(master,c.env,{excerptStart:c.excerptStart,expectedOffset:e4.offset,radius:1,clockBound:Infinity});}catch(e){s4=null;}
      if(s4&&RANK[s4.confidence]>=minRank&&Math.abs(s4.offset-e4.offset)<=.25)r={offset:s4.offset,confidence:RANK[s4.confidence]<RANK[e4.confidence]?s4.confidence:e4.confidence,method:'audio (start+end)',score:s4.score,agree:s4.agree,margin:s4.margin};
      // Placed at the end's offset, the start excerpt lies mostly before the music or in an A1 gap: nothing there to confirm
@@ -283,8 +286,12 @@ function* syncCameraSteps(master,clips,opts){
      // places it alone, as an end past the music leaves a placed start alone in driftCheck. That is one match, not two
      // (driftCheck then finds the same end again); it only places this clip and never sets the camera clock.
      else if(e4.confidence==='high'&&!excerptInMusic(e4.offset+c.excerptStart,c.env.onset.length))r={offset:e4.offset,confidence:e4.confidence,method:'audio (end)',score:e4.score,agree:e4.agree,margin:e4.margin};
-     else{out[c.id]={id:c.id,status:'review',offset:e4.offset,confidence:'low',method:'audio (end)',agree:e4.agree,margin:e4.margin,reason:'audio at the start of this clip is unclear; its end matches at '+e4.offset.toFixed(2)+' s but the start does not confirm it'};continue;}}
+     else endReview={id:c.id,status:'review',offset:e4.offset,confidence:'low',method:'audio (end)',agree:e4.agree,margin:e4.margin,reason:'audio at the start of this clip is unclear; its end matches at '+e4.offset.toFixed(2)+' s but the start does not confirm it'};}
    }
+   // Neither the start nor the end excerpt placed it: try the excerpts spread over the clip (only decoded when asked for,
+   // see sync-ui.js EXTRA_STEP).
+   if((endReview||RANK[r.confidence]<minRank)&&c.extra&&c.extra.length){var em=yield* extraMatch(c,[r,e4]);if(em){r=em;endReview=null;}}
+   if(endReview){out[c.id]=endReview;continue;}
    if(RANK[r.confidence]<minRank){out[c.id]={id:c.id,status:'review',offset:r.offset,confidence:r.confidence,method:'audio',agree:r.agree,margin:r.margin,reason:'audio match unclear and no trusted camera clock'};continue;}
   }
   out[c.id]={id:c.id,status:'placed',offset:r.offset,confidence:r.confidence,method:r.method,score:r.score,agree:r.agree,margin:r.margin,clockOffset:r.clockOffset};
@@ -309,11 +316,32 @@ function* syncCameraSteps(master,clips,opts){
   var e=null;try{e=matchFull(master,sc.endEnv,{excerptStart:sc.endExcerptStart});}catch(err){e=null;}
   return !!e&&RANK[e.confidence]>=1&&Math.abs(e.offset-sd.offset)<=SINGLE_END_AGREE;
  }
+ /**
+  * Excerpts spread over a long clip (c.extra: [{env, excerptStart}]). When the A1 music covers only part of a clip, both
+  * the 20% and the end excerpt can lie outside it although the music overlaps the clip (Nifra: the recorder stopped 12 min
+  * into a 96 min set; every start and end excerpt of the 14 clips fell past it). Each excerpt is searched over the whole
+  * music; whole-music matches of medium or better within EXTRA_AGREE of each other (the start and end excerpts count
+  * too) are independent matches of one clip. Two place it as medium ([CHECK]), three or more as high. EXTRA_AGREE is
+  * the start+end confirmation tolerance, under one beat (~0.47 s at 128 BPM), so a wrong beat next to the true one
+  * does not count as agreement. One match alone is not enough: with many excerpts searched, a lone medium is likelier
+  * to be a wrong beat. A clip's matches are kept per master (x.memo), so syncing its camera again does not search again.
+  */
+ function* extraMatch(c,pool){
+  var got=pool.filter(function(x){return x&&RANK[x.confidence]>=1;});
+  for(var i=0;i<c.extra.length;i++){var x=c.extra[i],m=null;if(!x.env||x.env.onset.length<RATE*3)continue;
+   if(x.memo&&x.memo.master===master)m=x.memo.m;else{yield;try{m=matchFull(master,x.env,{excerptStart:x.excerptStart});}catch(e){m=null;}x.memo={master:master,m:m};}
+   if(m&&RANK[m.confidence]>=1)got.push(m);}
+  var best=null;
+  got.forEach(function(a){var n=got.filter(function(b){return Math.abs(b.offset-a.offset)<=EXTRA_AGREE;}).length;if(n>=2&&(!best||n>best.n||n===best.n&&a.score>best.r.score))best={r:a,n:n};});
+  return best?{offset:best.r.offset,confidence:best.n>=3?'high':'medium',method:'audio ('+best.n+' excerpts agree)',score:best.r.score,agree:best.r.agree,margin:best.r.margin,excerpts:best.n}:null;
+ }
  function driftCheck(c,r){
   if(!endUsable(c))return;
   var e2=null;try{e2=matchWindow(master,c.endEnv,{excerptStart:c.endExcerptStart,expectedOffset:r.offset,radius:1,clockBound:Infinity});}catch(endError){e2=null;}
   if(e2&&RANK[e2.confidence]>=1){var drift=Math.round((e2.offset-r.offset)*1000)/1000;out[c.id].drift=drift;if(frame&&Math.abs(drift)>frame)out[c.id].reason='audio drifts '+drift.toFixed(3)+' s over the clip';return;}
-  if(!endInMusic(c,r.offset))return;
+  // Excerpts that already agreed (extraMatch) are the independent second match the end would have been: a weak end
+  // (Nifra's deck action cam hears the music faintly) does not overrule them.
+  if(!endInMusic(c,r.offset)||r.excerpts>=2)return;
   out[c.id].status='review';out[c.id].reason='start and end of this clip disagree (its end audio is not found where its start places it)';
  }
  // 2b. Split recordings: a camera that splits one long take into files (DJI ~35 min, GoPro, Sony 4 GB) writes the
@@ -341,6 +369,16 @@ function* syncCameraSteps(master,clips,opts){
 }
 /** Audio excerpt used for syncing: the whole clip if short, otherwise 2 minutes from ~20% in (as rp-engine). */
 function excerptFor(duration){return duration<=150?{excerptStart:0,excerptSeconds:duration}:{excerptStart:Math.min(duration*.2,duration-120),excerptSeconds:120};}
+/**
+ * Start times (s into the clip) of 120 s excerpts every `step` s from 10 s in to the end, skipping any within 60 s of a
+ * start in `taken` (the excerpts already decoded). With step 300 any music overlap of 420 s or more holds a whole excerpt
+ * (a whole-music search needs only half of one inside the music).
+ */
+function spreadExcerpts(duration,step,taken){
+ var out=[],last=duration-120;if(!(last>10))return out;
+ for(var t=10;;t+=step){var at=Math.min(t,last),near=(taken||[]).some(function(x){return Math.abs(x-at)<60;})||out.some(function(x){return Math.abs(x-at)<60;});if(!near)out.push(Math.round(at*1000)/1000);if(at>=last)break;}
+ return out;
+}
 
 /** Probe a media file with `ffmpeg -i` (no ffprobe needed): duration, creation_time (unix s), audio presence. */
 function probe(ffmpeg,file,state){
@@ -369,7 +407,7 @@ function masterFromClips(parts,duration){
  parts.forEach(function(p){var at=Math.round(p.start*RATE);for(k=0;k<keys.length;k++){var src=p.env[keys[k]];if(!src)continue;for(i=0;i<src.length&&at+i<n;i++)if(at+i>=0)out[keys[k]][at+i]=src[i];}});
  return out;
 }
-var api={RATE:RATE,RANK:RANK,THRESHOLDS:SYNC_THRESHOLDS,envelopeBuilder:envelopeBuilder,envelopeFromSamples:envelopeFromSamples,decodeEnvelope:decodeEnvelope,prepareMaster:prepareMaster,matchFull:matchFull,matchFullLegacy:matchFullLegacy,matchWindow:matchWindow,syncCamera:syncCamera,syncCameraAsync:syncCameraAsync,excerptFor:excerptFor,probe:probe,masterFromClips:masterFromClips};
+var api={RATE:RATE,RANK:RANK,THRESHOLDS:SYNC_THRESHOLDS,envelopeBuilder:envelopeBuilder,envelopeFromSamples:envelopeFromSamples,decodeEnvelope:decodeEnvelope,prepareMaster:prepareMaster,matchFull:matchFull,matchFullLegacy:matchFullLegacy,matchWindow:matchWindow,syncCamera:syncCamera,syncCameraAsync:syncCameraAsync,excerptFor:excerptFor,spreadExcerpts:spreadExcerpts,probe:probe,masterFromClips:masterFromClips};
 root.RPSync=api;
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 }(typeof window!=='undefined'?window:globalThis));
