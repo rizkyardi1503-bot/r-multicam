@@ -1,3 +1,11 @@
+v2.3.11.18 PUBLIC — Sync works when the master recording covers only part of the shoot
+New in this release:
+- Sync Cameras to Music: when the A1 music covers only part of the shoot (for example a recorder that stopped 12
+  minutes into a 96 minute set), clips are no longer all sent to Review. A long clip whose usual excerpts miss the
+  music is searched with excerpts spread over the whole clip, and a camera clip placed with high confidence that runs
+  past the music lends its own audio there, so the other cameras are synced against it. The report names that clip.
+- Optional update for v2.3.11.11 and later. Macs older than v2.3.11.11 install once from r-multicam.pages.dev.
+
 v2.3.11.17 PUBLIC — Drone correction works after tracks move
 New in this release:
 - Sync Cameras to Music, drone [CLOCK] clips: "Use selected clip" now finds the drone clip you moved even when the

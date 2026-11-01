@@ -1,3 +1,9 @@
+v2.3.11.18 PUBLIC validation — 2026-11-02
+- Real shoot (Nifra, 6 cameras, 14 clips, 57 min master WAV that ends 12 min into the 96 min set): 0 clips placed
+  before; now 11 placed within 0.08 s of an independent cross-correlation, none wrong, 3 left in Review (a 13 s clip,
+  a near-silent clip, a 3 min action-cam chapter), about 1 minute of extra analysis. Earlier real shoots (FULL MOON
+  parts 1 and 2, Kaehla, new zumana drone, Artbat drone) unchanged; plugin suites pass on both trees.
+
 v2.3.11.17 PUBLIC validation — 2026-11-01
 - Real shoot (31 OCTOBER: drone built on V5, empty V1 deleted, drone on V4): the case reproduces with the previous
   panel code and passes with this one; 19 drone host/panel tests and the sync suites pass on both trees.

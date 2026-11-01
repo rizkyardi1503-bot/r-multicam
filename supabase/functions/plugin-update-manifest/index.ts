@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.11";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.17",
-    download: base + "?platform=windows&version=2.3.11.17",
-    sha256: "ec2fe6251edb0572328229874da5940aaf0ce314a611109badd7c36fc608cf52"
+    version: "2.3.11.18",
+    download: base + "?platform=windows&version=2.3.11.18",
+    sha256: "5fee49d6b638d866adb1b566badb2d56a0db2f4802d98ea2bdffe2e78bc75dca"
   },
   macos: {
-    version: "2.3.11.17",
-    download: base + "?platform=macos&version=2.3.11.17",
-    sha256: "687807ce0038fb8f42ec83452214476c3fde963e82b26af4dc00cd0c40bfd20a"
+    version: "2.3.11.18",
+    download: base + "?platform=macos&version=2.3.11.18",
+    sha256: "c791ed8903638d1aea793099f29c783bd426916380d4ae0ec19e174cdc30114c"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.17 PUBLIC Windows and macOS: Sync Cameras to Music, drone clips: Use selected clip now finds the drone clip you moved even after the tracks moved (for example after deleting the empty V1), so the whole drone follows and the correction is remembered. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.17 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
+    release_notes: "v2.3.11.18 PUBLIC Windows and macOS: Sync Cameras to Music now places cameras when the A1 music covers only part of the shoot (a recorder that stopped early): long clips are searched along their whole length and a camera clip placed with high confidence lends its audio past the music. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.18 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,
