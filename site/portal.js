@@ -19,7 +19,9 @@
  const baseVersion=v=>String(v).trim().replace(/-.*$/,'');
  const newerVersion=(installed,latest)=>{const a=String(installed).split('.').map(Number),b=latest.split('.').map(Number);if(a.length!==b.length||a.some(n=>!Number.isFinite(n)))return false;for(let i=0;i<b.length;i++){if(b[i]!==a[i])return b[i]>a[i];}return false;};
  let session=null, user=null, profile=null, busy=false, generation=0, refreshFlight=null, authMode="signin", purchaseIntent=false, downloadIntent=null;
- let affiliateIntent=/^\/(id\/)?affiliate\/$/.test(window.location.pathname), affiliateUI=null,ownerDashboard=null,ownerScript=null;
+ let affiliateIntent=/^\/(id\/)?affiliate\/$/.test(window.location.pathname), affiliateUI=null,affiliateScript=null,ownerDashboard=null,ownerScript=null;
+ // The affiliate dashboard loads on demand, so homepage visitors (mostly Instagram phones) do not download it.
+ async function ensureAffiliate(){if(affiliateUI)return affiliateUI;if(!window.RP_Affiliate){if(!affiliateScript)affiliateScript=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='/affiliate-ui.js?v=4c03ad547e';script.onload=resolve;script.onerror=()=>{affiliateScript=null;script.remove();reject(Error('Affiliate dashboard could not load. Refresh and try again.'));};document.head.appendChild(script);});await affiliateScript;}return affiliateUI||(affiliateUI=window.RP_Affiliate.create(el('affiliate-dashboard'),authed));}
  async function ensureOwnerDashboard(){if(ownerDashboard)return ownerDashboard;if(!ownerScript)ownerScript=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='/owner-dashboard.js?v=fffb6cdbca';script.onload=resolve;script.onerror=()=>{ownerScript=null;script.remove();reject(Error('Owner dashboard could not load. Refresh and try again.'));};document.head.appendChild(script);});await ownerScript;return ownerDashboard||(ownerDashboard=window.RP_OwnerDashboard.create(el('account-details'),authed));}
  // Affiliate referral: ?ref=CODE is kept 30 days (also saved by analytics.js on every page), so the code still fills
  // checkout after sign-up, email confirmation or a later visit. Customers can change or remove it.
@@ -30,7 +32,7 @@
  const promoFromLink=/^[a-z0-9]{3,40}$/i.test(linkRef)?linkRef:savedRef();
  const portal=document.createElement('dialog'); portal.id='customer-portal';portal.setAttribute('aria-labelledby','customer-portal-title');
  portal.innerHTML=`<div class="dialog-top"><span class="eyebrow">CUSTOMER ACCOUNT</span><button data-close aria-label="Close account">✕</button></div>
- <h2 id="customer-portal-title">Your Multicam AI.</h2><p>Create an account here or sign in with your existing plugin account.</p><div id="phone-handoff" class="license-box" hidden><span class="eyebrow">ON YOUR PHONE?</span><strong>The plugin installs on your laptop or PC.</strong><p>It runs inside Premiere Pro on Windows or macOS. Send yourself the link, open it on your computer and start the 7-day trial there.</p><div class="actions"><a class="button" id="handoff-whatsapp" target="_blank" rel="noopener noreferrer">Send to WhatsApp</a><a class="button secondary" id="handoff-email">Send to email</a><button class="button secondary" id="handoff-share" type="button" hidden>More options</button></div><p class="subtle">You can also create your account here now. The trial only starts when the plugin is first activated on your computer.</p></div><div id="auth-options" class="auth-options"><button id="mode-signin" type="button" class="button secondary" aria-pressed="true">Sign in</button><button id="mode-signup" type="button" class="button secondary" aria-pressed="false">Create account</button></div><p id="auth-guide" class="subtle">Already using the plugin? Use the same email and password.</p>
+ <h2 id="customer-portal-title">Your Multicam AI.</h2><p>Create an account here or sign in with your existing plugin account.</p><div id="phone-handoff" class="license-box" hidden><span class="eyebrow">ON YOUR PHONE?</span><strong id="handoff-title">The plugin installs on your laptop or PC.</strong><p>It runs inside Premiere Pro on Windows or macOS. Send yourself the link, open it on your computer and start the 7-day trial there.</p><div class="actions"><button class="button" id="handoff-copy" type="button">Copy link</button><a class="button secondary" id="handoff-whatsapp" target="_blank" rel="noopener noreferrer">Send to WhatsApp</a><a class="button secondary" id="handoff-email">Send to email</a><button class="button secondary" id="handoff-share" type="button" hidden>More options</button></div><p id="handoff-status" class="subtle" role="status">Or type r-multicam.pages.dev on your laptop.</p><button id="handoff-account" class="button secondary full" type="button">Create my free account now</button><p class="subtle">You can also create your account here now. The trial only starts when the plugin is first activated on your computer.</p><button id="handoff-anyway" class="text-button" type="button" hidden>Download the ZIP on this phone anyway</button></div><button id="handoff-open" class="text-button" type="button" hidden>On your phone? Send the link to your laptop →</button><div id="auth-options" class="auth-options"><button id="mode-signin" type="button" class="button secondary" aria-pressed="true">Sign in</button><button id="mode-signup" type="button" class="button secondary" aria-pressed="false">Create account</button></div><p id="auth-guide" class="subtle">Already using the plugin? Use the same email and password.</p>
  <div id="google-auth"><button id="google-signin" class="button full" type="button" style="display:flex;align-items:center;justify-content:center;gap:12px;background:#fff;color:#1f1f1f;border:1px solid #747775;border-radius:999px;min-height:44px;font-size:14px;font-weight:500;letter-spacing:0;text-transform:none"><img src="https://developers.google.com/static/identity/images/g-logo.png" width="20" height="20" alt="" aria-hidden="true" style="width:20px;height:20px;flex:0 0 20px;object-fit:contain"><span>Continue with Google</span></button><div id="inapp-google" class="license-box" hidden><span class="eyebrow">GOOGLE SIGN-IN</span><strong>Open this page in Safari or Chrome to continue with Google.</strong><p>Google does not allow sign-in inside the Instagram, Facebook or TikTok app. Tap the ••• menu and choose Open in browser, or copy the link below and paste it into Safari or Chrome.</p><input id="inapp-link" type="text" readonly aria-label="Link to this page"><div class="actions"><button class="button secondary" id="inapp-copy" type="button">Copy link</button></div></div><p class="subtle">Or use email and password below. Use the same email as your existing account.</p></div>
  <form id="login-form"><label for="account-email">Email</label><input id="account-email" type="email" autocomplete="username" required><label for="account-password">Password</label><input id="account-password" type="password" autocomplete="current-password" required><div id="confirm-password-group" hidden><label for="account-confirm-password">Confirm password</label><input id="account-confirm-password" type="password" autocomplete="new-password"></div><button id="auth-submit" class="button full" type="submit">Sign in</button></form>
  <div id="email-help"><button class="text-button" id="resend-confirmation" type="button">Resend confirmation email</button><button class="text-button" id="forgot-password" type="button">Forgot password?</button></div>
@@ -43,34 +45,55 @@
  document.body.appendChild(portal);
  const el=id=>portal.querySelector('#'+id);
  // Phones and tablets cannot run the plugin (Premiere Pro on Windows/macOS). Most visitors arrive from Instagram on a
- // phone, so let them send the link to themselves. Nothing is stored or sent by the site; WhatsApp/email/share do it.
- // Arrivals are measured by utm_source=handoff on the computer.
+ // phone, so let them send the link to themselves. Nothing is stored or sent by the site; copy/WhatsApp/email/share do
+ // it. Arrivals are measured by utm_source=handoff on the computer.
  const nav=typeof navigator==='object'&&navigator?navigator:{};
  const onPhone=/iPhone|iPad|iPod|Android/i.test(nav.userAgent||'')||(nav.platform==='MacIntel'&&nav.maxTouchPoints>1);
+ // In-app browsers (Instagram, Facebook, Threads, TikTok, LINE, X, WeChat, Android WebView): Google refuses its sign-in
+ // there, so the Google button becomes the "open in Safari/Chrome" box below.
+ const inApp=/Instagram|FBAN|FBAV|FB_IAB|Barcelona|\bLine\/|TikTok|musical_ly|BytedanceWebview|Snapchat|Twitter for|MicroMessenger|; wv\)/.test(nav.userAgent||'');
+ let phoneDownload=null,phoneDownloadOk=false,handoffEntry='account_dialog';
+ // Phone dialog views: "handoff" (send the link, the default from the hero, sticky bar and download buttons) or the
+ // account form with a one-line way back to the handoff.
+ function phoneView(handoff,entry){
+  if(!onPhone)return false;
+  portal.classList.toggle('handoff-view',handoff);el('phone-handoff').hidden=!handoff;el('handoff-open').hidden=handoff;
+  if(handoff){handoffEntry=entry||'account_dialog';el('handoff-anyway').hidden=!phoneDownload;el('handoff-account').hidden=!!user;el('handoff-title').textContent=phoneDownload?'The installer is for your laptop or PC.':'The plugin installs on your laptop or PC.';el('handoff-status').textContent='Or type r-multicam.pages.dev on your laptop.';say('');el('handoff-copy').focus?.();}
+  return true;
+ }
  if(onPhone){
   const indo=/^\/id(\/|$)/.test(window.location.pathname);
   const handoffLink=channel=>{const u=new URL(indo?'/id/':'/',window.location.origin);u.searchParams.set('utm_source','handoff');u.searchParams.set('utm_medium',channel);u.searchParams.set('utm_campaign','mobile_to_desktop');if(/^[a-z0-9]{3,40}$/i.test(promoFromLink))u.searchParams.set('ref',promoFromLink.toUpperCase());u.hash='downloads';return u.href;};
   const handoffText=channel=>(indo?'Buka di laptop/PC (Windows atau macOS) untuk mulai trial 7 hari R Project Multicam AI: ':'Open on your laptop/PC (Windows or macOS) to start the R Project Multicam AI 7-day trial: ')+handoffLink(channel);
-  const sent=channel=>window.RP_ANALYTICS?.track('trial_cta_clicked',{label:'mobile_handoff',method:channel,entry_point:'account_dialog'});
+  const sent=channel=>window.RP_ANALYTICS?.track('trial_cta_clicked',{label:'mobile_handoff',method:channel,entry_point:handoffEntry});
   el('handoff-whatsapp').href='https://wa.me/?text='+encodeURIComponent(handoffText('whatsapp'));
   el('handoff-email').href='mailto:?subject='+encodeURIComponent(indo?'Link plugin R Project Multicam AI untuk laptop':'R Project Multicam AI link for my computer')+'&body='+encodeURIComponent(handoffText('email'));
   el('handoff-whatsapp').onclick=()=>sent('whatsapp');el('handoff-email').onclick=()=>sent('email');
   if(typeof nav.share==='function'){el('handoff-share').hidden=false;el('handoff-share').onclick=()=>{sent('share');nav.share({title:'R Project Multicam AI',text:handoffText('share')}).catch(()=>{});};}
-  el('phone-handoff').hidden=false;
+  // Copy link works in every in-app browser; if the clipboard is blocked the link is shown to copy by hand.
+  el('handoff-copy').onclick=async()=>{const link=handoffLink('copy');let copied=false;try{if(nav.clipboard?.writeText){await nav.clipboard.writeText(link);copied=true;}}catch{}
+   if(!copied){try{const t=document.createElement('textarea');t.value=link;t.setAttribute('readonly','');t.style.position='fixed';t.style.opacity='0';portal.appendChild(t);t.select();copied=document.execCommand('copy');t.remove();}catch{}}
+   if(copied)sent('copy');
+   el('handoff-status').textContent=copied?'Link copied. Paste it in a chat with yourself (WhatsApp, Telegram, email) and open it on your laptop.':'Copy this link and open it on your laptop: '+link;};
+  el('handoff-account').onclick=()=>{phoneDownload=null;phoneView(false);setMode('signup');el('account-email').focus?.();};
+  // Closing the dialog ends the handoff view, so Buy / My license / Affiliate reopen on their own content.
+  portal.addEventListener?.('close',()=>{phoneDownload=null;phoneView(false);el('handoff-open').hidden=true;});
+  el('handoff-open').onclick=()=>phoneView(true,'account_dialog');
+  el('handoff-anyway').onclick=()=>{const platform=phoneDownload;phoneDownload=null;phoneDownloadOk=true;phoneView(false);startDownload(platform);(user?el('account-message'):el('account-email')).focus?.();};
   // Homepage: on a phone the hero's first action is the handoff; the trial button steps back to secondary.
-  document.querySelectorAll('[data-handoff]').forEach(a=>{a.href=el('handoff-whatsapp').href;a.target='_blank';a.rel='noopener';a.hidden=false;a.onclick=()=>window.RP_ANALYTICS?.track('trial_cta_clicked',{label:'mobile_handoff',method:'whatsapp',entry_point:a.closest('[data-mobile-cta]')?'mobile_bar':'hero'});const t=a.nextElementSibling;if(t&&t.matches('[data-signup]')&&!a.closest('[data-mobile-cta]'))t.classList.add('secondary');});
+  document.querySelectorAll('[data-handoff]').forEach(a=>{a.href='#';a.removeAttribute('target');a.hidden=false;a.onclick=event=>{event.preventDefault();phoneDownload=null;show();phoneView(true,a.closest('[data-mobile-cta]')?'mobile_bar':'hero');};const t=a.nextElementSibling;if(t&&t.matches('[data-signup]')&&!a.closest('[data-mobile-cta]'))t.classList.add('secondary');});
   // /start/ (social landing): the send-link box is the first action on a phone; desktop download buttons step back.
   document.querySelectorAll('[data-phone-only]').forEach(x=>{x.hidden=false;});
   document.querySelectorAll('[data-handoff-email]').forEach(a=>{a.href=el('handoff-email').href;a.hidden=false;a.onclick=()=>window.RP_ANALYTICS?.track('trial_cta_clicked',{label:'mobile_handoff',method:'email',entry_point:'landing'});});
   document.querySelectorAll('[data-desktop-primary]').forEach(b=>b.classList.add('secondary'));
-  const bar=document.querySelector?.('[data-mobile-cta]'),hero=document.querySelector?.('.home-hero');
-  if(bar&&hero&&'IntersectionObserver' in window){bar.hidden=false;new IntersectionObserver(([e])=>bar.classList.toggle('is-on',!e.isIntersecting)).observe(hero);}
+  // Sticky bar: shown as soon as the hero buttons scroll away (not the whole hero, which includes the demo).
+  const bar=document.querySelector?.('[data-mobile-cta]'),heroActions=document.querySelector?.('.home-hero .actions');
+  if(bar&&heroActions&&'IntersectionObserver' in window){bar.hidden=false;new IntersectionObserver(([e])=>bar.classList.toggle('is-on',!e.isIntersecting&&e.boundingClientRect.top<0)).observe(heroActions);}
  }
  // Google refuses sign-in inside app browsers (Instagram, Facebook, TikTok, LINE, Android WebView): "403
  // disallowed_useragent". There the Google button becomes an "open in Safari/Chrome" box with the page link; email
  // sign-in keeps working.
- const inAppBrowser=/Instagram|FBAN|FBAV|FB_IAB|\bLine\/|TikTok|musical_ly|BytedanceWebview|; wv\)/.test(nav.userAgent||'');
- if(inAppBrowser){
+ if(inApp){
   const link=new URL(window.location.pathname+(window.location.search||''),window.location.origin);
   for(const key of ['code','oauth','error','error_code','order_id','status_code','transaction_status','download'])link.searchParams.delete(key);
   link.searchParams.set('account','signin');if(/^[a-z0-9]{3,40}$/i.test(promoFromLink))link.searchParams.set('ref',promoFromLink.toUpperCase());
@@ -82,7 +105,7 @@
  if(window.RP_Affiliate)affiliateUI=window.RP_Affiliate.create(el('affiliate-dashboard'),authed);
  const say=(text,error=false)=>{el('account-message').textContent=text;el('account-message').classList.toggle('error',error);};
  function show(){if(nativeDialog){if(!portal.open)portal.showModal();return;}portal.setAttribute('open','');Object.assign(portal.style,{display:'block',position:'fixed',top:'24px',left:'0',right:'0',margin:'0 auto',zIndex:'1000'});}
- function hide(){if(nativeDialog)portal.close();else{portal.removeAttribute('open');portal.style.display='none';}}
+ function hide(){if(nativeDialog)portal.close();else{portal.removeAttribute('open');portal.style.display='none';portal.dispatchEvent?.(new Event('close'));}}
  // AbortSignal.timeout needs Safari 16 (macOS Catalina stops at Safari 15).
  const timeoutSignal=ms=>{if(typeof AbortSignal==='function'&&typeof AbortSignal.timeout==='function')return AbortSignal.timeout(ms);if(typeof AbortController!=='function')return undefined;const c=new AbortController();setTimeout(()=>c.abort(),ms);return c.signal;};
  function controls(){portal.querySelectorAll('button:not([data-close]):not(.coming-soon)').forEach(b=>{if(!b.closest('#affiliate-dashboard'))b.disabled=busy;});}
@@ -153,7 +176,7 @@
  if(profile?.account_role==='owner'){try{const dashboard=await ensureOwnerDashboard();if(epoch===generation&&user?.id===account)await dashboard.refresh();}catch{say('Account loaded. Owner metrics are temporarily unavailable.',true);}}else ownerDashboard?.clear();
   el('orders-list').replaceChildren();if(!orders.length)el('orders-list').textContent='No orders yet.';
   for(const order of orders){const row=document.createElement('p');row.className='order-row';row.textContent=order.status+' · '+order.charge_currency+' '+Number(order.gross_amount_idr).toLocaleString()+' · '+new Date(order.created_at).toLocaleDateString();el('orders-list').appendChild(row);}
-  if(affiliateIntent&&affiliateUI)await affiliateUI.refresh();
+  if(affiliateIntent){try{await (await ensureAffiliate()).refresh();}catch{say('Account loaded. The affiliate dashboard could not load. Refresh and try again.',true);}}
  }
  async function purchase(){if(!checkoutOpen){say('Online checkout is closed for now. Your trial and existing licenses are not affected.');return;}if(!user){say('Create an account or sign in to continue to checkout.');return;}await loadAccount();if(profile?.license_status==='blocked')throw Error('This account cannot purchase. Please contact support.');if(profile?.license_status==='lifetime'){say('Your lifetime license is already active.');return;}
   el('checkout-confirm').hidden=true;
@@ -199,9 +222,9 @@
   await acceptSession({access_token:data.access_token,refresh_token:data.refresh_token,expires_in:data.expires_in});
   el('promo-code').value=/^[a-z0-9]{3,40}$/i.test(pending.promo||'')?pending.promo.toUpperCase():'';
   affiliateIntent=!!pending.affiliateIntent;
-  if(affiliateIntent&&affiliateUI)await affiliateUI.refresh();
+  if(affiliateIntent){try{await (await ensureAffiliate()).refresh();}catch{say('Account loaded. The affiliate dashboard could not load. Refresh and try again.',true);}}
   window.RP_ANALYTICS?.track('login_success',{method:'google'},session.access_token);
-  say(pending.purchaseIntent?'Signed in with Google. Click Buy lifetime to continue to checkout.':'Signed in with Google. You can download the installer and manage your license. The Premiere plugin (v2.3.11.2 and newer) also supports Continue with Google.');
+  say(pending.purchaseIntent?'Signed in with Google. Click Buy lifetime to continue to checkout.':onPhone?'Signed in with Google. To install, open r-multicam.pages.dev on your laptop or PC and continue with Google there too.':'Signed in with Google. You can download the installer and manage your license. The Premiere plugin (v2.3.11.2 and newer) also supports Continue with Google.');
   if(isPlatform(pending.downloadIntent))await downloadRelease(pending.downloadIntent);
  }
  el('google-signin').onclick=()=>run(startGoogle);
@@ -213,7 +236,7 @@
  if(authMode==='signup'){if(password.length<8)throw Error('Use a password with at least 8 characters.');if(password!==el('account-confirm-password').value)throw Error('Passwords do not match.');
  const data=await request('/auth/v1/signup?redirect_to='+encodeURIComponent('https://r-multicam.pages.dev/auth/confirmed/'),{method:'POST',body:{email,password}});el('account-password').value='';el('account-confirm-password').value='';
  window.RP_ANALYTICS?.track('signup_submitted',{requires_confirmation:!data.access_token},data.access_token||null);
- if(!data.access_token){setMode('signin');say('Thank you for creating your R Project account. Check your inbox and spam folder, click Confirm email, then sign in here. Download access is available only after you sign in with a confirmed account.');return;}
+ if(!data.access_token){setMode('signin');say(onPhone?'Account created. Confirm your email from your inbox, then open r-multicam.pages.dev on your laptop or PC and sign in there to download.':'Thank you for creating your R Project account. Check your inbox and spam folder, click Confirm email, then sign in here. Download access is available only after you sign in with a confirmed account.');return;}
  await acceptSession(data);
  }else{
   el('account-password').value='';
@@ -223,7 +246,7 @@
  }
  if(downloadIntent){const pending=downloadIntent;downloadIntent=null;await downloadRelease(pending);}
  else if(purchaseIntent)await purchase();
- else say('Signed in. You can download the installer, manage your license, or buy lifetime access here.');});};
+ else say(onPhone?'Signed in. To install, open r-multicam.pages.dev on your laptop or PC and sign in with the same email.':'Signed in. You can download the installer, manage your license, or buy lifetime access here.');});};
  async function acceptSession(data){const epoch=++generation;const identity=await request('/auth/v1/user',{token:data.access_token});if(epoch!==generation)throw Error('Session changed. Please sign in again.');session={...data,expires_at:Date.now()/1000+(data.expires_in||3600)};user=identity;persistSession();render();await loadAccount();}
  async function restoreStoredSession(){
   let saved=null;
@@ -245,29 +268,37 @@
  el('account-signout').onclick=()=>run(async()=>{const access=session?.access_token;try{if(access)await request('/auth/v1/logout?scope=local',{method:'POST',token:access});}catch{}ownerDashboard?.clear();affiliateUI?.clear();clearStoredSession();generation++;session=null;user=null;profile=null;downloadIntent=null;purchaseIntent=false;el('orders-list').replaceChildren();el('checkout-confirm').hidden=true;el('checkout-link').removeAttribute('href');render();say('Signed out of this website.');});
   el('account-purchase').onclick=()=>run(purchase).then(()=>{if(el('account-message').classList.contains('error'))el('account-message').scrollIntoView({block:'nearest'});});
   el('checkout-link').onclick=()=>window.RP_ANALYTICS?.track('checkout_opened',{},session?.access_token||null);
- el('download-windows').onclick=()=>run(()=>downloadRelease('windows'));
- el('download-macos').onclick=()=>run(()=>downloadRelease('macos'));
- el('account-affiliate').onclick=()=>{affiliateIntent=true;run(async()=>{if(affiliateUI)await affiliateUI.refresh();else say('Open the affiliate program from the website homepage.');});};
- document.querySelectorAll('[data-affiliate]').forEach(b=>b.onclick=()=>{affiliateIntent=true;purchaseIntent=false;downloadIntent=null;show();if(user)run(()=>affiliateUI.refresh());else say('Create and confirm an account, then sign in to apply or manage your affiliate account.');});
+ // Account panel downloads: on a phone the handoff comes first, like the page buttons.
+ const accountDownload=platform=>{if(onPhone&&!phoneDownloadOk){phoneDownload=platform;phoneView(true,'download');return;}run(()=>downloadRelease(platform));};
+ el('download-windows').onclick=()=>accountDownload('windows');
+ el('download-macos').onclick=()=>accountDownload('macos');
+ el('account-affiliate').onclick=()=>{affiliateIntent=true;run(async()=>(await ensureAffiliate()).refresh());};
+ document.querySelectorAll('[data-affiliate]').forEach(b=>b.onclick=()=>{affiliateIntent=true;purchaseIntent=false;downloadIntent=null;show();if(user)run(async()=>(await ensureAffiliate()).refresh());else say('Create and confirm an account, then sign in to apply or manage your affiliate account.');});
  el('check-payment').onclick=()=>run(async()=>{const data=await authed('/functions/v1/check-lifetime-payment',{method:'POST',body:{}});await loadAccount();say(data.paid?'Payment verified. Refresh your license in the Premiere plugin.':data.status==='no_order'?'No payment order was found for this account.':'No completed payment was confirmed yet. Please check again after paying.');});
  el('refresh-license').onclick=()=>run(async()=>{await loadAccount();say('License status refreshed from your plugin account.');});
- document.querySelectorAll('[data-login]').forEach(b=>b.onclick=()=>{show();purchaseIntent=false;downloadIntent=null;if(user)run(loadAccount);else{setMode('signin');say('Sign in to access your license and affiliate dashboard.');}});
- document.querySelectorAll('[data-signup]').forEach(b=>b.onclick=()=>{show();purchaseIntent=false;downloadIntent=null;if(user)run(loadAccount);else setMode('signup');});
+ document.querySelectorAll('[data-login]').forEach(b=>b.onclick=()=>{show();phoneDownload=null;phoneView(false);purchaseIntent=false;downloadIntent=null;if(user)run(loadAccount);else{setMode('signin');say('Sign in to access your license and affiliate dashboard.');}});
+ document.querySelectorAll('[data-signup]').forEach(b=>b.onclick=()=>{show();phoneDownload=null;phoneView(false);purchaseIntent=false;downloadIntent=null;if(user)run(loadAccount);else setMode('signup');});
  document.querySelectorAll('[data-account]').forEach(button=>button.onclick=()=>{show();purchaseIntent=false;downloadIntent=null;if(user)run(async()=>{await loadAccount();say('License status refreshed.');});else say('Create an account or sign in with your existing plugin account.');});
  document.querySelectorAll('[data-buy]').forEach(button=>{if(!checkoutOpen)button.hidden=true;});
  document.querySelectorAll('[data-buy]').forEach(button=>button.onclick=()=>{show();purchaseIntent=true;downloadIntent=null;if(user)run(purchase);else say('Create an account or sign in to buy a lifetime license.');});
- document.querySelectorAll('[data-download]').forEach(button=>button.onclick=()=>{
-  const platform=isPlatform(button.dataset.download)?button.dataset.download:'windows';
+ function startDownload(platform){
   purchaseIntent=false;
   if(user){downloadIntent=null;show();run(()=>downloadRelease(platform));}
   else{downloadIntent=platform;show();setMode('signin');say('Sign in or create a free account to download the '+platformLabel(platform)+' installer. New accounts must confirm their email before signing in.');}
+ }
+ document.querySelectorAll('[data-download]').forEach(button=>button.onclick=()=>{
+  const platform=isPlatform(button.dataset.download)?button.dataset.download:'windows';
+  // A ZIP on a phone is a dead end: offer to send the link to the computer first.
+  if(onPhone&&!phoneDownloadOk){purchaseIntent=false;phoneDownload=platform;show();phoneView(true,'download');return;}
+  startDownload(platform);
  });
  async function bootstrap(){
   if(googleCallback){await run(finishGoogle);return;}
   busy=true;controls();let restored=false;try{restored=await restoreStoredSession();}finally{busy=false;controls();}
   const initialParams=new URLSearchParams(window.location.search);
   const initialDownload=initialParams.get('download');
-  if(isPlatform(initialDownload)){
+  if(isPlatform(initialDownload)&&onPhone&&!phoneDownloadOk){purchaseIntent=false;phoneDownload=initialDownload;show();phoneView(true,'download');}
+  else if(isPlatform(initialDownload)){
    purchaseIntent=false;
    if(restored){downloadIntent=null;show();say('Signed in as '+user.email+'. Preparing your '+platformLabel(initialDownload)+' download…');run(()=>downloadRelease(initialDownload));}
    else{downloadIntent=initialDownload;show();setMode('signin');say('Sign in or create a free account to download the '+platformLabel(initialDownload)+' installer. New accounts must confirm their email first.');}

@@ -629,6 +629,8 @@ def build(check=False):
     portal = (SITE / 'portal.js').read_text()
     owner_v = version((SITE / 'owner-dashboard.js').read_text())
     portal = re.sub(r"(['\"])/owner-dashboard\.js(\?v=[0-9a-f]+)?\1", lambda m: f"{m.group(1)}/owner-dashboard.js?v={owner_v}{m.group(1)}", portal)
+    affiliate_v = version((SITE / 'affiliate-ui.js').read_text())
+    portal = re.sub(r"(['\"])/affiliate-ui\.js(\?v=[0-9a-f]+)?\1", lambda m: f"{m.group(1)}/affiliate-ui.js?v={affiliate_v}{m.group(1)}", portal)
     outputs[SITE / 'portal.js'] = portal
     scripts = {}
     for js in sorted(SITE.glob('*.js')):
