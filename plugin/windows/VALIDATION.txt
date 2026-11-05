@@ -1,3 +1,11 @@
+v2.3.11.19 PUBLIC validation — 2026-11-05
+- LUT for All Footage, live on Windows, Premiere Pro 26.3, measured on exported frames: apply and intensity values
+  exact, change LUT, remove, save and reopen, an editor's own Lumetri with keyframes left intact through all of them,
+  locked tracks, stills, a 2x speed clip, 23.976, 29.97 and 59.94 fps, a non-ASCII path, cancelled file dialog.
+- macOS: the same code passes the automated suite but has NOT been run live in Premiere on a Mac.
+- Automated plugin suite: 89 of 93 pass. The other 4 are real-footage drone tests that need a drive not mounted for
+  this run, so the camera and drone sync changes were not re-run against those real shoots.
+
 v2.3.11.18 PUBLIC validation — 2026-11-02
 - Real shoot (Nifra, 6 cameras, 14 clips, 57 min master WAV that ends 12 min into the 96 min set): 0 clips placed
   before; now 11 placed within 0.08 s of an independent cross-correlation, none wrong, 3 left in Review (a 13 s clip,

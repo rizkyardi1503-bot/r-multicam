@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.11";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.18",
-    download: base + "?platform=windows&version=2.3.11.18",
-    sha256: "1d2d513af2875b6fef8ed83766df35072f1d30e6310f3687fa1af9d8fbb7e453"
+    version: "2.3.11.19",
+    download: base + "?platform=windows&version=2.3.11.19",
+    sha256: "126833219efd89e57527efaa03e51ae808a2a4aa8bdcf4f487fa4ad20e84556a"
   },
   macos: {
-    version: "2.3.11.18",
-    download: base + "?platform=macos&version=2.3.11.18",
-    sha256: "8c34ef09b09fb9e2db7ee44f7cc7e311ceecec1aeddc6a2f60dccaf9b38bdc97"
+    version: "2.3.11.19",
+    download: base + "?platform=macos&version=2.3.11.19",
+    sha256: "8cad188715b7178a426eabb3baa683db6a3c6318eb61bfbac5ef16a6f10bc781"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.18 PUBLIC Windows and macOS: Sync Cameras to Music is now included in the 7-day trial, and it now places cameras when the A1 music covers only part of the shoot (a recorder that stopped early): long clips are searched along their whole length and a camera clip placed with high confidence lends its audio past the music. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.18 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
+    release_notes: "v2.3.11.19 PUBLIC Windows and macOS: new LUT for All Footage puts one .cube LUT on every footage clip or the selected clips at the intensity you choose (Premiere Pro 26 and later), without changing a Lumetri you already graded with. Sync Cameras to Music marks less certain placements for checking and works on network paths. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.19 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

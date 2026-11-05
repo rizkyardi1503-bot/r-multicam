@@ -1,3 +1,17 @@
+v2.3.11.19 PUBLIC — LUT for All Footage; camera sync and reliability fixes
+New in this release:
+- LUT for All Footage (tool 02B, Premiere Pro 2026 version 26 and later): puts one .cube LUT on every footage clip of
+  the active sequence, or only on the selected clips, at the intensity you choose. It uses its own Lumetri Color
+  effect: a Lumetri you already graded with is never changed, and Remove LUT deletes only the plugin's effect. Pick
+  from your own LUTs or Premiere's Creative LUTs. Changing only the intensity keeps a grade made inside that effect.
+  Locked or hidden tracks, disabled clips, graphics, nested sequences and offline clips are skipped and reported.
+- Sync Cameras to Music: clips placed from another camera's audio, or from a search outside the music, are marked for
+  checking instead of being trusted as high confidence. Network (UNC) paths work, audio-only files are left out, and
+  an analysis that stops responding ends with a readable error instead of waiting forever.
+- Drone sync: a clip without a recording date is no longer treated as having a clock.
+- Stop still works after the panel reconnects to Premiere. The Windows installer reports a failed file copy.
+- Optional update for v2.3.11.11 and later. Macs older than v2.3.11.11 install once from r-multicam.pages.dev.
+
 v2.3.11.18 PUBLIC — Sync Cameras to Music in the trial; sync when the master covers only part of the shoot
 New in this release:
 - Sync Cameras to Music is now included in the free 7-day trial (it was Lifetime only), so it can be tried before
