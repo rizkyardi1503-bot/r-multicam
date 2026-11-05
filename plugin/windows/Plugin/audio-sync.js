@@ -42,6 +42,18 @@ var LITTLE_ENDIAN=new Uint8Array(new Uint32Array([1]).buffer)[0]===1;
 // Seek exactly: an input -ss on AAC audio (m4a, mp4/mov camera files) lands 8-64 ms off (even -ss 0 drops
 // the first AAC frame). Seek the input to 10 s before the start, then trim the rest after decoding: exact.
 function seekArgs(file,start){var s=Math.max(0,Number(start)||0),coarse=Math.max(0,s-10),fine=s-coarse,out=[];if(coarse>=1e-6)out.push('-ss',coarse.toFixed(6));out.push('-i',file);if(fine>=1e-6)out.push('-ss',fine.toFixed(6));return out;}
+var DECODE_IDLE_MS=Number(root.RP_DECODE_IDLE_MS)||60000,STOP_GRACE_MS=5000; // RP_DECODE_IDLE_MS: tests only
+/** Fails a read whose FFmpeg sends nothing for DECODE_IDLE_MS, and gives up on a child that never closes after Stop. Returns the stop function. */
+function watchProcess(proc,state,lastData,fail,file){
+ var stoppedAt=0,timer=setInterval(function(){
+  if(state.cancelled){if(!stoppedAt)stoppedAt=Date.now();else if(Date.now()-stoppedAt>=STOP_GRACE_MS){try{proc.kill();}catch(e){}fail(Error('Sync stopped.'));}return;}
+  if(Date.now()-lastData()<DECODE_IDLE_MS)return;
+  try{proc.kill();}catch(e){}
+  fail(Error('FFmpeg stopped responding for '+Math.round(DECODE_IDLE_MS/1000)+' s while reading '+String(file).split(/[\\/]/).pop()+'. Check that its drive is still connected.'));
+ },Math.min(1000,DECODE_IDLE_MS));
+ if(timer&&timer.unref)timer.unref();
+ return function(){clearInterval(timer);};
+}
 /** Decode [start, start+length) of a file's first audio stream (length 0 = to the end) into envelopes. */
 function decodeEnvelope(ffmpeg,file,start,length,state){
  var r=runtime();state=state||{};
@@ -50,9 +62,11 @@ function decodeEnvelope(ffmpeg,file,start,length,state){
   var args=['-nostdin','-hide_banner','-v','error'].concat(seekArgs(file,start));
   if(length)args.push('-t',Number(length).toFixed(6));
   args.push('-map','0:a:0','-vn','-ac','1','-ar',String(SR),'-af','highpass=f=30,lowpass=f=3500','-f','f32le','pipe:1');
-  var proc=r.cp.spawn(ffmpeg,args,{windowsHide:true,shell:false}),env=envelopeBuilder(),carry=r.Buffer.alloc(0),err='',settled=false;state.process=proc;
-  function fail(e){if(!settled){settled=true;reject(e);}}
+  var proc=r.cp.spawn(ffmpeg,args,{windowsHide:true,shell:false}),env=envelopeBuilder(),carry=r.Buffer.alloc(0),err='',settled=false,seen=Date.now();state.process=proc;
+  var unwatch=watchProcess(proc,state,function(){return seen;},fail,file);
+  function fail(e){unwatch();if(!settled){settled=true;reject(e);}}
   proc.stdout.on('data',function(chunk){
+   seen=Date.now();
    if(settled)return;if(state.cancelled){proc.kill();return;}
    var b=carry.length?r.Buffer.concat([carry,chunk]):chunk,end=b.length-b.length%4,count=end>>2;
    if(LITTLE_ENDIAN){var pcm=b.byteOffset%4===0?new Float32Array(b.buffer,b.byteOffset,count):new Float32Array(new Uint8Array(b.subarray(0,end)).buffer,0,count);env.pushMany(pcm,0,count);}
@@ -61,7 +75,7 @@ function decodeEnvelope(ffmpeg,file,start,length,state){
   });
   proc.stderr.on('data',function(d){err=(err+d).slice(-1000);});
   proc.on('error',function(e){fail(Error('Could not start FFmpeg: '+e.message));});
-  proc.on('close',function(code){state.process=null;if(state.cancelled)return fail(Error('Sync stopped.'));if(code!==0)return fail(Error('FFmpeg could not read audio from '+file+': '+err));if(!settled){settled=true;resolve(env.result());}});
+  proc.on('close',function(code){state.process=null;if(state.cancelled)return fail(Error('Sync stopped.'));if(code!==0)return fail(Error('FFmpeg could not read audio from '+file+': '+err));unwatch();if(!settled){settled=true;resolve(env.result());}});
  });
 }
 
@@ -132,6 +146,7 @@ function matchFull(master,cam,opts){
   if(at===-1&&best===-Infinity)break;taken.push(at);
   var cand=matchWindow(master,cam,{excerptStart:scan.excerptStart,expectedOffset:at/RATE-scan.excerptStart,radius:.3,clockBound:Infinity});cand.center=at/RATE-scan.excerptStart;cands.push(cand);
  }
+ if(!cands.length)throw Error('The A1 music is too short to search for this clip.');
  cands.sort(function(a,b){return b.score-a.score;});
  var wide=matchWindow(master,cam,{excerptStart:scan.excerptStart,expectedOffset:cands[0].center,radius:FULL_REFINE,clockBound:Infinity});
  if(wide.score>cands[0].score)cands[0]=wide;
@@ -203,9 +218,10 @@ async function syncCameraAsync(master,clips,opts,state){
  while(!(r=it.next()).done){if(state&&state.cancelled)throw Error('Sync stopped.');if(Date.now()-t>30){await new Promise(function(res){setTimeout(res,0);});t=Date.now();}}
  if(state&&state.cancelled)throw Error('Sync stopped.');return r.value;
 }
+function hasClock(c){return typeof c.created==='number'&&isFinite(c.created);}
 function* syncCameraSteps(master,clips,opts){
  opts=opts||{};var musicDuration=master.n/RATE,frame=Number(opts.frame)||0,radius=Number(opts.radius)||3,minRank=RANK[opts.minConfidence||'medium'],anchorClips=Math.max(2,Number(opts.anchorClips)||4);
- var weight=function(c){return c==='high'?3:c==='medium'?1:0;},out={},timed=clips.filter(function(c){return isFinite(c.created)&&c.env&&c.env.onset.length>=RATE*3;});
+ var weight=function(c){return c==='high'?3:c==='medium'?1:0;},out={},timed=clips.filter(function(c){return hasClock(c)&&c.env&&c.env.onset.length>=RATE*3;});
  // 1. Anchor from the longest clips with a clock (full search only for these).
  var probes=timed.slice().sort(function(a,b){return b.duration-a.duration;}).slice(0,anchorClips),full={},pi;
  for(pi=0;pi<probes.length;pi++){try{full[probes[pi].id]=matchFull(master,probes[pi].env,{excerptStart:probes[pi].excerptStart});}catch(e){}yield;}
@@ -247,9 +263,20 @@ function* syncCameraSteps(master,clips,opts){
   yield;
   var c=clips[ci],r;
   if(!c.env||!c.env.onset.length){out[c.id]={id:c.id,status:'excluded',reason:'no audio to sync'};continue;}
-  if(clock!==null&&isFinite(c.created)){
+  if(clock!==null&&hasClock(c)){
    var expected=c.created-clock;
-   if(expected+(c.sourceIn||0)>=musicDuration+2||expected+(c.sourceIn||0)+c.duration<=-2){out[c.id]={id:c.id,status:'excluded',offset:expected,reason:'camera clock places it outside the music'};continue;}
+   if(expected+(c.sourceIn||0)>=musicDuration+2||expected+(c.sourceIn||0)+c.duration<=-2){
+    // One file's clock can be off by more than the music is long: its own whole-music match still wins over the clock.
+    // The same song can also really have played earlier (a soundcheck), so this stays [CHECK]: medium, it never lends its audio.
+    var outside=full[c.id]||null;
+    if(!outside&&c.duration>=SYNC_THRESHOLDS.fullMinSeconds){yield;try{outside=full[c.id]=matchFull(master,c.env,{excerptStart:c.excerptStart});}catch(e){outside=null;}}
+    if(outside&&outside.confidence==='high'){
+     var offOutside=Math.round((outside.offset-expected)*10)/10;
+     out[c.id]={id:c.id,status:'placed',againstClock:true,offset:outside.offset,confidence:'medium',method:'audio',score:outside.score,agree:outside.agree,margin:outside.margin,clockOffset:Math.round(expected*1000)/1000,reason:'camera clock disagrees with this clip\'s audio (clock off by '+(offOutside>0?'+':'')+offOutside+' s); placed by audio'};
+     driftCheck(c,outside);continue;
+    }
+    out[c.id]={id:c.id,status:'excluded',offset:expected,reason:'camera clock places it outside the music'};continue;
+   }
    try{r=matchWindow(master,c.env,{excerptStart:c.excerptStart,expectedOffset:expected,radius:radius});}catch(e){out[c.id]={id:c.id,status:'review',offset:expected,confidence:'low',method:'clock',reason:c.duration<1?'clip shorter than 1 s':String(e.message||e)};continue;}
    r.clockOffset=Math.round(expected*1000)/1000;
    // One clip's creation_time can be off while the camera clock is right for the others (C0242: +231.7 s). Its own
@@ -291,6 +318,10 @@ function* syncCameraSteps(master,clips,opts){
    // Neither the start nor the end excerpt placed it: try the excerpts spread over the clip (only decoded when asked for,
    // see sync-ui.js EXTRA_STEP).
    if((endReview||RANK[r.confidence]<minRank)&&c.extra&&c.extra.length){var em=yield* extraMatch(c,[r,e4]);if(em){r=em;endReview=null;}}
+   // A medium placement with spread excerpts (sync-ui.js asks for them only when it could lend its audio past the music)
+   // becomes high when three matches agree on its offset: the start excerpt plus two more (Atlas DJI 0003: the 20%
+   // excerpt ends 8 s before the WAV does, medium; excerpts at 10 s and 310 s land on the same 2970.07 s, one of them high).
+   else if(r.confidence==='medium'&&c.extra&&c.extra.length){var eh=yield* extraMatch(c,[r,e4]);if(eh&&eh.confidence==='high'&&Math.abs(eh.offset-r.offset)<=EXTRA_AGREE)r=eh;}
    if(endReview){out[c.id]=endReview;continue;}
    if(RANK[r.confidence]<minRank){out[c.id]={id:c.id,status:'review',offset:r.offset,confidence:r.confidence,method:'audio',agree:r.agree,margin:r.margin,reason:'audio match unclear and no trusted camera clock'};continue;}
   }
@@ -348,19 +379,21 @@ function* syncCameraSteps(master,clips,opts){
  // next file's creation_time up to ~3 s after the previous file really ended, so the clock window above misses
  // the audio (Kaehla cam 1: DJI_0004/0005 sat 2.8/3.2 s late). A file whose clock starts within 4 s of the
  // previous file's end continues it exactly: search the audio around that join instead of the clock position.
- var byClock=clips.filter(function(c){return isFinite(c.created)&&isFinite(c.mediaDuration)&&out[c.id];}).sort(function(a,b){return a.created-b.created;});
+ var byClock=clips.filter(function(c){return hasClock(c)&&isFinite(c.mediaDuration)&&out[c.id];}).sort(function(a,b){return a.created-b.created;});
  for(var bi=1;bi<byClock.length;bi++){
   var c3=byClock[bi],p3=byClock[bi-1],o3=out[c3.id],po=out[p3.id],gap=c3.created-(p3.created+p3.mediaDuration);
   if(o3.status==='placed'||po.status!=='placed'||!(gap>-1.5&&gap<=4)||!c3.env||!c3.env.onset.length)continue;
   yield;
   var join=po.offset+p3.mediaDuration,r3;
   try{r3=matchWindow(master,c3.env,{excerptStart:c3.excerptStart,expectedOffset:join,radius:1});}catch(e){continue;}
-  if(RANK[r3.confidence]<minRank){o3.reason='continues '+(p3.name||p3.id)+' (join at '+join.toFixed(3)+' s); audio match unclear there too';continue;}
+  // A clip its clock put outside the music keeps that reason: sync-ui.js tries it again against a camera reference.
+  if(RANK[r3.confidence]<minRank){if(o3.status!=='excluded')o3.reason='continues '+(p3.name||p3.id)+' (join at '+join.toFixed(3)+' s); audio match unclear there too';continue;}
   out[c3.id]={id:c3.id,status:'placed',offset:r3.offset,confidence:r3.confidence,method:'audio+chain',score:r3.score,agree:r3.agree,margin:r3.margin,clockOffset:o3.offset,chainOffset:Math.round(join*1000)/1000};
   driftCheck(c3,r3);
  }
- // 3. A camera records one clip at a time: the weaker of two overlapping placed clips goes to review.
- var placed=clips.map(function(c){return {c:c,r:out[c.id]};}).filter(function(x){return x.r.status==='placed';}).sort(function(a,b){return weight(b.r.confidence)-weight(a.r.confidence)||(b.r.score||0)-(a.r.score||0);}),kept=[];
+ // 3. A camera records one clip at a time: the weaker of two overlapping placed clips goes to review. A clip its clock
+ // puts outside the music never pushes out one that sits where its clock says.
+ var placed=clips.map(function(c){return {c:c,r:out[c.id]};}).filter(function(x){return x.r.status==='placed';}).sort(function(a,b){return (a.r.againstClock?1:0)-(b.r.againstClock?1:0)||weight(b.r.confidence)-weight(a.r.confidence)||(b.r.score||0)-(a.r.score||0);}),kept=[];
  placed.forEach(function(x){var s0=x.r.offset+(x.c.sourceIn||0),e0=s0+x.c.duration,clash=null;for(var k=0;k<kept.length;k++){var y=kept[k],y0=y.r.offset+(y.c.sourceIn||0);if(Math.min(e0,y0+y.c.duration)-Math.max(s0,y0)>1){clash=y;break;}}
   if(clash){x.r.status='review';x.r.reason='overlaps '+(clash.c.name||clash.c.id)+' of the same camera';return;}
   if(s0>=musicDuration||e0<=0){x.r.status='excluded';x.r.reason='outside the music';return;}kept.push(x);});
@@ -385,11 +418,12 @@ function probe(ffmpeg,file,state){
  var r=runtime();state=state||{};
  return new Promise(function(resolve,reject){
   if(state.cancelled)return reject(Error('Sync stopped.'));
-  var proc=r.cp.spawn(ffmpeg,['-hide_banner','-nostdin','-i',file],{windowsHide:true,shell:false}),text='';state.process=proc;
-  proc.stderr.on('data',function(d){if(text.length<200000)text+=d;});
-  proc.on('error',function(e){reject(Error('Could not start FFmpeg: '+e.message));});
+  var proc=r.cp.spawn(ffmpeg,['-hide_banner','-nostdin','-i',file],{windowsHide:true,shell:false}),text='',seen=Date.now();state.process=proc;
+  var unwatch=watchProcess(proc,state,function(){return seen;},function(e){unwatch();reject(e);},file);
+  proc.stderr.on('data',function(d){seen=Date.now();if(text.length<200000)text+=d;});
+  proc.on('error',function(e){unwatch();reject(Error('Could not start FFmpeg: '+e.message));});
   proc.on('close',function(){
-   state.process=null;if(state.cancelled)return reject(Error('Sync stopped.'));
+   unwatch();state.process=null;if(state.cancelled)return reject(Error('Sync stopped.'));
    if(/No such file|Invalid data found|does not exist/i.test(text))return reject(Error('Cannot read media: '+file));
    var lines=text.split(/\r?\n/),video=false;for(var i=0;i<lines.length;i++)if(/Stream #.*Video:/.test(lines[i])&&!/attached pic/.test(lines[i]))video=true;
    var out={file:file,duration:null,created:null,hasAudio:/Stream #.*Audio:/.test(text),hasVideo:video,make:root.RPDroneSync&&root.RPDroneSync.makeFromProbe?root.RPDroneSync.makeFromProbe(text):'',model:root.RPDroneSync&&root.RPDroneSync.modelFromProbe?root.RPDroneSync.modelFromProbe(text):'',serial:root.RPDroneSync&&root.RPDroneSync.serialFromProbe?root.RPDroneSync.serialFromProbe(text):''};

@@ -216,10 +216,10 @@ if (-not $TestRoot) {
 
 # Stage and atomically switch plugin only after all preflight checks succeed.
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
-Copy-Item -LiteralPath $src -Destination $stage -Recurse -Force
 $oldCopies = @('RProjectMulticamAI','com.rproject.multicam','R-Project-Multicam-AI','r.project.multicam')
 $moved = @(); $installed = $false
 try {
+    Copy-Item -LiteralPath $src -Destination $stage -Recurse -Force
     New-Item -ItemType Directory -Path $backup -Force | Out-Null
     foreach ($name in $oldCopies) {
         $old = Join-Path $extensionRoot $name

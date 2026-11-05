@@ -912,6 +912,144 @@ function rp_zoomStep(id){
  }catch(e){j.status='error';j.message=String(e);}
  if(j.status!=='running'){j.tasks=[];j.seq=null;}rp_gc();return rp_state();
 }
+/* LUT for All Footage: one Lumetri Color per clip carries the chosen .cube as its Creative Look at the chosen intensity.
+   Scripting cannot load a Look by path (Premiere renders only the Look stored in the effect's state blob), so the blob is
+   built from lumetri-look.xml (captured from Premiere Pro 2026) and named RPROJECT_LUT: running again updates that effect,
+   Remove LUT deletes only it, and any Lumetri grade the editor made stays untouched. The blob property holds the XML
+   bytes two per UTF-16 unit (low byte first). Property slots are those of Premiere Pro 2026 (checked in rp_lutProps). */
+var RP_LUT_MARK='<name>"RPROJECT_LUT"</name>';
+function rp_lutUnpack(v){var s=String(v||''),r=[],i,c;for(i=0;i<s.length;i++){c=s.charCodeAt(i);r.push(String.fromCharCode(c&255,c>>8));}return r.join('');}
+function rp_lutPack(bytes){if(bytes.length%2)bytes+='\n';var r=[],i;for(i=0;i<bytes.length;i+=2)r.push(String.fromCharCode(bytes.charCodeAt(i)|(bytes.charCodeAt(i+1)<<8)));return r.join('');}
+function rp_lutGuid(){var h='0123456789abcdef',out='',i;for(i=0;i<32;i++){out+=h.charAt(Math.floor(Math.random()*16));if(i===7||i===11||i===15||i===19)out+='-';}return out;}
+function rp_lutProps(comp){
+ // 0 state blob, 32 Look file, 34 Look menu (1 = the file in 32), 38 Look intensity (0-200 %); 6/7 and 34/35 are the paired Input LUT / Look menus.
+ var P=comp.properties,ok=false;
+ try{ok=P.numItems>=130&&typeof P[0].getValue()==='string'&&String(P[6].displayName)===String(P[7].displayName)&&String(P[34].displayName)===String(P[35].displayName)&&isFinite(Number(P[38].getValue()));}catch(e){ok=false;}
+ if(!ok)throw Error('This Premiere version stores Lumetri Color differently. LUT for All Footage needs Premiere Pro 2026.');
+ return P;
+}
+// Every plugin Lumetri on the clip (Paste Attributes can bring a second one).
+function rp_lutOwned(clip){
+ var comps=clip.components,k,c,b,r=[];
+ for(k=0;k<comps.numItems;k++){c=comps[k];if(String(c.matchName)!=='AE.ADBE Lumetri')continue;b='';try{b=rp_lutUnpack(c.properties[0].getValue());}catch(e){}if(b.indexOf(RP_LUT_MARK)>=0)r.push({index:k,comp:c});}
+ return r;
+}
+function rp_lutIsStill(clip){try{return /\.(png|jpe?g|gif|tiff?|psd|ai|eps|bmp|tga|svg|webp|heic)$/i.test(String(clip.projectItem.getMediaPath()));}catch(e){return false;}}
+function rp_lutHasSelected(track){try{for(var i=0;i<track.clips.numItems;i++)if(track.clips[i].isSelected&&track.clips[i].isSelected())return true;}catch(e){}return false;}
+function rp_lutEffect(){
+ var fx=null,list,i;try{fx=qe.project.getVideoEffectByName('Lumetri Color');}catch(e){}
+ // Localized Premiere names the effect in its own language ("Lumetri-Farbe", "Couleur Lumetri").
+ if(!fx){try{list=qe.project.getVideoEffectList();for(i=0;i<list.length&&!fx;i++)if(/lumetri/i.test(String(list[i]))&&!/preset/i.test(String(list[i])))fx=qe.project.getVideoEffectByName(String(list[i]));}catch(e2){}}
+ if(!fx)throw Error('Lumetri Color effect is not available in this Premiere.');
+ return fx;
+}
+// QE (the only API that adds or removes effects) lists clips and gaps per track; match the clip by its start tick.
+function rp_lutQeItem(j,task){
+ app.enableQE();var qs=qe.project.getActiveSequence();if(!qs)throw Error('Premiere effect API (QE) is unavailable.');
+ var qt=qs.getVideoTrackAt(task.track),n=qt.numItems,key='v'+task.track,from=j.qeHints[key]||0,i,k,it;
+ // Tasks run in start order, so each track's search resumes where its previous clip was found.
+ for(k=0;k<n;k++){i=(from+k)%n;it=qt.getItemAt(i);if(it&&it.type!=='Empty'&&String(it.start.ticks)===task.ticks){j.qeHints[key]=i;return it;}}
+ throw Error('Premiere effect API (QE) did not find this clip.');
+}
+// Remove the given plugin effects, last first so the earlier component indices stay valid.
+function rp_lutDrop(j,task,list){
+ var it=rp_lutQeItem(j,task),i,qc;
+ for(i=list.length-1;i>=0;i--){qc=it.getComponentAt(list[i].index);if(!qc||!/lumetri/i.test(String(qc.name)))throw Error('Premiere did not expose the plugin Lumetri effect.');qc.remove();}
+}
+// Every Lumetri on the clip, with its full state when asked (about 130 reads each).
+function rp_lutList(clip,withState){
+ var comps=clip.components,out=[],k,p,c,v;
+ for(k=0;k<comps.numItems;k++){c=comps[k];if(String(c.matchName)!=='AE.ADBE Lumetri')continue;v=[];if(withState)for(p=0;p<c.properties.numItems;p++){try{v.push(String(c.properties[p].getValue()));}catch(e){v.push('');}}out.push({index:k,comp:c,state:v.join('\n')});}
+ return out;
+}
+// The effect an add created. Premiere 26.3 puts it in front of any existing Lumetri, so only the first slot is accepted, and only
+// if every other effect still reads as it did before the add. Anything else is refused: an editor's grade is never guessed at.
+function rp_lutFindAdded(before,after){
+ var k;
+ if(after.length!==before.length+1)return null;
+ for(k=0;k<before.length;k++)if(after[k+1].state!==before[k].state)return null;
+ return after[0];
+}
+function rp_lutApplyTask(j,task){
+ var clip=null;try{clip=rp_resolveTask(app.project.activeSequence,task,j.frame);}catch(e){}if(!clip)throw Error('Clip moved or changed. Run LUT again.');
+ var own=rp_lutOwned(clip),target=own[0]||null,added=false,before;
+ if(j.mode==='remove'){
+  if(!own.length)return false;
+  rp_lutDrop(j,task,own);if(rp_lutOwned(clip).length)throw Error('Premiere did not remove the LUT.');
+  return true;
+ }
+ if(own.length>1){rp_lutDrop(j,task,own.slice(1));j.folded=(j.folded||0)+own.length-1;} // a second copy would render the LUT twice
+ // The same LUT is already there: only the intensity changes, so a grade made inside this effect stays.
+ if(target&&rp_lutUnpack(target.comp.properties[0].getValue()).indexOf('>"'+j.lutBytes+'"<')>=0){rp_lutProps(target.comp)[38].setValue(j.intensity,true);return true;}
+ if(!target){
+  var plain=rp_lutList(clip,false).length;before=plain?rp_lutList(clip,true):[];
+  rp_lutQeItem(j,task).addVideoEffect(j.qeEffect||(j.qeEffect=rp_lutEffect()));
+  // Only the effect this add created counts: any other Lumetri is the editor's own grade.
+  var now=rp_lutList(clip,plain>0);target=rp_lutFindAdded(before,now);
+  if(!target)throw Error(now.length>before.length?'Premiere added Lumetri Color but it could not be told from the Lumetri already on this clip, so that effect was not changed. A blank Lumetri Color may be left on the clip: delete it by hand.':'Premiere did not add Lumetri Color.');added=true;
+ }
+ try{var P=rp_lutProps(target.comp);P[0].setValue(j.blob,true);P[32].setValue(j.lut,true);P[34].setValue(1,true);P[38].setValue(j.intensity,true);}
+ catch(e){if(added)try{rp_lutDrop(j,task,[target]);}catch(dropError){}throw e;} // no unnamed Lumetri is left behind
+ return true;
+}
+/** mode 'apply' (lut path, intensity 0-100, template = lumetri-look.xml) or 'remove'; scope 'all' | 'selected'. */
+function rp_lutBegin(mode,lut,intensity,scope,template){
+ try{
+  rp_requireLicense();
+  if((rp_job&&rp_job.status==='running')||rp_syncBusy())throw Error('A process is already active. Click Stop first.');
+  mode=mode==='remove'?'remove':'apply';scope=scope==='selected'?'selected':'all';
+  var blob='',lutBytes='';if(mode==='remove'){lut='';intensity=0;}
+  else{
+   if(!(parseInt(app.version,10)>=26))throw Error('LUT for All Footage needs Premiere Pro 2026 (this is '+app.version+').');
+   lut=String(lut||'');intensity=Math.round(Number(intensity));
+   if(!/\.cube$/i.test(lut)||!new File(lut).exists)throw Error('Choose a .cube LUT file that exists.');
+   if(/["<>&]/.test(lut))throw Error('The LUT path contains " < > or &: '+lut+'. Rename that folder or file, then add the LUT again.');
+   if(!isFinite(intensity)||intensity<0||intensity>100)throw Error('Intensity must be 0 to 100 %.');
+   template=String(template||'');if(template.indexOf('__RP_LUT__')<0||template.indexOf(RP_LUT_MARK)<0)throw Error('lumetri-look.xml is missing or damaged. Reinstall the plugin.');
+   lutBytes=unescape(encodeURIComponent(lut));
+   blob=rp_lutPack(template.split('__RP_LUT__').join(lutBytes).replace('__RP_OPACITY__',String(intensity/100)).replace('__RP_GUID__',rp_lutGuid()));
+  }
+  var s=app.project.activeSequence;if(!s)throw Error('No active sequence.');
+  var tasks=[],v,c,tr,clip,locked=0,muted=0,ineligible=0;
+  for(v=0;v<s.videoTracks.numTracks;v++){
+   tr=s.videoTracks[v];if(tr.isLocked&&tr.isLocked()){if(scope==='all'||rp_lutHasSelected(tr))locked++;continue;}if(tr.isMuted&&tr.isMuted()){if(scope==='all'||rp_lutHasSelected(tr))muted++;continue;}
+   for(c=0;c<tr.clips.numItems;c++){
+    clip=tr.clips[c];if(scope==='selected'&&!(clip.isSelected&&clip.isSelected()))continue;if(!rp_zoomIsFootage(clip)||(mode==='apply'&&scope==='all'&&rp_lutIsStill(clip))){ineligible++;continue;}
+    tasks.push({identity:rp_clipIdentity(clip),clipIndex:c,name:String(clip.name||'clip'),track:v,start:rp_seconds(clip.start),end:rp_seconds(clip.end),ticks:String(clip.start.ticks)});
+   }
+  }
+  if(!tasks.length)throw Error(scope==='selected'?'No footage clip is selected on an unlocked, visible video track.':'No footage found on unlocked, visible video tracks.');
+  tasks.sort(function(a,b){return a.start===b.start?a.track-b.track:a.start-b.start;});
+  var frame=Number(s.timebase)/254016000000;if(!(frame>0))frame=1/30;
+  var name=String(lut).replace(/^.*[\\\/]/,'').replace(/\.cube$/i,'');
+  rp_job={id:String(new Date().getTime()),status:'running',kind:'lut',phase:'lut',mode:mode,seq:s,seqID:String(s.sequenceID),projectPath:String(app.project.path),name:s.name,frame:frame,
+   tasks:tasks,task:0,done:0,total:tasks.length,created:0,cuts:0,changed:0,removed:0,skipped:0,none:0,zoomErrors:[],zoomErrorMap:{},warning:false,qeHints:{},qeEffect:null,
+   lut:lut,lutBytes:lutBytes,lutName:name,intensity:intensity,blob:blob,scanLocked:locked,scanMuted:muted,scanIneligible:ineligible,
+   message:mode==='remove'?'Removing the plugin LUT from '+tasks.length+' footage clips':'Applying LUT '+name+' at '+intensity+'% to '+tasks.length+' footage clips'};
+  rp_gc();return rp_state();
+ }catch(e){rp_gc();return rp_encode({ok:false,status:'error',message:String(e)});}
+}
+function rp_lutStep(id){
+ var j=rp_job;if(!j||j.id!==id||j.kind!=='lut')return rp_encode({ok:false,status:'error',message:'LUT process not found.'});
+ if(j.status!=='running')return rp_state();
+ try{
+  var active=app.project.activeSequence;if(!active||String(active.sequenceID)!==j.seqID||String(app.project.path)!==j.projectPath)throw Error('Sequence changed. LUT stopped; clips done so far keep their LUT.');
+  var start=new Date().getTime(),ops=0,task,changed;
+  while(j.task<j.tasks.length&&ops<6&&new Date().getTime()-start<250){
+   task=j.tasks[j.task];
+   try{changed=rp_lutApplyTask(j,task);if(changed)j.changed++;else j.none++;}catch(clipError){j.skipped++;rp_zoomRecordError(j,clipError,task);}
+   j.task++;j.done=j.task;ops++;
+  }
+  if(j.task>=j.tasks.length){
+   var top=rp_zoomTopError(j),why=top?' Most common reason: '+top+'.':'',lockedTracks=j.scanLocked+j.scanMuted;
+   var left=(lockedTracks?' '+lockedTracks+' locked or hidden tracks not changed.':'')+(j.scanIneligible?' '+j.scanIneligible+' disabled, still or non-footage clips not changed.':'')+(j.folded?' '+j.folded+' extra copies of the plugin Lumetri removed.':'');
+   if(j.mode==='remove'){j.status=j.skipped&&!j.changed?'error':'done';j.warning=j.skipped>0;j.message='LUT removed from '+j.changed+' clips'+(j.none?', '+j.none+' had none':'')+(j.skipped?', '+j.skipped+' failed.'+why:'.')+left;}
+   else if(j.changed===0){j.status='error';j.message='LUT failed: 0 / '+j.total+' clips.'+why;}
+   else{j.status='done';j.warning=j.skipped>0;j.message='LUT '+j.lutName+' at '+j.intensity+'% '+(j.warning?'finished with warnings':'applied')+': '+j.changed+' / '+j.total+' clips'+(j.skipped?', '+j.skipped+' skipped.'+why:'.')+left;}
+  }else j.message=(j.mode==='remove'?'Removing LUT: ':'LUT '+j.lutName+': ')+j.done+' / '+j.total+' footage clips';
+ }catch(e){j.status='error';j.message=String(e);}
+ if(j.status!=='running'){j.tasks=[];j.seq=null;j.blob='';j.qeEffect=null;}rp_gc();return rp_state();
+}
 function rp_best15SafeName(text){return String(text||'Best Drop').replace(/[\\\/:*?\"<>|]/g,'_').replace(/^\s+|\s+$/g,'').slice(0,80)||'Best Drop';}
 function rp_best15TimeLabel(seconds){
  var n=Math.max(0,Math.round(Number(seconds)||0)),h=Math.floor(n/3600),m=Math.floor((n%3600)/60),s=n%60;
@@ -1016,6 +1154,7 @@ function rp_step(id,light){
  var j=rp_job;if(j.status!=='running')return rp_state();
  if(j.kind==='a1')return rp_a1Step(id);
  if(j.kind==='zoom')return rp_zoomStep(id);
+ if(j.kind==='lut')return rp_lutStep(id);
  if(j.kind==='best15')return rp_best15Step(id);
  var stepStart=rp_now(),T=j.timing||(j.timing=rp_newTiming()),phaseAt=0,ops=0;
  try{
@@ -1514,6 +1653,7 @@ rp_resumeSaved=rp_guardLicensed(rp_resumeSaved);
 rp_podcastSnapshot=rp_guardLicensed(rp_podcastSnapshot);
 rp_podcastBegin=rp_guardLicensed(rp_podcastBegin);
 rp_zoomBegin=rp_guardLicensed(rp_zoomBegin);
+rp_lutBegin=rp_guardLicensed(rp_lutBegin);
 rp_zoomStep=rp_guardJob(rp_zoomStep);
 rp_best15ResolvePreset=rp_guardLicensed(rp_best15ResolvePreset);
 rp_best15Begin=rp_guardLicensed(rp_best15Begin);

@@ -38,7 +38,7 @@ function offsetKey(drone,ref){
 /** Shoot day (UTC date of the middle clip) of a drone's footage: a camera clock can be reset between events, so the
     remembered offset is kept per shoot day. */
 function shootDay(clips){
- var t=(clips||[]).map(function(c){return Number(c.created);}).filter(num).sort(function(a,b){return a-b;});
+ var t=(clips||[]).map(function(c){return c.created;}).filter(num).sort(function(a,b){return a-b;});
  return t.length?new Date(t[t.length>>1]*1000).toISOString().slice(0,10):'';
 }
 /** Remembered entry for a shoot day: that day's, else the nearest day's (later wins a tie), else an undated one. */

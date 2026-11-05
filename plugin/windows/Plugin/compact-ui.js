@@ -27,7 +27,7 @@ el('accountBarMessage').textContent='';
 var ids=['dropSensitivity','dropPreBeats','dropPostBeats','miSpacing','miThreshold'];
 try{var settings=JSON.parse(localStorage.getItem('rp.musicRules.v10.94')||'{}');['dropPreBeats','dropPostBeats'].forEach(function(id){if(settings[id]!=null&&el(id))el(id).value=settings[id];});}catch(ignore){}
 ids.forEach(function(id){if(!el(id))return;el(id).addEventListener('change',function(){var settings={};ids.forEach(function(k){if(el(k))settings[k]=el(k).value;});try{localStorage.setItem('rp.musicRules.v10.94',JSON.stringify(settings));}catch(ignore){}if(window.RPCompactRulesChanged)window.RPCompactRulesChanged();});});
-// Workflow order: five numbered steps, each with a plain name, a one-line explanation, its button and its own
+// Workflow order: six numbered steps, each with a plain name, a one-line explanation, its button and its own
 // settings. Everything optional sits below under "More".
 function step(n,title,desc,badgeId){var sec=document.createElement('section');sec.className='step';sec.id='step'+n;
  sec.innerHTML='<div class="stephead"><span class="stepnum">'+n+'</span><span class="steptitle">'+title+'</span></div><p class="stepdesc">'+desc+'</p><div class="stepbody" id="step'+n+'Body"></div>';
@@ -52,6 +52,8 @@ var lenRow=document.createElement('div');lenRow.className='row';['dropPreBeats',
 var mus=el('compactMusic');if(mus)mus.style.display='none';
 var b5=step(5,'Random Zoom','Adds zoom moves to the clips of the edited sequence. Run it after Auto Cut is finished.','zoomBadge');
 b5.appendChild(button('zoomRun','Add Random Zoom'));var zoom=el('menuZoom');if(zoom){b5.appendChild(zoom);zoom.open=false;}
+var b6=step(6,'Color LUT','Puts one .cube LUT on every clip at the intensity you choose. Run it again to change the LUT or intensity; Remove LUT takes it off.','lutBadge');
+var lutCard=el('menuLut');if(lutCard){var lb=lutCard.querySelector('.toolbody');if(lb){var li=lb.querySelector(':scope > small');if(li)li.style.display='none';b6.appendChild(lb);}lutCard.style.display='none';}
 var heading=dash.querySelector('.mi-heading');if(heading)heading.parentNode.removeChild(heading);
 var grid=el('primaryActions');if(grid&&!grid.children.length)grid.style.display='none';
 var moreHead=document.createElement('div');moreHead.className='moreheading';moreHead.textContent='More';dash.insertBefore(moreHead,stepAnchor);
@@ -96,13 +98,14 @@ function status(){var out={},owner=sect.owner||'step3';
  out.step3=shown('menuResume')&&sect.busy!=='step3'?{text:'Saved job · Continue available',kind:'warning',att:'resume'}:tool('step3','multi',base3);
  var ds=txt('dropState');out.step4=tool('step4','drop',{text:idle(ds)?'Not run yet':ds,kind:kindOf('dropBadge')});
  var zs=txt('zoomState'),zr=el('zoomMin')&&el('zoomMax')?'Zoom '+el('zoomMin').value+'–'+el('zoomMax').value+' %':'';out.step5=tool('step5','zoom',{text:idle(zs)?zr:zs,kind:kindOf('zoomBadge')});
+ var ls=txt('lutState'),lc=el('lutChoice'),lo=lc&&lc.selectedIndex>=0?lc.options[lc.selectedIndex]:null,lr=lo&&lo.value?lo.textContent+' · '+(el('lutIntensity')?el('lutIntensity').value:'100')+' %':'Not run yet';out.step6=tool('step6','lut',{text:idle(ls)?lr:ls,kind:kindOf('lutBadge')});
  return out;}
 function refresh(){sect.timer=null;if(!sect.ready)return;sect.locked=syncLocked();applyLock(sect.locked);var st=status();steps().forEach(function(s){var x=st[s.id]||{text:''},sum=el(s.id+'Sum'),cls='stepsum'+(x.kind?' '+x.kind:''),now=x.att||'',prev=sect.att[s.id]||'';
  if(sum){if(sum.textContent!==x.text)sum.textContent=x.text;if(sum.className!==cls)sum.className=cls;}
  sect.att[s.id]=now;['running','error','warning','resume'].forEach(function(a){if(s.classList.contains('att-'+a)!==(now===a))s.classList.toggle('att-'+a,now===a);});
  if(now&&now!==prev)setStep(s,true,'auto');});}
 function queue(){if(!sect.timer)sect.timer=setTimeout(refresh,80);}
-window.RPSections={running:function(busy,tool){var id=null;if(busy)id=sect.busy&&sect.tool===tool?sect.busy:tool==='sync'?'step2':tool==='drop'?'step4':tool==='zoom'?'step5':tool==='multi'?(sect.active==='step1'?'step1':'step3'):null;
+window.RPSections={running:function(busy,tool){var id=null;if(busy)id=sect.busy&&sect.tool===tool?sect.busy:tool==='sync'?'step2':tool==='drop'?'step4':tool==='zoom'?'step5':tool==='lut'?'step6':tool==='multi'?(sect.active==='step1'?'step1':'step3'):null;
  if(id==='step1'||id==='step3')sect.owner=id;if(id!==sect.busy){sect.busy=id;sect.tool=busy?tool:null;queue();}},
  open:function(id){var s=el(id);if(s&&s.classList.contains('step'))setStep(s,true,'user');},refresh:queue};
 function initSections(){if(sect.ready||!el('step1'))return;

@@ -59,7 +59,7 @@ function loadMasterMusicMap(a1){
 function invalidateMasterMusicMap(a1){var x=masterMusicMapMemory;if(x&&a1&&x.key===musicMapKey(a1))return;masterMusicMapMemory=null;dropLegacyMusicMapStorage();}
 function el(id){return document.getElementById(id);}
 function log(t){el('log').textContent=(el('log').textContent+'\n'+t).slice(-5000);}
-function toolPrefix(tool){return tool==='zoom'?'zoom':tool==='drop'?'drop':tool==='podcast'?'podcast':tool==='sync'?'sync':'multi';}
+function toolPrefix(tool){return tool==='zoom'?'zoom':tool==='drop'?'drop':tool==='podcast'?'podcast':tool==='sync'?'sync':tool==='lut'?'lut':'multi';}
 function setActiveTool(tool){activeTool=tool||'multi';}
 function renderToolState(tool,text,kind){
  var p=toolPrefix(tool),st=el(p+'State'),badge=el(p+'Badge');if(st)st.textContent=text||'';
@@ -81,7 +81,7 @@ function musicAnalysisStage(stage,p,detail){
  state(labels[stage]||'ANALYZE MUSIC',false,'running');
  progressFor('multi',pct,100,(detail||'Working…')+' · '+pct+'% overall');
 }
-function setToolStops(){['multi','zoom','drop','sync'].forEach(function(t){var b=el(t+'Stop');if(b)b.disabled=!busy||stopRequested||activeTool!==t;});if(el('podcastStop'))el('podcastStop').disabled=true;}
+function setToolStops(){['multi','zoom','drop','sync','lut'].forEach(function(t){var b=el(t+'Stop');if(b)b.disabled=!busy||stopRequested||activeTool!==t;});if(el('podcastStop'))el('podcastStop').disabled=true;}
 
 function licenseCanUse(){return !!(window.RPAccountAuth&&window.RPAccountAuth.canUse());}
 function renderLicense(){
@@ -298,7 +298,8 @@ function controls(){
  ['aiRoles','aiKey','aiModel','aiVision','aiBackup','aiBudget','pacing2','pacing4','pacing6','pacing8','dropCamera','zoomMin','zoomMax','podcastPeople','podName1','podName2','podName3','podCam1','podCam2','podCam3','podMic1','podMic2','podMic3','podWideCam','podMinShot'].forEach(function(id){if(el(id))el(id).disabled=busy||!ready;});
  if(el('dropRenderCount'))el('dropRenderCount').disabled=busy||!ready||!bestDropCache;
  var camInputs=el('cameraToggles')?el('cameraToggles').querySelectorAll('input[data-camera]'):[];for(var ci=0;ci<camInputs.length;ci++)camInputs[ci].disabled=busy||!ready;
- ['aiPlan','directorRun','aiMarkerRun','aiApply','aiDelete','aiExport','zoomRun','bestDropsAnalyze','podcastRun'].forEach(function(id){if(el(id))el(id).disabled=busy||!ready||!entitled;});
+ ['aiPlan','directorRun','aiMarkerRun','aiApply','aiDelete','aiExport','zoomRun','lutRun','lutRemove','bestDropsAnalyze','podcastRun'].forEach(function(id){if(el(id))el(id).disabled=busy||!ready||!entitled;});
+ ['lutChoice','lutBrowse','lutIntensity','lutScope'].forEach(function(id){if(el(id))el(id).disabled=busy;});if(el('lutForget')&&busy)el('lutForget').disabled=true;else if(window.RPLut&&el('lutForget')&&el('lutChoice'))el('lutForget').disabled=!el('lutChoice').value||!window.RPLut.inLibrary(el('lutChoice').value);
  if(el('bestDropsRender'))el('bestDropsRender').disabled=busy||!ready||!entitled||!bestDropCache;
  if(el('podcastRun'))el('podcastRun').disabled=true;if(el('podcastBadge')){el('podcastBadge').className='badge warning';el('podcastBadge').textContent='COMING SOON';}
  el('aiPlan').disabled=busy||!ready||!entitled||!suggestion||!suggestion.beats||!suggestion.beats.length;
@@ -333,7 +334,7 @@ function invoke(code,cb,timeoutMs){
   var match=/rp_step\((.*)\)/.exec(code),id=match?match[1]:'';
   if(stopRequested||(analysisState&&analysisState.cancelled)||reading.critical){
    return invokeHost('rp_stop('+id+')',function(r){
-    if(reading.critical){r.warning=true;r.message='Paused for low memory. Save the project, close other heavy apps, then use Continue Multicam. '+reading.label;}
+    if(reading.critical){r.warning=true;r.message='Paused for low memory. Save the project, close other heavy apps, then '+(['delete','angle','cut'].indexOf(String(r.kind||''))>=0?'use Continue Multicam. ':'run it again. ')+reading.label;}
     reply(r);
    },timeoutMs);
   }
@@ -370,8 +371,9 @@ function refresh(){
   if(ready&&r.pendingID){
    // A Premiere host job can outlive/recover from a panel reload. Resume polling it
    // instead of automatically stopping it and leaving thousands of partial cuts.
-   busy=true;stopRequested=false;started=Date.now();lastReply=started;controls();
-   invoke('rp_state()',update);return;
+   var stopWanted=stopRequested;
+   busy=true;stopRequested=stopWanted;started=Date.now();lastReply=started;controls();
+   invoke(stopWanted?'rp_stop('+JSON.stringify(r.pendingID)+')':'rp_state()',update);return;
   }
   // This panel is busy while its own sync runs, so a running sync here was left by a closed panel and nothing can drive or stop it.
   if(ready&&r.syncPendingID){invoke('rp_syncStop('+quote(r.syncPendingID)+')',function(x){if(x&&x.ok===false)state('A sync left running by a closed panel could not be stopped: '+(x.message||'unknown error')+'. Restart Premiere Pro.',true,'error');else state('A sync left running by a closed panel was stopped. Run Sync again.',false,'warning');controls();});}
@@ -393,10 +395,11 @@ function saveStepTiming(r,force){
 function update(r){
  saveStepTiming(r,!r.ok||r.status!=='running');
  if(r.id)job=r;try{syncResumeCheckpoint(r);}catch(storageError){busy=false;stopRequested=true;if(job&&!pending)invoke('rp_stop('+quote(job.id)+')',function(){});state(storageError.message,true);controls();return;}
- if(r.uiKind==='podcast')setActiveTool('podcast');else if(r.kind==='zoom')setActiveTool('zoom');else if(r.kind==='best15')setActiveTool('drop');
+ if(r.uiKind==='podcast')setActiveTool('podcast');else if(r.kind==='zoom')setActiveTool('zoom');else if(r.kind==='lut')setActiveTool('lut');else if(r.kind==='best15')setActiveTool('drop');
  if(typeof r.total==='number'){
   var pct=Math.floor(r.done/Math.max(1,r.total)*100),text;
   if(r.kind==='zoom')text=r.done.toLocaleString()+' / '+r.total.toLocaleString()+' footage clips · '+pct+'% · '+(r.changed||0)+' animated · '+(r.skipped||0)+' skipped';
+  else if(r.kind==='lut')text=r.done.toLocaleString()+' / '+r.total.toLocaleString()+' footage clips · '+pct+'% · '+(r.changed||0)+' done · '+(r.skipped||0)+' skipped';
   else {
    var unit=r.phase==='delete'?'pieces':(r.phase==='angle'?'camera pieces':'edit points');
    text=r.done.toLocaleString()+' / '+r.total.toLocaleString()+' '+unit+' · '+pct+'% · '+(r.cuts||0)+' cuts · '+(r.removed||0)+' pieces removed · stage '+r.phase;
@@ -408,8 +411,9 @@ function update(r){
   busy=false;controls();
   var kind=!r.ok||r.status==='error'?'error':(r.status==='stopped'||r.warning?'warning':'success');
   state(r.message||'Process finished',kind==='error',kind);
+  if(r.kind==='lut'&&r.zoomErrors&&r.zoomErrors.length){log('LUT diagnostics: '+r.zoomErrors.map(function(x){return 'V'+x.track+' '+x.clip+': '+x.message;}).join(' | '));}
   if(r.kind==='zoom'&&r.zoomErrors&&r.zoomErrors.length){log('Random Zoom diagnostics: '+r.zoomErrors.map(function(x){return 'V'+x.track+' '+x.clip+': '+x.message;}).join(' | '));}
-  log((r.message||'Process finished')+(r.id?(r.kind==='zoom'?' | '+(r.changed||0)+' zoom animations ('+(r.zoomIn||0)+' in / '+(r.zoomOut||0)+' out), '+(r.skipped||0)+' skipped.':' | '+(r.cuts||0)+' cut, '+(r.removed||0)+' pieces removed.') :''));
+  log((r.message||'Process finished')+(r.id?(r.kind==='lut'?'':r.kind==='zoom'?' | '+(r.changed||0)+' zoom animations ('+(r.zoomIn||0)+' in / '+(r.zoomOut||0)+' out), '+(r.skipped||0)+' skipped.':' | '+(r.cuts||0)+' cut, '+(r.removed||0)+' pieces removed.') :''));
   heartbeatFor(activeTool,'Elapsed time: '+Math.round((Date.now()-started)/1000)+' seconds.');return;
  }
  state(r.message||'Processing',false,'running');
@@ -439,7 +443,7 @@ function requestStop(){
  if(analysisState){analysisState.cancelled=true;if(analysisState.process)analysisState.process.kill();(analysisState.processes||[]).forEach(function(p){try{p.kill();}catch(e){}});if(analysisState.request)analysisState.request.destroy();/* The active async loop owns the next host call and will stop at its cancellation check. */return;}
  if(!pending&&job)next();
 }
-el('stop').onclick=requestStop;el('multiStop').onclick=requestStop;el('zoomStop').onclick=requestStop;el('dropStop').onclick=requestStop;el('podcastStop').onclick=requestStop;
+el('stop').onclick=requestStop;el('multiStop').onclick=requestStop;el('zoomStop').onclick=requestStop;el('dropStop').onclick=requestStop;el('podcastStop').onclick=requestStop;if(el('lutStop'))el('lutStop').onclick=requestStop;
 
 
 function call(code,timeoutMs){return new Promise(function(resolve,reject){invoke(code,function(r){try{if(r&&r.timing)saveStepTiming(r,!r.ok||r.status!=='running');if(r.ok){if(r.status==='running')window.setTimeout(function(){resolve(r);},Math.max(40,Number(r.waitMs)||0));else resolve(r);}else{if(r.id){job=r;syncResumeCheckpoint(r);}var err=Error(r.message||'Premiere did not respond');err.timeout=!!r.timeout;reject(err);}}catch(callbackError){reject(callbackError);}},timeoutMs);});}
@@ -651,6 +655,18 @@ el('zoomRun').onclick=function(){
  window.setTimeout(function(){invoke('rp_zoomBegin('+zoomMin+','+zoomMax+')',update);},50);
 };
 
+// LUT for All Footage: lut-ui.js owns the LUT list; the host job runs like Random Zoom (rp_step until done).
+function startLut(mode){
+ if(busy||pending||!ready)return;if(!requireEntitlement())return;
+ setActiveTool('lut');
+ var q;try{q=mode==='remove'?{lut:'',intensity:0,scope:el('lutScope').value==='selected'?'selected':'all',template:''}:window.RPLut.request();}catch(e){state(e.message,true,'error');return;}
+ busy=true;stopRequested=false;job=null;started=Date.now();lastReply=started;controls();
+ state(mode==='remove'?'Removing the plugin LUT…':'Applying LUT at '+q.intensity+'%…',false,'running');progressFor('lut',0,1,'Reading '+(q.scope==='selected'?'selected clips':'the active sequence')+'…');
+ window.setTimeout(function(){invoke('rp_lutBegin('+[mode,q.lut,q.intensity,q.scope,q.template].map(quote).join(',')+')',update);},50);
+}
+if(el('lutRun'))el('lutRun').onclick=function(){startLut('apply');};
+if(el('lutRemove'))el('lutRemove').onclick=function(){startLut('remove');};
+
 function dropClock(t){
  t=Math.max(0,Math.round(Number(t)||0));var h=Math.floor(t/3600),m=Math.floor((t%3600)/60),s=t%60;function p(v){return v<10?'0'+v:String(v);}return (h?p(h)+':':'')+p(m)+':'+p(s);
 }
@@ -780,7 +796,7 @@ el('aiMarkerRun').onclick=async function(){
 };
 async function applyAI(kind,progressBase,progressSpan){
  if((busy&&!autoDirector)||pending||!ready||!aiPlan)return;if(!requireEntitlement())return;
- busy=true;stopRequested=false;job=null;started=Date.now();analysisState={cancelled:false};var staged=false,applySent=false;progressBase=isFinite(Number(progressBase))?Number(progressBase):0;progressSpan=isFinite(Number(progressSpan))?Number(progressSpan):1;var applyProgress=function(p,m){aiProgress(progressBase+progressSpan*Math.max(0,Math.min(1,Number(p)||0)),m);};controls();state('Validating Agent AI camera plan…');
+ busy=true;stopRequested=false;job=null;started=Date.now();analysisState={cancelled:false};var staged=false,applySent=false,priorCheckpoint=loadResumeCheckpoint();progressBase=isFinite(Number(progressBase))?Number(progressBase):0;progressSpan=isFinite(Number(progressSpan))?Number(progressSpan):1;var applyProgress=function(p,m){aiProgress(progressBase+progressSpan*Math.max(0,Math.min(1,Number(p)||0)),m);};controls();state('Validating Agent AI camera plan…');
  try{
   if(!window.RPDirector.fresh(aiPlan.snapshot,aiPlan.fingerprint))throw Error('Camera media changed. Generate a new plan.');
   window.RPBeatFirst.validateHold(aiPlan.choices,aiPlan.snapshot.intervals,aiPlan.musicAnalysis||musicContext(suggestion));
@@ -810,7 +826,7 @@ async function applyAI(kind,progressBase,progressSpan){
   }else{analysisState=null;aiPlan=null;update(r);}
  }catch(e){
   // No host job (job stays null) means nothing was cut; keep the checkpoint only if rp_aiApply timed out and may still be running.
-  if(staged&&!job&&!(applySent&&e&&e.timeout))clearResumeCheckpoint();
+  if(staged&&!job&&!(applySent&&e&&e.timeout)){try{clearResumeCheckpoint();if(priorCheckpoint)writeResumeCheckpoint(priorCheckpoint);}catch(storeError){log('Could not restore the saved job: '+storeError.message);}}
   analysisState=null;busy=false;state(e.message,true);log(e.message);controls();}
 }
 if(el('resumeRun'))el('resumeRun').onclick=function(){resumeSavedMulticam(false);};
@@ -903,7 +919,7 @@ if(window.addEventListener)window.addEventListener('beforeunload',function(){
 window.setInterval(function(){
  if(busy){var wait=Math.floor((Date.now()-lastReply)/1000),hb='Running '+Math.floor((Date.now()-started)/1000)+' seconds'+(pending?' · waiting for Premiere '+wait+' seconds':'');if(pending&&wait>15)hb+=' · slow response; do not click again';heartbeatFor(activeTool,hb);}
 },500);
-renderToolState('multi','Ready.','ready');renderToolState('zoom','Ready.','ready');renderToolState('drop','Ready.','ready');
+renderToolState('multi','Ready.','ready');renderToolState('zoom','Ready.','ready');renderToolState('lut','Ready.','ready');renderToolState('drop','Ready.','ready');
 function bootPremiereBridge(){
  try{
   el('timeline').textContent='Connecting to Premiere · initializing CEP…';

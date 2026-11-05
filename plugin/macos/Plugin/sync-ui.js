@@ -10,9 +10,10 @@ var LONG_CLIP=600; // seconds: clips longer than this also get an end excerpt fo
 // Fallbacks for clips the A1 music did not place (both run only when some clip with audio is still unplaced):
 // EXTRA_MIN/EXTRA_STEP: a clip of at least EXTRA_MIN s gets 120 s excerpts every EXTRA_STEP s (RPSync.spreadExcerpts).
 // REF_*: a camera clip placed high whose span reaches past the A1 music lends its own audio there, so the other cameras
-// are synced against it (at most REF_MAX clips, each adding at least REF_GAIN s the music and earlier references miss:
+// are synced against it, and a clip placed high against it can lend its audio in turn (at most REF_MAX clips, each adding at least REF_GAIN s the music and earlier references miss:
 // 5 minutes, so a camera that kept rolling for a few minutes after a full-length mix does not trigger it).
-var EXTRA_MIN=300,EXTRA_STEP=300,REF_MAX=3,REF_GAIN=300;
+// PROMOTE_MAX: excerpts decoded for a medium clip that could lend its audio (step 0 of fallbacks).
+var EXTRA_MIN=300,EXTRA_STEP=300,REF_MAX=3,REF_GAIN=300,PROMOTE_MAX=4;
 
 // ---------------------------------------------------------------- planning core (no DOM)
 /** selection: [{kind:'bin'|'track', key: bin path or track index, name}] -> cameras with clips to sync. */
@@ -51,7 +52,7 @@ function saveLearned(key,offset,day,refName){
  try{fs.renameSync(f+'.tmp',f);}catch(e){try{fs.unlinkSync(f);fs.renameSync(f+'.tmp',f);}catch(e2){try{fs.unlinkSync(f+'.tmp');}catch(e3){}throw e2;}}
  return true;
 }
-function norm(f){var s=String(f||'').replace(/\\/g,'/');return /^[a-z]:\//i.test(s)?s.toLowerCase():s;}
+function norm(f){var s=String(f||'').replace(/\\/g,'/');return /^([a-z]:\/|\/\/)/i.test(s)?s.toLowerCase():s;}
 function check(state){if(state&&state.cancelled)throw Error('Sync stopped.');}
 
 /**
@@ -113,6 +114,7 @@ async function analyzeRun(sources,cameras,ffmpeg,state,progress,deps,ctl){
     if(got.error)throw got.error;
     var len=row.sourceOut-row.sourceIn;
     if(!(len>frame)){row.reason='clip is empty';done++;continue;}
+    if(p.hasAudio&&p.hasVideo===false){row.reason='audio file, not a camera clip';done++;continue;}
     if(!p.hasAudio){row.reason='no audio to sync';if(p.hasVideo!==false)silent.push({row:row,id:String(i),name:c.name,fileName:base(c.file),created:p.created,sourceIn:row.sourceIn,duration:row.sourceOut});done++;continue;}
     var ex=R.excerptFor(len),entry={id:String(i),name:c.name,file:norm(c.file),fileName:base(c.file),path:c.file,duration:len,mediaDuration:p.duration,sourceIn:row.sourceIn,created:p.created,excerptStart:row.sourceIn+ex.excerptStart,env:got.env};
     if(len>LONG_CLIP){entry.endExcerptStart=got.endStart;entry.endEnv=got.endEnv;}
@@ -135,6 +137,9 @@ async function analyzeRun(sources,cameras,ffmpeg,state,progress,deps,ctl){
 
  // Review clips only: a clip excluded because its trusted camera clock puts it outside the music stays excluded.
  function unplaced(s){return s.result.rows.filter(function(row){return ids.has(row)&&row.status==='review';});}
+ // A camera reference reaches past the music, so against it a clip its clock put outside the music is tried again (Atlas:
+ // DJI 0004-0008 lie past DJI 0003's audio, the first reference, and inside Cam A's, the second).
+ function retry(s){return s.result.rows.filter(function(row){return ids.has(row)&&(row.status==='review'||row.status==='excluded'&&/camera clock places it outside the music/.test(row.reason||''));});}
  function refresh(s,res){s.result.placed=s.result.rows.filter(function(r){return r.status==='placed';}).length;if(res.anchor!=null&&s.result.anchor==null){s.result.anchor=res.anchor;s.result.clockAnchored=true;}}
  function entryOf(s,row){var id=ids.get(row);return s.clips.filter(function(e){return e.id===id;})[0];}
  /**
@@ -144,9 +149,10 @@ async function analyzeRun(sources,cameras,ffmpeg,state,progress,deps,ctl){
   *    synced again against that extended master. Placed clips keep their placement.
   */
  async function fallbacks(synced,master,parts,duration){
-  if(!synced.some(function(s){return unplaced(s).length;}))return {duration:duration};
+  if(!synced.some(function(s){return retry(s).length;}))return {duration:duration};
   // Covered = A1 clips (and the references chosen below), at 1 s resolution.
-  var covered=[],mark=function(t0,t1){for(var t=Math.max(0,Math.floor(t0));t<Math.ceil(t1);t++)covered[t]=true;},gain=function(t0,t1){var n=0;for(var t=Math.max(0,Math.floor(t0));t<Math.ceil(t1);t++)if(!covered[t])n++;return n;};
+  var covered=[],mark=function(t0,t1){for(var t=Math.max(0,Math.floor(t0));t<Math.ceil(t1);t++)covered[t]=true;},gain=function(t0,t1){var n=0;for(var t=Math.max(0,Math.floor(t0));t<Math.ceil(t1);t++)if(!covered[t])n++;return n;},
+   music=function(t0,t1){var n=0;for(var t=Math.max(0,Math.floor(t0));t<Math.ceil(t1);t++)if(covered[t])n++;return n;};
   parts.forEach(function(p){mark(p.start,p.start+p.env.onset.length/R.RATE);});
   // A reference must stand on two independent matches: never a clip placed by its end excerpt alone.
   function candidates(){var out=[];synced.forEach(function(s){s.result.rows.forEach(function(row){var e=ids.has(row)&&entryOf(s,row);if(e&&row.status==='placed'&&row.confidence==='high'&&row.start!=null&&!/audio \(end\)/.test(row.method||''))out.push({s:s,row:row,e:e,t0:row.start,t1:row.start+e.duration});});});return out;}
@@ -168,32 +174,68 @@ async function analyzeRun(sources,cameras,ffmpeg,state,progress,deps,ctl){
     var miss=unplaced(s),res=await runSync(m,s.clips);applySync(s.result.rows,res,miss);refresh(s,res);
    }
   }
+  // 0. A clip placed medium cannot lend its audio, however far past the music it reaches. When one would add REF_GAIN
+  // and no clip can lend yet, its spread excerpts that lie inside the music are searched as well: three matches that
+  // agree make it high (RPSync), and so a reference. Only excerpts inside the music can match it, so only those decode.
+  if(R.spreadExcerpts&&!canLend())await promote();
   // 1. Spread excerpts against the A1 music.
   if(R.spreadExcerpts)await spread(master,true);
-  var open=synced.filter(function(s){return unplaced(s).length;});if(!open.length)return {duration:duration};
-  // 2. Camera reference: the clip adding the most uncovered seconds first; its span counts as covered only once its audio
-  // decoded, so a clip that fails to decode leaves the span to the next best one.
-  var cands=candidates(),tried=[],refParts=[],used=[],end=duration;
+  if(!synced.some(function(s){return retry(s).length;}))return {duration:duration};
+  // 2. Camera references, in rounds: the clip adding the most uncovered seconds first; its span counts as covered only
+  // once its audio decoded, so a clip that fails to decode leaves the span to the next best one. The other cameras are
+  // synced against the extended master, then spread excerpts are tried there (3). A clip placed high in a round lends
+  // its audio in the next one (Atlas: the WAV ends 7 min into 2 h 18 min of footage; DJI 0003 reaches 20 min past it,
+  // and Cam A, found against DJI 0003, covers the rest), up to REF_MAX references in all.
+  var tried=[],refParts=[],used=[],end=duration,extended=null,names=[];
+  var before=new Map(),labels=new Map();synced.forEach(function(s){retry(s).forEach(function(row){before.set(row,true);});});
   while(used.length<REF_MAX){
-   var best=null;cands.forEach(function(c){if(tried.indexOf(c)<0){var g=gain(c.t0,c.t1);if(g>=REF_GAIN&&(!best||g>best.g))best={c:c,g:g};}});
-   if(!best)break;var c=best.c;tried.push(c);check(state);
-   progress(.98,'Reading the audio of '+c.e.name+' ('+c.s.result.name+') as a sync reference');
-   var env=await tryDecode(c.e.path,c.e.sourceIn,c.e.duration);if(!env)continue;
-   mark(c.t0,c.t1);refParts.push({start:c.t0,env:env});used.push(c);end=Math.max(end,c.t1);
+   var open=synced.filter(function(s){return retry(s).length;}),added=0;if(!open.length)break;
+   while(used.length<REF_MAX){
+    var best=null;candidates().forEach(function(c){if(tried.indexOf(c.row)<0){var g=gain(c.t0,c.t1);if(g>=REF_GAIN&&(!best||g>best.g))best={c:c,g:g};}});
+    if(!best)break;var c=best.c;tried.push(c.row);check(state);
+    progress(.98,'Reading the audio of '+c.e.name+' ('+c.s.result.name+') as a sync reference');
+    var env=await tryDecode(c.e.path,c.e.sourceIn,c.e.duration);if(!env)continue;var heard=c.t0+env.onset.length/R.RATE;if(gain(c.t0,heard)<REF_GAIN)continue;
+    mark(c.t0,heard);refParts.push({start:c.t0,env:env});used.push(c);end=Math.max(end,heard);added++;
+   }
+   if(!added)break;
+   // Later parts overwrite earlier ones: the reference adding the most goes after the others, and the A1 parts go last
+   // so the music wins wherever it exists.
+   extended=R.prepareMaster(R.masterFromClips(refParts.slice().reverse().concat(parts),end));names=used.map(function(c){return c.e.name+' ('+c.s.result.name+')';});
+   for(var o=0;o<open.length;o++){
+    check(state);var s2=open[o],miss2=retry(s2);progress(.98,'Syncing '+s2.result.name+' against the camera reference');
+    // A clip its clock put outside the music that the reference does not place stays excluded while its clock position
+    // lies in a gap no audio covers (outside, not a clip to review); inside a reference it goes to review.
+    var kept=miss2.filter(function(row){return row.status==='excluded';}).map(function(row){return {row:row,was:Object.assign({},row)};});
+    var res2=await runSync(extended,s2.clips);applySync(s2.result.rows,res2,miss2);
+    kept.forEach(function(k){var r=k.row;if(r.status==='placed'||r.start!=null&&music(r.start,r.start+r.sourceOut-r.sourceIn)>0)return;Object.keys(r).forEach(function(key){delete r[key];});Object.assign(r,k.was);});
+    refresh(s2,res2);
+   }
+   // 3. Spread excerpts against the extended master for what is still in review.
+   if(R.spreadExcerpts)await spread(extended,false);
+   // Each clip names the references of the round that placed it.
+   before.forEach(function(v,row){if(row.status==='placed'&&!labels.has(row))labels.set(row,names.join(', '));});
   }
   if(!used.length)return {duration:duration};
-  // Later parts overwrite earlier ones: the reference adding the most goes after the others, and the A1 parts go last so
-  // the music wins wherever it exists.
-  var extended=R.prepareMaster(R.masterFromClips(refParts.slice().reverse().concat(parts),end)),names=used.map(function(c){return c.e.name+' ('+c.s.result.name+')';});
-  var before=new Map();synced.forEach(function(s){unplaced(s).forEach(function(row){before.set(row,true);});});
-  for(var o=0;o<open.length;o++){
-   check(state);var s2=open[o],miss2=unplaced(s2);progress(.98,'Syncing '+s2.result.name+' against the camera reference');
-   var res2=await runSync(extended,s2.clips);applySync(s2.result.rows,res2,miss2);refresh(s2,res2);
-  }
-  // 3. Spread excerpts against the extended master for what is still in review.
-  if(R.spreadExcerpts)await spread(extended,false);
-  before.forEach(function(v,row){if(row.status==='placed'){row.method=row.method+' + camera reference';row.reason=(row.reason?row.reason+'; ':'')+'matched against the A1 music extended with the audio of '+names.join(', ');}});
+  labels.forEach(function(list,row){if(row.confidence==='high')row.confidence='medium';row.method=row.method+' + camera reference';row.reason=(row.reason?row.reason+'; ':'')+'matched against the A1 music extended with the audio of '+list;});
   return {duration:end,reference:{clips:names,end:Math.round(end*1000)/1000}};
+  /** Step 0: medium clips that would add REF_GAIN, the most first, until one can lend. */
+  async function promote(){
+   var todo=[];synced.forEach(function(s){if(s.result.anchor!=null)return;s.result.rows.forEach(function(row){var e=ids.has(row)&&entryOf(s,row);
+    if(e&&!e.extra&&row.status==='placed'&&row.confidence==='medium'&&row.start!=null&&!/audio \(end\)/.test(row.method||'')){var g=gain(row.start,row.start+e.duration);if(g>=REF_GAIN)todo.push({s:s,e:e,row:row,g:g});}});});
+   todo.sort(function(x,y){return y.g-x.g;});
+   for(var b=0;b<todo.length&&!canLend();b++){
+    var s=todo[b].s,e=todo[b].e,row=todo[b].row,taken=[e.excerptStart-e.sourceIn];if(e.endEnv)taken.push(e.endExcerptStart-e.sourceIn);
+    // Excerpt at `at` s into the clip lies at row.start+at on the timeline; at least half of it has to be music. The music
+    // may cover only a few minutes of the clip (Atlas DJI 0003: 442 s), so they lie back to back there, not EXTRA_STEP
+    // apart; they share no audio with each other and at most half with the clip's own excerpts (spreadExcerpts keeps 60 s
+    // from them; Atlas: 250 s matches high, 40 s of it shared with the 20% excerpt at 330 s, while 130 s, apart from both,
+    // finds the same offset just under medium). PROMOTE_MAX of them are plenty for the two agreeing matches still needed.
+    var at=R.spreadExcerpts(e.duration,120,taken).filter(function(x){return music(row.start+x,row.start+x+120)>=60;}).slice(0,PROMOTE_MAX);e.extra=[];
+    for(var q=0;q<at.length;q++){check(state);progress(.98,'Checking '+e.name+' against the A1 music ('+(q+1)+'/'+at.length+')');var env=await tryDecode(e.path,e.sourceIn+at[q],120);if(env)e.extra.push({excerptStart:e.sourceIn+at[q],env:env});}
+    if(!e.extra.length)continue;
+    var res=await runSync(master,s.clips);applySync(s.result.rows,res,[row]);refresh(s,res);
+   }
+  }
  }
 }
 /** Drone cameras: bridge their camera clock through the audio-synced cameras (RPDroneSync.planDrone). */
