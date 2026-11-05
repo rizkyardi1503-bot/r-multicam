@@ -9,7 +9,9 @@ const filenames: Record<string, string> = {
   macos: "R-Project-Multicam-AI-macOS-v2.3.11.18-PUBLIC.zip"
 };
 // DaVinci Resolve is "coming soon" on the website; its zip stays in the bucket but is not served yet.
-// Installers are served only from the private plugin-installers bucket, after sign-in.
+// This function serves installers from the private plugin-installers bucket after sign-in, which is what makes the
+// website's download analytics and account step work. It is not access control: the same ZIPs are public in the GitHub
+// repository, and plugin-update-download serves them to panels without a sign-in.
 
 function corsHeaders(req: Request) {
   const origin = req.headers.get("origin") || "";

@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /
 Disallow: /auth/
+Disallow: /id/auth/
 Disallow: /cdn-cgi/
 Sitemap: https://r-multicam.pages.dev/sitemap.xml

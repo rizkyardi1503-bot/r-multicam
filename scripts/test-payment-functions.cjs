@@ -18,8 +18,8 @@ function load(slug, fetch, logs) {
 }
 
 // World: tables + Midtrans transactions; every call is recorded.
-function world({ orders = [], profile = { license_status: 'trial', lifetime_order_id: null }, mid = {}, cancel = {}, insertStatus = 201, alertStatus = 201, paidMeanwhile = false, pendingConflict = false, startedMeanwhile = false, profileFail = false } = {}) {
-  const w = { orders: orders.map((o) => ({ ...o })), profile: { ...profile }, calls: [], alerts: [], snapHeaders: null };
+function world({ orders = [], profile = { license_status: 'trial', lifetime_order_id: null }, mid = {}, cancel = {}, insertStatus = 201, alertStatus = 201, paidMeanwhile = false, pendingConflict = false, startedMeanwhile = false, profileFail = false, licenseFail = 0, stampFail = 0 } = {}) {
+  const w = { orders: orders.map((o) => ({ ...o })), profile: { ...profile }, calls: [], alerts: [], snapHeaders: null, snapCalls: 0, licenseFail, stampFail };
   w.fetch = async (url, init = {}) => {
     const u = new URL(url), method = init.method || 'GET', body = init.body ? JSON.parse(init.body) : null;
     w.calls.push(method + ' ' + u.pathname);
@@ -28,7 +28,11 @@ function world({ orders = [], profile = { license_status: 'trial', lifetime_orde
     if (u.pathname === '/rest/v1/plugin_profiles') {
       if (method === 'GET') return profileFail ? ok({ message: 'down' }, 503) : ok([{ ...w.profile }]);
       if (method === 'POST') return ok(null, 201);
-      if (method === 'PATCH') { Object.assign(w.profile, body); return ok([{ ...w.profile }]); }
+      if (method === 'PATCH') {
+        if (w.licenseFail > 0) { w.licenseFail--; return ok({ message: 'down' }, 503); }
+        if (u.searchParams.get('license_status') === 'neq.blocked' && w.profile.license_status === 'blocked') return ok([]);
+        Object.assign(w.profile, body); return ok([{ ...w.profile }]);
+      }
     }
     if (u.pathname === '/rest/v1/plugin_payment_orders') {
       const id = (u.searchParams.get('order_id') || '').replace(/^eq\./, '');
@@ -37,6 +41,10 @@ function world({ orders = [], profile = { license_status: 'trial', lifetime_orde
       if (method === 'POST') { if (insertStatus !== 201) return ok({ code: '23505' }, insertStatus); w.orders.push({ ...body, created_at: new Date().toISOString() }); return ok(null, 201); }
       if (method === 'PATCH') {
         const o = w.orders.find((x) => x.order_id === id);
+        if (u.searchParams.get('lifetime_activated_at') === 'is.null') {
+          if (w.stampFail > 0) { w.stampFail--; return ok({ message: 'down' }, 503); }
+          if (o.lifetime_activated_at) return ok(null, 204);
+        }
         if (pendingConflict && body.status === 'pending') return ok({ code: '23505' }, 409);
         if (paidMeanwhile && u.searchParams.get('paid_at') === 'is.null') { o.paid_at = '2026-10-19'; o.status = 'settlement'; }
         if (startedMeanwhile && u.searchParams.get('status')) o.status = 'pending';
@@ -52,7 +60,7 @@ function world({ orders = [], profile = { license_status: 'trial', lifetime_orde
       const c = cancel[id] || { status_code: '412', status_message: 'Merchant cannot modify the status of the transaction' };
       return ok(c, Number(c.status_code) === 200 ? 200 : Number(c.status_code));
     }
-    if (u.hostname === 'app.midtrans.com') { w.snapHeaders = new Headers(init.headers); return ok({ token: 't', redirect_url: 'https://app.midtrans.com/snap/v4/redirection/new' }, 201); }
+    if (u.hostname === 'app.midtrans.com') { w.snapCalls++; w.snapHeaders = new Headers(init.headers); return ok({ token: 't', redirect_url: 'https://app.midtrans.com/snap/v4/redirection/new' }, 201); }
     throw Error('unexpected fetch ' + method + ' ' + url);
   };
   return w;
@@ -244,4 +252,130 @@ const notify = async (w, b) => {
   { const w = world({ orders: [order('A')], mid: { A: settle }, alertStatus: 409 }); const logs = [], h = load('check-lifetime-payment', w.fetch, logs);
     const r = await h(new Request('https://f.test', { method: 'POST', headers: { authorization: 'Bearer user' }, body: '{}' })); assert.equal(r.status, 200); assert(!logs.some((l) => l[0] === 'error')); }
   console.log('PASS purchase_paid alert: once via check payment, checkout reconcile or webhook, whichever activates first; concurrent duplicate (409) is quiet');
+
+  // ---- 2026-11-04 audit ----
+  const names = (w) => w.alerts.map((a) => a.event_name);
+  const ago = (h) => new Date(Date.now() - h * hour).toISOString();
+  const settled = (id) => ({ order_id: id, status_code: '200', gross_amount: '2000000.00', transaction_status: 'settlement' });
+  const paidOrder = (id, extra = {}) => order(id, { status: 'settlement', paid_at: ago(2), lifetime_activated_at: null, ...extra });
+
+  // Checkout: paid and not refunded, licence write had failed: activates, no new order, no new charge.
+  { const w = world({ orders: [paidOrder('A')] }); const r = await buy(w, '');
+    assert.equal(r.status, 409); assert.equal(r.data.activated, true); assert.equal(w.snapCalls, 0); assert.equal(w.orders.length, 1);
+    assert.equal(w.profile.license_status, 'lifetime'); assert.equal(w.profile.lifetime_order_id, 'A');
+    assert(w.orders[0].lifetime_activated_at, 'stamped once the licence is written'); assert.deepEqual(names(w), ['purchase_paid']); }
+  // Same, already stamped by an older build whose licence write failed: activates without a second alert.
+  { const w = world({ orders: [paidOrder('A', { lifetime_activated_at: '2026-10-01T00:00:00Z' })] }); const r = await buy(w, '');
+    assert.equal(r.data.activated, true); assert.equal(w.profile.lifetime_activated_at, '2026-10-01T00:00:00Z'); assert.deepEqual(names(w), []); assert.equal(w.snapCalls, 0); }
+  // Licence write fails again: 500, order not stamped; the next try activates and sends the alert.
+  { const w = world({ orders: [paidOrder('A')], licenseFail: 1 }); let r = await buy(w, '');
+    assert.equal(r.status, 500); assert.equal(w.orders[0].lifetime_activated_at, null); assert.equal(w.snapCalls, 0);
+    r = await buy(w, ''); assert.equal(r.data.activated, true); assert.deepEqual(names(w), ['purchase_paid']); }
+  // Refunded or merchant-cancelled paid orders do not activate: a new purchase is allowed.
+  for (const status of ['refund', 'partial_refund', 'chargeback', 'partial_chargeback', 'cancel']) {
+    const w = world({ orders: [paidOrder('A', { status, lifetime_activated_at: ago(2) })] }); const r = await buy(w, '');
+    assert.equal(r.status, 200, status); assert.equal(w.snapCalls, 1); assert.equal(w.profile.license_status, 'trial'); assert.equal(w.orders.length, 2); }
+  // Closed order paid in an old tab, under 25 h: Midtrans is asked and it activates.
+  { const w = world({ orders: [order('OLD', { status: 'cancel', created_at: ago(5) })], mid: { OLD: { status_code: '200', transaction_status: 'settlement', gross_amount: '2000000.00', transaction_id: 't' } } });
+    const r = await buy(w, ''); assert.equal(r.data.activated, true); assert.equal(w.snapCalls, 0); assert.equal(w.orders[0].status, 'settlement'); assert(w.orders[0].paid_at); assert(w.orders[0].lifetime_activated_at); assert.deepEqual(names(w), ['purchase_paid']); }
+  // Over 25 h: not asked, a new order is made.
+  { const w = world({ orders: [order('OLD', { status: 'cancel', created_at: ago(26) })], mid: { OLD: { status_code: '200', transaction_status: 'settlement', gross_amount: '2000000.00' } } });
+    const r = await buy(w, ''); assert.equal(r.status, 200); assert(!w.calls.some((c) => c.includes('/v2/OLD/')), 'not asked after 25 h'); assert.equal(w.snapCalls, 1); }
+  // Closed order nobody opened: stays closed, never re-offered (panel asks without a promo code), new order made.
+  { const w = world({ orders: [order('OLD', { status: 'cancel', created_at: ago(5) })] }); const r = await buy(w);
+    assert.equal(r.status, 200); assert.equal(r.data.reused, false); assert.notEqual(r.data.order_id, 'OLD'); assert.equal(w.orders.find((o) => o.order_id === 'OLD').status, 'cancel'); }
+  // Payment started in an old tab of a closed order, while a newer unused checkout exists: the started payment is continued.
+  { const w = world({ orders: [order('NEW', { created_at: ago(1) }), order('OLD', { status: 'cancel', created_at: ago(5) })], mid: { OLD: { status_code: '201', transaction_status: 'pending', gross_amount: '2000000.00' } } });
+    const r = await buy(w); assert.equal(r.data.reused, true); assert.equal(r.data.order_id, 'OLD'); assert.equal(w.snapCalls, 0); assert.equal(w.orders.find((o) => o.order_id === 'NEW').status, 'created'); }
+  // Started too long ago to continue: blocked, and the open order is left alone.
+  { const w = world({ orders: [order('NEW', { created_at: ago(1), affiliate_code: 'OTHER' }), order('OLD', { status: 'cancel', created_at: ago(24) })], mid: { OLD: { status_code: '201', transaction_status: 'pending', gross_amount: '2000000.00' } } });
+    const r = await buy(w, ''); assert.equal(r.status, 409); assert.match(r.data.error, /already started a payment/); assert.equal(w.orders.find((o) => o.order_id === 'NEW').status, 'created'); assert.equal(w.snapCalls, 0); }
+  // Midtrans cannot answer about a closed order: no new charge.
+  { const w = world({ orders: [order('OLD', { status: 'cancel', created_at: ago(5) })], mid: { OLD: 'down' } });
+    const r = await buy(w, ''); assert.equal(r.status, 409); assert.match(r.data.error, /could not confirm/); assert.equal(w.snapCalls, 0); }
+  // Several closed orders are asked at once.
+  { const w = world({ orders: [order('C1', { status: 'cancel', created_at: ago(5) }), order('C2', { status: 'cancel', created_at: ago(6) }), order('C3', { status: 'cancel', created_at: ago(7) })] });
+    const base = w.fetch; let inFlight = 0, most = 0; w.fetch = async (url, init) => { if (new URL(url).hostname !== 'api.midtrans.com') return base(url, init); inFlight++; most = Math.max(most, inFlight); await new Promise((r) => setTimeout(r, 20)); inFlight--; return base(url, init); };
+    await buy(w, ''); assert.equal(most, 3); }
+  // A recorded payment whose refund notice was lost: Midtrans is asked first, the refund is stored, owner told, new purchase allowed.
+  for (const st of ['refund', 'cancel']) {
+    const w = world({ orders: [paidOrder('A')], mid: { A: { status_code: '200', transaction_status: st, gross_amount: '2000000.00' } } }); const r = await buy(w, '');
+    assert.equal(r.status, 200); assert.equal(w.snapCalls, 1); assert.equal(w.orders.find((o) => o.order_id === 'A').status, st); assert.equal(w.profile.license_status, 'trial');
+    assert.deepEqual(w.alerts.filter((a) => a.event_name !== 'checkout_created').map((a) => [a.event_name, a.metadata.status]), [['purchase_refunded', st]]); }
+  // Midtrans confirms the payment, or cannot answer: the recorded payment stands, no new charge.
+  for (const answer of [settle, 'down']) {
+    const w = world({ orders: [paidOrder('A')], mid: { A: answer } }); const r = await buy(w, ''); assert.equal(r.data.activated, true); assert.equal(w.snapCalls, 0); }
+  // A saved promo code that is no longer approved does not stop activation (the fake has no affiliates table: reaching it would throw).
+  { const w = world({ orders: [paidOrder('A')] }); const r = await buy(w, 'OLDCODE'); assert.equal(r.data.activated, true); }
+  { const w = world({ orders: [order('A', { status: 'pending' })], mid: { A: settle } }); const r = await buy(w, 'OLDCODE'); assert.equal(r.data.activated, true); }
+  // A bad code with only unpaid orders: 400, the open order stays open, no new charge.
+  { const w = world({ orders: [order('A')] }); const base = w.fetch; w.fetch = async (url, init) => (new URL(url).pathname === '/rest/v1/plugin_affiliates' ? new Response('[]', { status: 200 }) : base(url, init));
+    const r = await buy(w, 'OLDCODE'); assert.equal(r.status, 400); assert.equal(w.orders[0].status, 'created'); assert.equal(w.orders.length, 1); assert.equal(w.snapCalls, 0); }
+  console.log('PASS checkout: paid unrefunded order activates without a new charge, refunded ones do not, closed orders under 25 h are asked (paid, started, unused, unreachable), asked in parallel');
+
+  // Webhook: merchant cancels a paid card payment: stored, owner told, licence kept.
+  { const w = world({ orders: [paidOrder('A', { status: 'capture', lifetime_activated_at: ago(2) })], profile: { license_status: 'lifetime', lifetime_order_id: 'A' } });
+    const r = await notify(w, { order_id: 'A', status_code: '200', gross_amount: '2000000.00', transaction_status: 'cancel' });
+    assert.equal(r.status, 200); assert.equal(w.orders[0].status, 'cancel'); assert(w.orders[0].paid_at, 'the payment record is kept'); assert.equal(w.profile.license_status, 'lifetime');
+    assert.deepEqual(w.alerts.map((a) => [a.event_name, a.metadata.status]), [['purchase_refunded', 'cancel']]); }
+  // Cancel on an unpaid order is only a closed checkout: no alert.
+  { const w = world({ orders: [order('A', { status: 'pending' })] }); await notify(w, { order_id: 'A', status_code: '200', gross_amount: '2000000.00', transaction_status: 'cancel' });
+    assert.equal(w.orders[0].status, 'cancel'); assert.deepEqual(names(w), []); }
+  // Late settlement after money went back: nothing flips, no licence, no alert.
+  for (const status of ['refund', 'partial_refund', 'chargeback', 'partial_chargeback', 'cancel']) {
+    const w = world({ orders: [paidOrder('A', { status, lifetime_activated_at: ago(2) })] });
+    const r = await notify(w, settled('A')); assert.equal(r.status, 200); assert.equal(r.data.ignored, 'ALREADY_REFUNDED'); assert.equal(w.orders[0].status, status); assert.equal(w.profile.license_status, 'trial'); assert.deepEqual(names(w), []); }
+  // Refund recorded on an order we never saw paid: a late settlement does not activate it either.
+  { const w = world({ orders: [order('A', { status: 'refund' })] }); const r = await notify(w, settled('A'));
+    assert.equal(r.data.ignored, 'ALREADY_REFUNDED'); assert.equal(w.orders[0].paid_at, null); assert.equal(w.profile.license_status, 'trial'); }
+  // A late "pending" does not undo a refund recorded on an order we never saw paid.
+  { const w = world({ orders: [order('A', { status: 'refund' })] }); const r = await notify(w, { order_id: 'A', status_code: '201', gross_amount: '2000000.00', transaction_status: 'pending' });
+    assert.equal(r.data.ignored, 'ALREADY_REFUNDED'); assert.equal(w.orders[0].status, 'refund'); }
+  // Race: the settlement is stored after this "pending" read the order: it never overwrites the payment.
+  { const w = world({ orders: [order('A', { status: 'pending' })] }); const base = w.fetch;
+    w.fetch = async (url, init = {}) => { if ((init.method || 'GET') === 'PATCH' && new URL(url).pathname === '/rest/v1/plugin_payment_orders') Object.assign(w.orders[0], { status: 'settlement', paid_at: '2026-11-05T00:00:00Z', lifetime_activated_at: '2026-11-05T00:00:00Z' }); return base(url, init); };
+    const r = await notify(w, { order_id: 'A', status_code: '201', gross_amount: '2000000.00', transaction_status: 'pending' });
+    assert.equal(r.status, 200); assert.equal(w.orders[0].status, 'settlement'); assert.equal(w.orders[0].paid_at, '2026-11-05T00:00:00Z'); }
+  // A refund notice keeps the payment date.
+  { const w = world({ orders: [paidOrder('A', { paid_at: '2026-11-01T00:00:00Z', lifetime_activated_at: '2026-11-01T00:00:00Z' })] }); await notify(w, { order_id: 'A', status_code: '200', gross_amount: '2000000.00', transaction_status: 'refund' });
+    assert.equal(w.orders[0].status, 'refund'); assert.equal(w.orders[0].paid_at, '2026-11-01T00:00:00Z'); }
+  // Old tab: unpaid "cancel" then a real payment still activates.
+  { const w = world({ orders: [order('A', { status: 'cancel' })] }); await notify(w, settled('A'));
+    assert.equal(w.orders[0].status, 'settlement'); assert.equal(w.profile.license_status, 'lifetime'); assert.deepEqual(names(w), ['purchase_paid']); }
+  // Blocked account: paid is recorded, no activation stamp (no commission), owner told.
+  { const w = world({ orders: [order('A')], profile: { license_status: 'blocked', lifetime_order_id: null } }); const r = await notify(w, settled('A'));
+    assert.equal(r.data.warning, 'PROFILE_NOT_FOUND_OR_BLOCKED'); assert(w.orders[0].paid_at); assert.equal(w.orders[0].lifetime_activated_at, null); assert.equal(w.profile.license_status, 'blocked'); assert.deepEqual(names(w), ['purchase_paid_not_activated']); }
+  // Licence write fails: Midtrans retries; the retry activates, stamps and alerts.
+  { const w = world({ orders: [order('A')], licenseFail: 1 }); let r = await notify(w, settled('A'));
+    assert.equal(r.status, 500); assert(w.orders[0].paid_at); assert.equal(w.orders[0].lifetime_activated_at, null); assert.deepEqual(names(w), []);
+    r = await notify(w, settled('A')); assert.equal(r.status, 200); assert(w.orders[0].lifetime_activated_at); assert.equal(w.profile.license_status, 'lifetime'); assert.deepEqual(names(w), ['purchase_paid']); }
+  // Stamp write fails after the licence: retried too, one alert, not read as a duplicate.
+  { const w = world({ orders: [order('A')], stampFail: 1 }); let r = await notify(w, settled('A')); assert.equal(r.status, 500); assert.deepEqual(names(w), []);
+    r = await notify(w, settled('A')); assert.equal(r.status, 200); assert.equal(r.data.warning, undefined); assert(w.orders[0].lifetime_activated_at); assert.deepEqual(names(w), ['purchase_paid']); }
+  // A second notice (capture then settlement) keeps the first stamp.
+  { const w = world({ orders: [order('A')] }); await notify(w, { ...settled('A'), transaction_status: 'capture', fraud_status: 'accept' }); const first = w.orders[0].lifetime_activated_at;
+    await new Promise((r) => setTimeout(r, 2)); await notify(w, settled('A')); assert.equal(w.orders[0].lifetime_activated_at, first); assert.deepEqual(names(w), ['purchase_paid']); }
+  console.log('PASS webhook: merchant cancel of a paid order stored + alert, late settlement never undoes a refund, old-tab payment still activates, blocked account not stamped, failed licence or stamp write keeps the alert');
+
+  // Check payment: same order of writes, and refunded orders stay refunded.
+  { const w = world({ orders: [order('A')], profile: { license_status: 'blocked', lifetime_order_id: null }, mid: { A: settle } });
+    let r = await check(w); assert.equal(r.status, 403); assert(w.orders[0].paid_at); assert.equal(w.orders[0].lifetime_activated_at, null); assert.deepEqual(names(w), ['purchase_paid_not_activated']);
+    r = await check(w); assert.equal(r.status, 403); assert.equal(w.alerts.length, 1, 'repeat clicks do not repeat the alert'); }
+  { const w = world({ orders: [order('A')], licenseFail: 1, mid: { A: settle } }); let r = await check(w);
+    assert.equal(r.status, 500); assert.equal(w.orders[0].lifetime_activated_at, null); assert.deepEqual(names(w), []);
+    r = await check(w); assert.equal(r.data.paid, true); assert(w.orders[0].lifetime_activated_at); assert.deepEqual(names(w), ['purchase_paid']); }
+  { const w = world({ orders: [paidOrder('A', { status: 'refund', lifetime_activated_at: ago(2) })], mid: { A: settle } }); const r = await check(w);
+    assert.equal(r.data.paid, false); assert.equal(r.data.status, 'refund'); assert.equal(w.orders[0].status, 'refund'); assert.equal(w.profile.license_status, 'trial'); assert(!w.calls.some((c) => c.includes('/v2/'))); }
+  // Licence written but stamp failed: the next check finishes it, even though the account already reads lifetime.
+  { const w = world({ orders: [order('A')], stampFail: 1, mid: { A: settle } }); let r = await check(w);
+    assert.equal(r.status, 500); assert.equal(w.profile.license_status, 'lifetime'); assert.equal(w.orders[0].lifetime_activated_at, null); assert.deepEqual(names(w), []);
+    r = await check(w); assert.equal(r.data.paid, true); assert(w.orders[0].lifetime_activated_at); assert.deepEqual(names(w), ['purchase_paid']);
+    r = await check(w); assert.deepEqual(names(w), ['purchase_paid'], 'finished: asked no more'); }
+  // Midtrans reports money back on a paid order: stored, owner told once, no activation; also a refund never seen as paid.
+  { const w = world({ orders: [paidOrder('A')], mid: { A: { status_code: '200', transaction_status: 'refund', gross_amount: '2000000.00' } } }); let r = await check(w);
+    assert.equal(r.data.paid, false); assert.equal(w.orders[0].status, 'refund'); assert(w.orders[0].paid_at); assert.equal(w.profile.license_status, 'trial'); assert.deepEqual(names(w), ['purchase_refunded']);
+    await check(w); assert.equal(w.alerts.length, 1, 'once'); }
+  { const w = world({ orders: [order('A')], mid: { A: { status_code: '200', transaction_status: 'refund', gross_amount: '2000000.00' } } }); await check(w);
+    assert.equal(w.orders[0].status, 'refund'); assert.equal(w.orders[0].paid_at, null); assert.deepEqual(names(w), ['purchase_refunded']); }
+  console.log('PASS check payment: missing stamp repaired, refund answer stored with one alert; blocked account not stamped and alerted once, failed licence write keeps the alert, refunded order not reactivated');
 })().catch((e) => { console.error(e); process.exitCode = 1; });

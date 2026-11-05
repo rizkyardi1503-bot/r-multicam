@@ -27,8 +27,10 @@ function clean(value: unknown, max: number) {
 }
 // Visitor country/region. Supabase does not see the visitor's Cloudflare edge, so the website posts through its own
 // Pages Function (functions/api/analytics.js), which adds request.cf.country/region as x-rp-geo-* headers and proves
-// itself with the shared secret ANALYTICS_PROXY_SECRET. Once that secret is set here, only the proxy's geo headers
-// are trusted (a browser could send any cf-* header directly). Without the secret the old cf-* headers are read.
+// itself with the shared secret ANALYTICS_PROXY_SECRET. Once that secret is set here, every event must come through
+// the proxy, which rate-limits it: a direct POST is refused, so nobody can write forged rows at full speed. Set it in
+// Cloudflare Pages first and redeploy the site, then here, or real visits are refused until both match.
+// Without the secret the old cf-* headers are read and only an Origin is required (a script can fake that one).
 function safeEqual(a:string,b:string){
   if(a.length!==b.length)return false;
   let diff=0;
@@ -38,7 +40,6 @@ function safeEqual(a:string,b:string){
 function geo(req:Request){
   const secret=Deno.env.get("ANALYTICS_PROXY_SECRET")||"";
   if(!secret)return {country:clean(req.headers.get("cf-ipcountry"),3),region:clean(req.headers.get("cf-region"),120)};
-  if(!safeEqual(req.headers.get("x-rp-proxy-secret")||"",secret))return {country:null,region:null};
   const country=clean(req.headers.get("x-rp-geo-country"),3);
   let region:string|null=null;
   try{region=clean(decodeURIComponent(req.headers.get("x-rp-geo-region")||""),120);}catch{region=null;}
@@ -64,7 +65,9 @@ Deno.serve(async (req: Request) => {
   if(req.method!=="POST") return new Response("Method not allowed",{status:405,headers:h});
 
   const origin=req.headers.get("origin")||"";
-  if(origin && !allowedOrigins.has(origin)) return new Response("Origin not allowed",{status:403,headers:h});
+  if(!allowedOrigins.has(origin)) return new Response("Origin not allowed",{status:403,headers:h});
+  const proxySecret=Deno.env.get("ANALYTICS_PROXY_SECRET")||"";
+  if(proxySecret && !safeEqual(req.headers.get("x-rp-proxy-secret")||"",proxySecret)) return new Response("Direct posts are not accepted",{status:403,headers:h});
 
   const body=await req.json().catch(()=>null);
   if(!body || !allowedEvents.has(body.event_name)) return new Response("Invalid event",{status:400,headers:h});

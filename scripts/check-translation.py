@@ -12,7 +12,7 @@ from html.parser import HTMLParser
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SITE = ROOT / 'site'
-SKIP = {'auth/confirmed/index.html', '404.html'}
+SKIP = {'404.html'}
 TRANSLATABLE_ATTRS = {'alt', 'aria-label', 'title', 'placeholder', 'lang', 'hreflang', 'aria-description'}
 ORIGIN = 'https://r-multicam.pages.dev'
 

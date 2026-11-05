@@ -6,7 +6,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //  - every database write is checked; on failure we answer 500 so Midtrans retries the notification
 //    (before, a failed write still answered {ok:true} and the customer paid without getting a license);
 //  - a paid order is never downgraded by a later/out-of-order notification (e.g. "pending" after "settlement");
-//  - refunds and chargebacks are recorded on the order and logged for the owner (no automatic revoke);
+//  - refunds, chargebacks and a merchant cancelling a paid order are recorded on the order and logged for the owner
+//    (no automatic revoke), and a late settlement notice never flips them back;
+//  - the order gets lifetime_activated_at only after the licence write worked, so a blocked account earns no affiliate
+//    commission and a retry after a failed licence write still sends the purchase_paid alert;
 //  - unknown order ids (Midtrans dashboard test notifications) are acknowledged instead of retried forever.
 
 const enc = new TextEncoder();
@@ -66,9 +69,18 @@ Deno.serve(async (req) => {
   const storedStatus = STORABLE.has(status) ? status : order.status;
   const fraud = body.fraud_status ? String(body.fraud_status) : null;
   const success = (status === "settlement" || status === "capture") && (!fraud || fraud.toLowerCase() === "accept") && String(body.status_code) === "200";
-  const refunded = REFUND.has(status);
   const alreadyPaid = !!order.paid_at;
+  // "cancel" on an order that was paid is the merchant cancelling a captured card payment: money going back, like a
+  // refund. On an unpaid order it is only a closed checkout.
+  const refunded = REFUND.has(status) || (status === "cancel" && alreadyPaid);
   const now = new Date().toISOString();
+
+  // Any other notice that arrives after the money went back is stale. An unpaid "cancel" is not caught here: checkout
+  // closes old orders as "cancel" in our table and their Snap page can still be paid in an old tab.
+  if (!refunded && (REFUND.has(order.status) || (order.status === "cancel" && alreadyPaid))) {
+    console.warn("late notice ignored for a refunded order", status, String(body.order_id));
+    return json({ ok: true, ignored: "ALREADY_REFUNDED" });
+  }
 
   // A second paid order for an account that is already lifetime from another order (two checkouts paid): it is
   // recorded as paid but not as the activation (no affiliate commission), the first activation is kept and the owner
@@ -81,9 +93,10 @@ Deno.serve(async (req) => {
     if (prof && prof.license_status === "lifetime" && prof.lifetime_order_id && prof.lifetime_order_id !== order.order_id) duplicateOf = prof.lifetime_order_id;
   }
 
-  // Ignore stale notifications for a paid order unless they report a refund/chargeback.
+  // Ignore stale notifications for a paid order unless they report money going back.
   if (!alreadyPaid || success || refunded) {
-    const up = await rest("plugin_payment_orders?order_id=eq." + orderId, {
+    // A notice that is not a payment or refund never touches a row that became paid after it was read above.
+    const up = await rest("plugin_payment_orders?order_id=eq." + orderId + (success || refunded ? "" : "&paid_at=is.null"), {
       method: "PATCH",
       headers: { prefer: "return=minimal" },
       body: JSON.stringify({
@@ -91,8 +104,7 @@ Deno.serve(async (req) => {
         midtrans_transaction_id: body.transaction_id || order.midtrans_transaction_id || null,
         payment_type: body.payment_type || order.payment_type || null,
         fraud_status: fraud,
-        paid_at: success ? (order.paid_at || now) : order.paid_at,
-        lifetime_activated_at: success && !duplicateOf ? (order.lifetime_activated_at || now) : order.lifetime_activated_at,
+        ...(success ? { paid_at: order.paid_at || now } : {}),
         updated_at: now
       })
     });
@@ -123,7 +135,17 @@ Deno.serve(async (req) => {
       await alert("purchase_paid_not_activated", order.user_id, { order_id: order.order_id });
       return json({ ok: true, warning: "PROFILE_NOT_FOUND_OR_BLOCKED" });
     }
-    if (!order.lifetime_activated_at) await alert("purchase_paid", order.user_id, { order_id: order.order_id, gross_amount_idr: Number(order.gross_amount_idr), via: "webhook" });
+    if (!order.lifetime_activated_at) {
+      // Stamped only now: this is what earns the affiliate commission (database trigger) and what the other paths read as
+      // "already alerted". A failed write makes Midtrans retry, and the retry repeats this step.
+      const stamp = await rest("plugin_payment_orders?order_id=eq." + orderId + "&lifetime_activated_at=is.null", {
+        method: "PATCH",
+        headers: { prefer: "return=minimal" },
+        body: JSON.stringify({ lifetime_activated_at: now, updated_at: now })
+      });
+      if (!stamp.ok) return json({ error: "ORDER_UPDATE_FAILED" }, 500);
+      await alert("purchase_paid", order.user_id, { order_id: order.order_id, gross_amount_idr: Number(order.gross_amount_idr), via: "webhook" });
+    }
   } else if (refunded) {
     await alert("purchase_refunded", order.user_id, { order_id: order.order_id, status, gross_amount_idr: Number(order.gross_amount_idr) });
   }

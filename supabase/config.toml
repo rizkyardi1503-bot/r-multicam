@@ -1,0 +1,39 @@
+# Records how each Edge Function is deployed. Checked against the live project on 2026-11-05.
+# scripts/test-analytics-edge.cjs keeps this list in step with supabase/functions.
+# Only the functions below are settings here: do not run `supabase config push` from this file or turn on Supabase
+# GitHub branching with it, because every other project setting it leaves out could be pushed as its default.
+# Deploys through the dashboard or the MCP tool ignore this file: pass verify_jwt yourself.
+project_id = "ngotkvqtzqiotztnqwaw"
+
+# Called without a Supabase JWT: Midtrans, website visitors and Premiere panels.
+[functions.midtrans-lifetime-webhook]
+verify_jwt = false
+
+[functions.website-analytics]
+verify_jwt = false
+
+[functions.plugin-update-manifest]
+verify_jwt = false
+
+[functions.plugin-update-download]
+verify_jwt = false
+
+# Signed-in callers only.
+[functions.create-lifetime-checkout]
+verify_jwt = true
+
+[functions.check-lifetime-payment]
+verify_jwt = true
+
+[functions.owner-dashboard]
+verify_jwt = true
+
+[functions.website-download]
+verify_jwt = true
+
+[functions.plugin-entitlement-signed]
+verify_jwt = true
+
+# Also deployed with verify_jwt on, but their source is not in this repository, so they have no table here (the CLI
+# expects an entrypoint for every table): music-hybrid-review, affiliate-portal, import-plugin-installers,
+# setup-entitlement-key. `supabase functions deploy --prune` would delete them.

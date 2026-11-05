@@ -10,7 +10,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //    activates the license instead of asking the customer to pay again;
 //  - prices are IDR only: the response carries no USD figure (panels since v2.3.11.9 show gross_amount_idr);
 //  - a never-opened Snap checkout older than 24 h is closed as "expire" (Midtrans sends nothing for it);
-//  - activating a missed payment here sends the owner's purchase_paid alert (the webhook then skips it).
+//  - activating a missed payment here sends the owner's purchase_paid alert (the webhook then skips it);
+//  - an order already recorded as paid and not refunded (for example the licence write failed) activates instead of
+//    opening a new charge, and orders closed as "cancel" less than 25 h ago are asked about too (old Snap tab).
 // Needs the column added in supabase/migrations/20261015_payment_and_version_hardening.sql (checkout_url).
 
 const cors = {
@@ -28,6 +30,9 @@ const REUSE_MS = 23 * 3600 * 1000;
 const SNAP_EXPIRY_MS = 24 * 3600 * 1000;
 // Midtrans statuses after which an order can no longer be paid.
 const FINAL = new Set(["expire", "cancel", "deny", "failure"]);
+const REFUND = new Set(["refund", "partial_refund", "chargeback", "partial_chargeback"]);
+// An order this function closed as "cancel" is closed in our table only: its Snap page stays payable until it expires.
+const CANCEL_PAYABLE_MS = 25 * 3600 * 1000;
 // Public webhook address (SUPABASE_URL inside a function is the API gateway and may not be the public host).
 const WEBHOOK_URL = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/midtrans-lifetime-webhook";
 const b64 = (s: string) => btoa(s);
@@ -73,6 +78,76 @@ Deno.serve(async (req) => {
   if (profiles[0].license_status === "blocked") return json({ error: "This account is blocked. Contact support." }, 403);
   if (profiles[0].license_status === "lifetime") return json({ error: "Your lifetime license is already active." }, 409);
 
+  const ownerAlert = async (event_name: string, metadata: Record<string, unknown>) => {
+    const al = await rest("website_analytics_events", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ event_name, user_id: userId, path: "/", metadata }) }).catch(() => null);
+    // 409: purchase_paid already sent for this order by another path (unique index on purchase_paid per order).
+    if (!al || (!al.ok && al.status !== 409)) console.error("owner alert not stored", event_name, String(metadata.order_id || ""), al ? al.status : "network");
+  };
+  // Grants the licence from an order recorded as paid. The order is stamped only after the licence write worked, as in
+  // the webhook: the stamp earns the affiliate commission, and an unstamped order still gets its alert on the next try.
+  const activate = async (o: any) => {
+    const now = new Date().toISOString();
+    const b = await rest("plugin_profiles?user_id=eq." + encodeURIComponent(userId) + "&license_status=neq.blocked", { method: "PATCH", headers: { prefer: "return=representation" }, body: JSON.stringify({ license_status: "lifetime", lifetime_activated_at: o.lifetime_activated_at || now, lifetime_order_id: o.order_id, updated_at: now }) });
+    if (!b.ok) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: o.order_id }, 500);
+    if (!(await b.json().catch(() => [])).length) {
+      await ownerAlert("purchase_paid_not_activated", { order_id: o.order_id });
+      return json({ error: "This account is blocked. Contact support." }, 403);
+    }
+    if (!o.lifetime_activated_at) {
+      const stamp = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(o.order_id) + "&lifetime_activated_at=is.null", { method: "PATCH", body: JSON.stringify({ lifetime_activated_at: now, updated_at: now }) });
+      if (!stamp.ok) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: o.order_id }, 500);
+      await ownerAlert("purchase_paid", { order_id: o.order_id, gross_amount_idr: Number(o.gross_amount_idr), via: "checkout_reconcile" });
+    }
+    return json({ error: "Your payment was already received. Your lifetime license is now active.", activated: true }, 409);
+  };
+
+  // Look at this customer's orders first (newest 10).
+  const recentQ = await rest("plugin_payment_orders?select=order_id,status,gross_amount_idr,affiliate_code,checkout_url,created_at,paid_at,lifetime_activated_at&user_id=eq." +
+    encodeURIComponent(userId) + "&order=created_at.desc&limit=10");
+  if (!recentQ.ok) return json({ error: "ORDER_LOOKUP_FAILED" }, 500);
+  const recent: any[] = await recentQ.json();
+  const askMidtrans = (o: any) => fetch("https://api.midtrans.com/v2/" + encodeURIComponent(o.order_id) + "/status", { headers: midtransAuth, signal: AbortSignal.timeout(10000) })
+    .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) })).catch(() => null);
+
+  // Already recorded as paid and the money was not returned, yet the account is not lifetime (the licence write failed,
+  // or the account was blocked at the time): activate from the oldest such order, never charge again. Midtrans is asked
+  // first because a refund notice can be lost; if it cannot answer, the recorded payment stands.
+  for (const o of recent.filter((x) => x.paid_at && !REFUND.has(x.status) && x.status !== "cancel").reverse()) {
+    const answer = await askMidtrans(o);
+    const st = answer && answer.ok ? String(answer.body.transaction_status || "") : "";
+    if (!REFUND.has(st) && st !== "cancel") return await activate(o);
+    const back = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(o.order_id), { method: "PATCH", body: JSON.stringify({ status: st, updated_at: new Date().toISOString() }) });
+    if (!back.ok) return json({ error: "ORDER_LOOKUP_FAILED" }, 500);
+    await ownerAlert("purchase_refunded", { order_id: o.order_id, status: st, gross_amount_idr: Number(o.gross_amount_idr) });
+  }
+  const unpaid = recent.filter((o) => !o.paid_at && (o.status === "created" || o.status === "pending" || (o.status === "cancel" && Date.now() - Date.parse(o.created_at) < CANCEL_PAYABLE_MS)));
+
+  // Ask Midtrans about each one, all at once (clients give up after 30 s). A payment that went through but was never
+  // recorded (missed webhook, or an old tab of a closed order) activates instead of charging again. o.mt: "pending"
+  // (payment started), "none" (Snap page never used), a final status, or "unknown" when Midtrans could not be reached.
+  const answers = await Promise.all(unpaid.map(askMidtrans));
+  for (let i = 0; i < unpaid.length; i++) {
+    const o = unpaid[i], mr = answers[i];
+    const m: any = mr ? mr.body : {};
+    // "Never opened" only when Midtrans says so in its JSON (status_code 404); a bare HTTP 404 or error is unknown.
+    if (mr && String(m.status_code) === "404") { o.mt = "none"; continue; }
+    if (!mr || !mr.ok) { o.mt = "unknown"; continue; }
+    const st = String(m.transaction_status || "");
+    const fraud = m.fraud_status ? String(m.fraud_status).toLowerCase() : null;
+    if ((st === "settlement" || st === "capture") && (!fraud || fraud === "accept") && String(m.status_code) === "200" && Number(m.gross_amount) === Number(o.gross_amount_idr)) {
+      const now = new Date().toISOString();
+      const a = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(o.order_id), { method: "PATCH", body: JSON.stringify({ status: st, paid_at: now, midtrans_transaction_id: m.transaction_id || null, payment_type: m.payment_type || null, fraud_status: fraud, updated_at: now }) });
+      if (!a.ok) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: o.order_id }, 500);
+      return await activate(o);
+    }
+    // A card payment Midtrans is still reviewing (authorize, or capture/settlement held for a fraud challenge) is a
+    // payment in progress, like pending: continue it, never charge again. Other states (paid with a different amount,
+    // refunded...) stay "unknown" and block a new checkout until the owner looks at the order.
+    const reviewing = st === "authorize" || ((st === "capture" || st === "settlement") && fraud === "challenge");
+    o.mt = st === "pending" || reviewing ? "pending" : (FINAL.has(st) ? st : "unknown");
+  }
+
+  // After the paid checks: a saved promo code that is no longer approved must not stop a paid customer's activation.
   const input = (await req.json().catch(() => null)) || {};
   // The panel sends no promo_code at all: it continues any payable open checkout (keeping that order's promo code).
   // The website always sends promo_code ("" = standard price on purpose).
@@ -103,48 +178,12 @@ Deno.serve(async (req) => {
     environment: "production"
   });
 
-  // Look at this customer's unpaid orders first (newest 10).
-  const recentQ = await rest("plugin_payment_orders?select=order_id,status,gross_amount_idr,affiliate_code,checkout_url,created_at,paid_at,lifetime_activated_at&user_id=eq." +
-    encodeURIComponent(userId) + "&order=created_at.desc&limit=10");
-  if (!recentQ.ok) return json({ error: "ORDER_LOOKUP_FAILED" }, 500);
-  const recent: any[] = await recentQ.json();
-  const unpaid = recent.filter((o) => !o.paid_at && (o.status === "created" || o.status === "pending"));
-
-  // Ask Midtrans about each one. A payment that went through but was never recorded (missed webhook) activates
-  // instead of charging again. o.mt: "pending" (payment started), "none" (Snap page never used), a final status, or
-  // "unknown" when Midtrans could not be reached.
-  for (const o of unpaid) {
-    const mr = await fetch("https://api.midtrans.com/v2/" + encodeURIComponent(o.order_id) + "/status", { headers: midtransAuth, signal: AbortSignal.timeout(10000) }).catch(() => null);
-    const m = mr ? await mr.json().catch(() => ({})) : {};
-    // "Never opened" only when Midtrans says so in its JSON (status_code 404); a bare HTTP 404 or error is unknown.
-    if (mr && String(m.status_code) === "404") { o.mt = "none"; continue; }
-    if (!mr || !mr.ok) { o.mt = "unknown"; continue; }
-    const st = String(m.transaction_status || "");
-    const fraud = m.fraud_status ? String(m.fraud_status).toLowerCase() : null;
-    if ((st === "settlement" || st === "capture") && (!fraud || fraud === "accept") && String(m.status_code) === "200" && Number(m.gross_amount) === Number(o.gross_amount_idr)) {
-      const now = new Date().toISOString();
-      const a = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(o.order_id), { method: "PATCH", body: JSON.stringify({ status: st, paid_at: now, lifetime_activated_at: now, midtrans_transaction_id: m.transaction_id || null, payment_type: m.payment_type || null, fraud_status: fraud, updated_at: now }) });
-      const b = await rest("plugin_profiles?user_id=eq." + encodeURIComponent(userId) + "&license_status=neq.blocked", { method: "PATCH", headers: { prefer: "return=representation" }, body: JSON.stringify({ license_status: "lifetime", lifetime_activated_at: now, lifetime_order_id: o.order_id, updated_at: now }) });
-      if (!a.ok || !b.ok) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: o.order_id }, 500);
-      if (!(await b.json().catch(() => [])).length) return json({ error: "This account is blocked. Contact support." }, 403);
-      // Owner alert; 409 = already sent for this order by another path (unique index on purchase_paid per order).
-      if (!o.lifetime_activated_at) {
-        const al = await rest("website_analytics_events", { method: "POST", headers: { prefer: "return=minimal" }, body: JSON.stringify({ event_name: "purchase_paid", user_id: userId, path: "/", metadata: { order_id: o.order_id, gross_amount_idr: Number(o.gross_amount_idr), via: "checkout_reconcile" } }) }).catch(() => null);
-        if (!al || (!al.ok && al.status !== 409)) console.error("owner alert not stored", "purchase_paid", o.order_id, al ? al.status : "network");
-      }
-      return json({ error: "Your payment was already received. Your lifetime license is now active.", activated: true }, 409);
-    }
-    // A card payment Midtrans is still reviewing (authorize, or capture/settlement held for a fraud challenge) is a
-    // payment in progress, like pending: continue it, never charge again. Other states (paid with a different amount,
-    // refunded...) stay "unknown" and block a new checkout until the owner looks at the order.
-    const reviewing = st === "authorize" || ((st === "capture" || st === "settlement") && fraud === "challenge");
-    o.mt = st === "pending" || reviewing ? "pending" : (FINAL.has(st) ? st : "unknown");
-  }
-
   // Re-use an open checkout (still payable, less than 23 h old): same price and promo code, or any one when the panel
-  // asks without a promo code. A payment already started (bank transfer, QRIS) is always continued, never replaced.
-  const payable = (o: any) => o.checkout_url && (o.mt === "pending" || o.mt === "none") && Date.now() - Date.parse(o.created_at) < REUSE_MS;
-  const reusable = unpaid.find((o) => payable(o) && (o.mt === "pending" || keepOpen || (Number(o.gross_amount_idr) === grossAmount && (o.affiliate_code || null) === (affiliate?.code || null))));
+  // asks without a promo code. A payment already started (bank transfer, QRIS) is always continued, never replaced, even
+  // on an order closed as "cancel"; a closed order nobody started stays closed.
+  const payable = (o: any) => o.checkout_url && (o.mt === "pending" || (o.mt === "none" && o.status !== "cancel")) && Date.now() - Date.parse(o.created_at) < REUSE_MS;
+  const reusable = unpaid.find((o) => payable(o) && o.mt === "pending") ||
+    unpaid.find((o) => payable(o) && (keepOpen || (Number(o.gross_amount_idr) === grossAmount && (o.affiliate_code || null) === (affiliate?.code || null))));
   if (reusable) return reply(reusable.order_id, reusable.checkout_url, true, Number(reusable.gross_amount_idr), reusable.affiliate_code || null);
 
   // One open checkout per customer: other unpaid orders are closed before a new one is created (another price or
@@ -155,6 +194,9 @@ Deno.serve(async (req) => {
   for (const o of unpaid) {
     if (o.mt === "unknown") return busy("The payment provider could not confirm your previous checkout. Please try again in a few minutes.");
     if (o.mt === "pending") return busy("You already started a payment for your previous checkout. Finish it, or wait until it expires (up to 24 hours), then try again.");
+  }
+  for (const o of unpaid) {
+    if (o.status === "cancel") continue; // already closed in our table
     const up = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(o.order_id) + "&paid_at=is.null&status=eq." + encodeURIComponent(o.status), {
       method: "PATCH",
       headers: { prefer: "return=representation" },

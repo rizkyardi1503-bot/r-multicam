@@ -33,6 +33,25 @@ function landingTest(){
  }
  console.log('PASS landing: send-link first, light page, IDR price, email sign-in; FAQPage data matches visible questions (help, DJ, AI editor; EN+ID)');
 }
+// Indonesian visitors stay in Indonesian through email links and Google sign-in; each language page links to the other.
+function languageContinuityTest(){
+ const portal=fs.readFileSync(path.join(__dirname,'../site/portal.js'),'utf8');
+ assert(portal.includes("const SITE_HOME='https://r-multicam.pages.dev'+(indo?'/id/':'/');"));
+ assert.equal((portal.match(/SITE_HOME\+'auth\/confirmed\/'/g)||[]).length,2,'sign-up and resend/reset');assert(portal.includes("redirect_to:SITE_HOME+'?oauth=google'"));
+ assert(!/r-multicam\.pages\.dev\/(auth\/confirmed|\?oauth)/.test(portal),'no hard-coded English return address');
+ const read=rel=>fs.readFileSync(path.join(__dirname,'../site',rel),'utf8');
+ const id=read('id/auth/confirmed/index.html');assert(id.includes('<html lang="id">'));assert(id.includes('/i18n-id.js'));assert(id.includes('href="/id/?account=signin"'));assert(id.includes('href="/id/?download=windows"'));assert(id.includes('href="/id/help/"'));assert(id.includes('noindex'));
+ const headers=read('_headers');assert(/\/id\/auth\/\*\n  Cache-Control: no-store\n  Referrer-Policy: no-referrer/.test(headers.replace(/\r/g,'')),'token page keeps no-store and no-referrer');assert(!headers.includes('developers.google.com'),'Google logo is hosted here');
+ assert(portal.includes('src="/google-g.svg"'));assert(!portal.includes('developers.google.com'));assert(read('google-g.svg').startsWith('<svg'));
+ assert(read('start/index.html').includes('<a href="/id/start/" hreflang="id" lang="id" data-lang-switch="id">Bahasa Indonesia</a>'));
+ assert(read('id/start/index.html').includes('<a href="/start/" hreflang="en" lang="en" data-lang-switch="en">English</a>'));
+ // confirmation.js on /id/: the dialog and the copied link stay on /id/.
+ const dialog={querySelector:()=>({}),showModal(){},setAttribute(){},appendChild(){}};let html='';
+ const box=new Proxy(dialog,{set(t,k,v){if(k==='innerHTML')html=v;t[k]=v;return true;}});
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../site/confirmation.js'),'utf8'),{location:{hash:'#error=x',search:'',pathname:'/id/',origin:'https://r-multicam.pages.dev'},history:{replaceState(){}},URLSearchParams,document:{getElementById:()=>null,createElement:()=>box,body:{appendChild(){}}},navigator:{},window:{},console});
+ assert(html.includes('href="/id/?account=signin"'));assert(html.includes('href="/id/help/"'));assert(!/href="\/(\?|help)/.test(html));
+ console.log('PASS language continuity: email links and Google return to /id/, Indonesian confirmation page, /id/ dialog links, start page language links, self-hosted Google logo');
+}
 function confirmationTest(){
  // Safari 15 (macOS Catalina): no <dialog>.showModal and no AbortSignal.timeout.
  const made=[];const node=()=>({style:{},attrs:{},textContent:'',setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},after(){},querySelector(q){return this.kids[q]||(this.kids[q]=node())},kids:{}});
@@ -85,4 +104,4 @@ async function portalTest(open=true,phone=false,opts={}){
  console.log('PASS in-app browsers (Facebook/Android WebView, TikTok, LINE, Instagram) swap Google for open-in-browser + copy link; desktop browsers keep Google');
  await portalTest(true,false,{profile:{license_status:'trial',plugin_version:'2.3.11.13-public-v19',device_platform:'windows'}});
  await portalTest(true,false,{safari15:true});
- await confirmationTest();})().catch(e=>{console.error(e);process.exit(1)});
+ await confirmationTest();languageContinuityTest();})().catch(e=>{console.error(e);process.exit(1)});

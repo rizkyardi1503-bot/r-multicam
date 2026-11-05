@@ -13,6 +13,7 @@ const router = routerOf('site/index.html');
 assert(router, 'router missing on /');
 assert.equal(routerOf('site/id/index.html'), router, 'EN and ID pages must ship the same router');
 assert.equal(routerOf('site/auth/confirmed/index.html'), null, 'auth confirmation page must not carry the router');
+assert.equal(routerOf('site/id/auth/confirmed/index.html'), null, 'Indonesian auth confirmation page must not carry the router');
 
 function visit(url, { lang = 'en', languages = ['en-US'], stored = {}, ua = 'Mozilla/5.0', country = null, before = null, pluginGoogle = false } = {}) {
   const u = new URL(url, ORIGIN);
@@ -95,9 +96,9 @@ function visit(url, { lang = 'en', languages = ['en-US'], stored = {}, ua = 'Moz
   assert.deepEqual(await visit('/id/', { lang: 'id', languages: ['en-US'], country: 'US' }).settle(), []);
   assert.deepEqual(await visit('/', { ...idBrowser, ua: 'Mozilla/5.0 (compatible; Googlebot/2.1)' }).settle(), []);
 
-  // 5. OAuth return URLs used by the website and the plugin relay land on the English homepage,
-  //    which carries the router; both must be exempt (checked above) and the relay must still start there.
-  assert(read('site/portal.js').includes("redirect_to:'https://r-multicam.pages.dev/?oauth=google'"));
+  // 5. OAuth return URLs: the website returns to the homepage of the language being read, the plugin relay to the English one;
+  //    both homepages carry the router; all must be exempt (checked above) and the relay must still start there.
+  assert(read('site/portal.js').includes("redirect_to:SITE_HOME+'?oauth=google'"));
   assert(read('site/plugin-google.js').includes("redirect_to:origin+'/?oauth=google'"));
   for (const page of ['site/index.html', 'site/id/index.html']) {
     const html = read(page);

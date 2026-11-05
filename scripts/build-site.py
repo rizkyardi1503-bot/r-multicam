@@ -34,9 +34,9 @@ FONTS = ['/fonts/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2', '/fonts/rP2Yp2ywxg089Uri
 MOTION = '/motion.mjs'
 
 # Pages that keep their own header/footer (custom layouts or account flows).
-KEEP_LAYOUT = {'index.html', 'start/index.html', 'auth/confirmed/index.html', 'id/index.html', 'id/start/index.html'}
+KEEP_LAYOUT = {'index.html', 'start/index.html', 'auth/confirmed/index.html', 'id/index.html', 'id/start/index.html', 'id/auth/confirmed/index.html'}
 # Never language-routed or translated (Supabase email links land here with tokens).
-NO_LANG = {'auth/confirmed/index.html', '404.html'}
+NO_LANG = {'auth/confirmed/index.html', 'id/auth/confirmed/index.html', '404.html'}
 I18N_SRC = ROOT / 'src' / 'i18n'
 
 NAV_EN = [
@@ -406,7 +406,7 @@ def localize_links(html: str) -> str:
     def href(m):
         return f'{m.group(1)}="{fix(m.group(2))}"'
     # Leave hreflang alternates and the language switch alone.
-    parts = re.split(r'(<!--rp:(?:lang|langswitch)-->.*?<!--/rp:(?:lang|langswitch)-->|<div class="rp-lang".*?</div>)', html, flags=re.S)
+    parts = re.split(r'(<!--rp:(?:lang|langswitch|langlink)-->.*?<!--/rp:(?:lang|langswitch|langlink)-->|<div class="rp-lang".*?</div>)', html, flags=re.S)
     for i in range(0, len(parts), 2):
         seg = re.sub(r'\b(href)="(/[^"]*)"', href, parts[i])
         seg = re.sub(r'(<link rel="canonical" href=")' + re.escape(ORIGIN) + r'(/[^"]*)"', lambda m: m.group(1) + ORIGIN + fix(m.group(2)) + '"', seg)
@@ -598,7 +598,7 @@ def with_csp(headers: str, router: str) -> str:
     supabase = re.search(r"supabaseUrl: '(https://[^']+)'", (SITE / 'config.js').read_text()).group(1)
     csp = ("default-src 'self'; "
            f"script-src 'self' '{router_hash}' https://static.cloudflareinsights.com; "
-           "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://developers.google.com/static/identity/images/; "
+           "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
            "font-src 'self'; media-src 'self'; "
            f"connect-src 'self' {supabase} https://cloudflareinsights.com; "
            "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'")

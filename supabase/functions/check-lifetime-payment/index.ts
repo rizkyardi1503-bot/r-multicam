@@ -10,7 +10,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //    give up after 30 s); orders expired/denied/failed more than 25 h ago are not asked about at all;
 //  - a Snap checkout that was never opened (Midtrans: JSON status_code 404) and is older than 24 h is stored as "expire" (Midtrans
 //    sends no notification for it, so it used to stay "created" forever);
-//  - activating here sends the owner's purchase_paid alert (the webhook skips it once the order is activated).
+//  - activating here sends the owner's purchase_paid alert (the webhook skips it once the order is activated);
+//  - the order gets lifetime_activated_at only after the licence write worked (same order as the webhook), and an order
+//    whose money went back is never activated again.
 
 // Statuses the orders table accepts (plugin_payment_orders_status_check); anything else keeps the stored status.
 const STORABLE = new Set(["created", "pending", "authorize", "capture", "settlement", "deny", "cancel", "expire", "failure",
@@ -25,6 +27,9 @@ const cors = {
 // "cancel" is not here: a newer checkout closes the previous one as "cancel" in our table only, and its Snap page can
 // still be paid in an old tab.
 const CLOSED = new Set(["expire", "deny", "failure", "failed"]);
+// Money went back on these orders: a late "settlement" answer must not activate them again.
+const REFUND = new Set(["refund", "partial_refund", "chargeback", "partial_chargeback"]);
+const refunded = (o: any) => REFUND.has(o.status) || (o.status === "cancel" && !!o.paid_at);
 const DAY_MS = 24 * 3600 * 1000;
 const SKIP_AFTER_MS = 25 * 3600 * 1000;
 const b64 = (s: string) => btoa(s);
@@ -71,9 +76,11 @@ Deno.serve(async (req) => {
   if (!orders?.length) return json({ paid: false, status: "no_order" });
 
   const age = (o: any) => Date.now() - Date.parse(o.created_at);
-  // Nothing to learn from Midtrans: an unpaid order closed long ago, or a paid order once the account is lifetime
-  // (the answer is "paid" either way; its duplicate alert, if any, was sent when it was recorded as paid).
-  const ask = orders.filter((o) => !(firstOrder && o.paid_at) && !(!o.paid_at && CLOSED.has(o.status) && age(o) > SKIP_AFTER_MS));
+  // Nothing to learn from Midtrans: an unpaid order closed long ago, an order whose money went back, or a paid order once
+  // the account is lifetime (the answer is "paid" either way; its duplicate alert, if any, was sent when it was recorded).
+  // The activation order itself is still asked while it has no stamp: an earlier attempt wrote the licence but not the stamp.
+  const unfinished = (o: any) => o.order_id === firstOrder && !o.lifetime_activated_at;
+  const ask = orders.filter((o) => !refunded(o) && (!(firstOrder && o.paid_at) || unfinished(o)) && !(!o.paid_at && CLOSED.has(o.status) && age(o) > SKIP_AFTER_MS));
   // All at once; results are handled newest first as before. null = Midtrans unreachable or an error answer.
   const answers = await Promise.all(ask.map(async (order) => {
     const mr = await fetch("https://api.midtrans.com/v2/" + encodeURIComponent(order.order_id) + "/status", {
@@ -88,7 +95,7 @@ Deno.serve(async (req) => {
     return body || {};
   }));
 
-  let lastStatus = "pending";
+  let lastStatus = orders.find(refunded)?.status || "pending";
   for (let i = 0; i < ask.length; i++) {
     const order = ask[i], m = answers[i];
     if (!m) continue;
@@ -109,8 +116,10 @@ Deno.serve(async (req) => {
     const now = new Date().toISOString();
     if (status) lastStatus = status;
     const duplicate = success && !!firstOrder && firstOrder !== order.order_id;
+    // Midtrans says the money went back and our record does not know yet (refund notice lost): store it and tell the owner.
+    const moneyBack = REFUND.has(status) || (status === "cancel" && !!order.paid_at);
 
-    if (!order.paid_at || success) {
+    if (!order.paid_at || success || moneyBack) {
       // A non-success answer ("pending"...) only updates an order that is still unpaid in the database: the webhook may
       // have stored the payment since the order was read, and that must never be overwritten or downgraded.
       const fields: Record<string, unknown> = {
@@ -120,15 +129,18 @@ Deno.serve(async (req) => {
         fraud_status: fraud,
         updated_at: now
       };
-      if (success) {
-        fields.paid_at = order.paid_at || now;
-        fields.lifetime_activated_at = !duplicate ? (order.lifetime_activated_at || now) : order.lifetime_activated_at;
-      }
-      const up = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(order.order_id) + (success ? "" : "&paid_at=is.null"), {
+      if (success) fields.paid_at = order.paid_at || now;
+      const up = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(order.order_id) + (success || moneyBack ? "" : "&paid_at=is.null"), {
         method: "PATCH",
         body: JSON.stringify(fields)
       });
       if (!up.ok && success) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: order.order_id }, 500);
+      if (!up.ok && moneyBack) { console.error("refund not stored", order.order_id, up.status); continue; } // next check retries
+    }
+
+    if (moneyBack) {
+      await ownerAlert("purchase_refunded", { order_id: order.order_id, status, gross_amount_idr: Number(order.gross_amount_idr) });
+      continue;
     }
 
     if (duplicate) {
@@ -144,9 +156,20 @@ Deno.serve(async (req) => {
       });
       if (!pr.ok) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: order.order_id }, 500);
       const rows = await pr.json().catch(() => []);
-      if (!rows.length) return json({ error: "This account is blocked. Contact support.", order_id: order.order_id }, 403);
-      // This request activated the order (it was not activated when read): tell the owner, once.
-      if (!order.lifetime_activated_at) await ownerAlert("purchase_paid", { order_id: order.order_id, gross_amount_idr: Number(order.gross_amount_idr), via: "check_payment" });
+      if (!rows.length) {
+        // Paid but blocked: recorded just now, so the owner has not been told by another path.
+        if (!order.paid_at) await ownerAlert("purchase_paid_not_activated", { order_id: order.order_id });
+        return json({ error: "This account is blocked. Contact support.", order_id: order.order_id }, 403);
+      }
+      // This request activated the order (it was not activated when read): stamp it and tell the owner, once.
+      if (!order.lifetime_activated_at) {
+        const stamp = await rest("plugin_payment_orders?order_id=eq." + encodeURIComponent(order.order_id) + "&lifetime_activated_at=is.null", {
+          method: "PATCH",
+          body: JSON.stringify({ lifetime_activated_at: now, updated_at: now })
+        });
+        if (!stamp.ok) return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: order.order_id }, 500);
+        await ownerAlert("purchase_paid", { order_id: order.order_id, gross_amount_idr: Number(order.gross_amount_idr), via: "check_payment" });
+      }
       return json({ paid: true, activated: true, status, order_id: order.order_id });
     }
   }

@@ -1,6 +1,9 @@
 'use strict';
 (() => {
- let currency='USD',country=null;
+ // Indonesian pages always show the Indonesian old price, so nobody there sees US$200 while the location lookup runs.
+ const idPage=/^\/id(\/|$)/.test(window.location?.pathname||'');
+ const fallback=idPage?'IDR':'USD';
+ let currency=fallback,country=null;
  // One price for every country (charged in IDR); the country is still detected for analytics/UI.
  const prices={IDR:'Rp2.000.000',USD:'Rp2.000.000'};
  // The previous list price (Rp3.575.000 in Indonesia, US$200 elsewhere, until 22 Oct 2026) is shown struck through
@@ -32,8 +35,8 @@
    if(!response.ok)throw Error('Country unavailable');
    const match=/^loc=([A-Z]{2})\s*$/m.exec(await response.text());
    if(match&&match[1]!=='XX')country=match[1];
-   currency=country==='ID'?'IDR':'USD';
-  }catch{currency='USD';}finally{clearTimeout(timer);apply();}
+   currency=country==='ID'?'IDR':fallback;
+  }catch{currency=fallback;}finally{clearTimeout(timer);apply();}
  }
  apply();
  // Account dialogs are inserted after this script and receive the same display price.
