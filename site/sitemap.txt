@@ -16,6 +16,8 @@ https://r-multicam.pages.dev/guides/music-driven-multicam-editing/
 https://r-multicam.pages.dev/id/guides/music-driven-multicam-editing/
 https://r-multicam.pages.dev/guides/install-multicam-ai/
 https://r-multicam.pages.dev/id/guides/install-multicam-ai/
+https://r-multicam.pages.dev/guidebook/
+https://r-multicam.pages.dev/id/guidebook/
 https://r-multicam.pages.dev/help/
 https://r-multicam.pages.dev/id/help/
 https://r-multicam.pages.dev/releases/
