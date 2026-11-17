@@ -45,9 +45,12 @@ function geo(req:Request){
   try{region=clean(decodeURIComponent(req.headers.get("x-rp-geo-region")||""),120);}catch{region=null;}
   return {country:country&&/^[A-Z0-9]{2,3}$/i.test(country)?country.toUpperCase():null,region};
 }
+// In-app browsers append their own tokens after the system part: Instagram on an Android phone ends with
+// "... Mobile Safari/537.36 Instagram 312.1.0.34.111 Android (33/13; ...)". Decide on the whole string, so that second
+// "Android" with no "Mobile" after it cannot turn a phone into a tablet. An Android tablet sends no "Mobile" at all.
 function deviceFromUa(ua:string){
-  if(/iPad|Tablet|Android(?!.*Mobile)/i.test(ua))return "tablet";
-  if(/Mobi|iPhone|Android/i.test(ua))return "mobile";
+  if(/iPad|Tablet/i.test(ua)||(/Android/i.test(ua)&&!/Mobi/i.test(ua)))return "tablet";
+  if(/Mobi|iPhone|iPod|Android/i.test(ua))return "mobile";
   return "desktop";
 }
 function osFromUa(ua:string){

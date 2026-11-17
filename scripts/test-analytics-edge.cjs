@@ -40,6 +40,21 @@ const req=(body,origin='https://r-multicam.pages.dev',token='',extra={})=>new Re
  inserted=null;assert.equal((await handler(noOrigin())).status,403);secret='proxy-fixture';assert.equal((await handler(noOrigin())).status,403);secret='';assert.equal(inserted,null);
  assert.equal((await handler(new Request('https://edge.test',{method:'OPTIONS',headers:{origin:'https://r-multicam.pages.dev'}}))).status,204);
  console.log('PASS analytics Edge: no Origin refused');
+ // Device and OS from the user agent. Instagram on an Android phone repeats "Android" after "Mobile Safari"
+ // ("... Instagram 312.1.0.34.111 Android (33/13; ...)"), which once counted every such phone as a tablet.
+ for(const [ua,device,os] of [
+  ['Mozilla/5.0 (Linux; Android 13; SM-A536E Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.144 Mobile Safari/537.36 Instagram 312.1.0.34.111 Android (33/13; 450dpi; 1080x2192; samsung; SM-A536E; a53x; s5e8825; in_ID; 548323757)','mobile','android'],
+  ['Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36','mobile','android'],
+  ['Mozilla/5.0 (Linux; Android 13; SM-A536E Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.144 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/447.0.0.37.106;]','mobile','android'],
+  ['Mozilla/5.0 (Android 14; Mobile; rv:121.0) Gecko/121.0 Firefox/121.0','mobile','android'],
+  ['Mozilla/5.0 (Linux; Android 13; SM-X200) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36','tablet','android'],
+  ['Mozilla/5.0 (Android 14; Tablet; rv:121.0) Gecko/121.0 Firefox/121.0','tablet','android'],
+  ['Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 312.0.1.19.124 (iPhone14,5; iOS 17_1; id_ID; id; scale=3.00; 1170x2532; 548026366)','mobile','ios'],
+  ['Mozilla/5.0 (iPad; CPU OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 312.0.1.19.124 (iPad13,4; iPadOS 17_1; id_ID; id; scale=2.00; 1640x2360; 548026366)','tablet','ios'],
+  ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36','desktop','windows'],
+  ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15','desktop','macos']
+ ]){inserted=null;assert.equal((await handler(req({event_name:'page_view'},undefined,'',{'user-agent':ua}))).status,204);assert.equal(inserted.device_type,device,ua);assert.equal(inserted.os_family,os,ua);}
+ console.log('PASS analytics Edge: device and OS from the user agent; Instagram on an Android phone counts as mobile');
 
  // Pages Function proxy (functions/api/analytics.js).
  const proxySrc=fs.readFileSync(path.resolve(__dirname,'../functions/api/analytics.js'),'utf8').replace(/^export async function /m,'async function ')+';globalThis.onRequestPost=onRequestPost;';
