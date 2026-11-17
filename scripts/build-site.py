@@ -42,6 +42,7 @@ I18N_SRC = ROOT / 'src' / 'i18n'
 NAV_EN = [
     ('/#features', 'Product'),
     ('/dj-multicam-editing/', 'DJ editing'),
+    ('/beat-detection-premiere-pro-plugin/', 'Beat detection'),
     ('/guides/music-driven-multicam-editing/', 'Guides'),
     ('/#pricing', 'Pricing'),
     ('/help/', 'Help'),
@@ -49,10 +50,67 @@ NAV_EN = [
 NAV_ID = [
     ('/id/#features', 'Fitur'),
     ('/id/dj-multicam-editing/', 'Editing DJ'),
+    ('/id/beat-detection-premiere-pro-plugin/', 'Deteksi beat'),
     ('/id/guides/music-driven-multicam-editing/', 'Panduan'),
     ('/id/#pricing', 'Harga'),
     ('/id/help/', 'Bantuan'),
 ]
+# "Related guides" cards at the end of each article, in both languages. Each target is always linked with words
+# about its own topic, so two pages never compete for one search: detection/BPM/markers -> beat detection,
+# how to cut -> cut to the beat, sync -> sync, DJ and concerts -> DJ, automatic/AI -> AI editor,
+# manual how-to -> tutorial, the whole workflow -> the music guide.
+GUIDE_CARDS = {
+    '/dj-multicam-editing/': (
+        ('DJ set and concert multicam editing', 'Build-ups, drops, camera roles and long live sets in Premiere Pro.'),
+        ('Cara edit video konser dan DJ set multi kamera', 'Build-up, drop, peran kamera dan set live yang panjang di Premiere Pro.')),
+    '/beat-detection-premiere-pro-plugin/': (
+        ('Beat detection plugin for Premiere Pro', 'Find the tempo, BPM, beats and drops before the first cut.'),
+        ('Plugin beat detection untuk Premiere Pro', 'Temukan tempo, BPM, beat dan drop sebelum cut pertama.')),
+    '/cut-to-the-beat-premiere-pro/': (
+        ('How to cut to the beat in Premiere Pro', 'Manual and automatic ways to put your cuts on the music.'),
+        ('Cara edit video sesuai beat di Premiere Pro', 'Cara manual dan otomatis menaruh cut tepat di musik.')),
+    '/sync-multicam-to-music/': (
+        ('Sync multicam to music', 'Line up every camera with the master track before you cut.'),
+        ('Sinkron kamera ke musik', 'Selaraskan semua kamera dengan audio master sebelum memotong.')),
+    '/guides/music-driven-multicam-editing/': (
+        ('Music-driven multicam editing guide', 'The whole workflow, from music analysis to the finished edit.'),
+        ('Panduan edit multicam sesuai musik', 'Alur lengkap, dari analisis musik sampai hasil edit akhir.')),
+    '/multicam-editing-premiere-pro-tutorial/': (
+        ('How to edit multicam in Premiere Pro', 'Step by step with the multicam tools built into Premiere Pro.'),
+        ('Cara edit multicam di Premiere Pro', 'Langkah demi langkah dengan fitur multicam bawaan Premiere Pro.')),
+    '/ai-multicam-editor-premiere-pro/': (
+        ('AI multicam editor for Premiere Pro', 'Automatic camera cuts planned from the music.'),
+        ('Editor multicam AI untuk Premiere Pro', 'Cut kamera otomatis yang direncanakan dari musik.')),
+    '/beatedit-alternative-premiere-pro/': (
+        ('BeatEdit alternative for Premiere Pro', 'Beat markers or automatic multicam cuts: which tool fits your edit.'),
+        None),
+}
+# Article (English path) -> card targets in order of preference; each page shows the first three that exist
+# in its language.
+RELATED = {
+    '/beat-detection-premiere-pro-plugin/': ['/dj-multicam-editing/', '/cut-to-the-beat-premiere-pro/',
+                                             '/beatedit-alternative-premiere-pro/', '/guides/music-driven-multicam-editing/'],
+    '/cut-to-the-beat-premiere-pro/': ['/beat-detection-premiere-pro-plugin/', '/dj-multicam-editing/',
+                                       '/ai-multicam-editor-premiere-pro/'],
+    '/sync-multicam-to-music/': ['/dj-multicam-editing/', '/guides/music-driven-multicam-editing/',
+                                 '/beat-detection-premiere-pro-plugin/'],
+    '/multicam-editing-premiere-pro-tutorial/': ['/ai-multicam-editor-premiere-pro/', '/sync-multicam-to-music/',
+                                                 '/guides/music-driven-multicam-editing/'],
+    '/ai-multicam-editor-premiere-pro/': ['/multicam-editing-premiere-pro-tutorial/', '/dj-multicam-editing/',
+                                          '/guides/music-driven-multicam-editing/'],
+    '/guides/music-driven-multicam-editing/': ['/dj-multicam-editing/', '/sync-multicam-to-music/',
+                                               '/beat-detection-premiere-pro-plugin/'],
+    '/dj-multicam-editing/': ['/sync-multicam-to-music/', '/beat-detection-premiere-pro-plugin/',
+                              '/ai-multicam-editor-premiere-pro/'],
+    '/beatedit-alternative-premiere-pro/': ['/beat-detection-premiere-pro-plugin/', '/dj-multicam-editing/',
+                                            '/cut-to-the-beat-premiere-pro/'],
+}
+# The plain link row these cards replace (older pages end with it).
+RELATED_NAV = r'<nav class="actions" aria-label="(?:Related resources|Sumber terkait)">.*?</nav>'
+# Site-wide entities: one @id and one url in both languages, so the Indonesian pages do not describe a second
+# organization or website.
+SHARED_LD_TYPES = ('Organization', 'WebSite')
+SHARED_LD_IDS = ('/#organization', '/#website')
 FOOTER_EN = [
     ('Product', [
         ('/ai-multicam-editor-premiere-pro/', 'AI multicam editor'),
@@ -266,6 +324,50 @@ def footer_html(lang: str) -> str:
             f'<p class="rp-legal">© 2026 R Project · {esc(legal)}</p></footer>')
 
 
+def related_html(path: str, lang: str):
+    """'Related guides' cards for an article, or None for pages outside the guide cluster."""
+    en_path = path[3:] if lang == 'id' and path.startswith('/id/') else path
+    cards = []
+    for target in RELATED.get(en_path, []):
+        card = GUIDE_CARDS[target][1 if lang == 'id' else 0]
+        href = '/id' + target if lang == 'id' else target
+        if card is None or not (SITE / href.lstrip('/') / 'index.html').is_file():
+            continue
+        cards.append(f'<article><h3><a href="{href}">{esc(card[0])}</a></h3><p>{esc(card[1])}</p></article>')
+        if len(cards) == 3:
+            break
+    if not cards:
+        return None
+    if lang == 'id':
+        title, label, links = 'Panduan terkait', 'Bantuan', (('/id/guides/install-multicam-ai/', 'Panduan instalasi'), ('/id/help/', 'Pusat bantuan'))
+    else:
+        title, label, links = 'Related guides', 'Help', (('/guides/install-multicam-ai/', 'Installation guide'), ('/help/', 'Troubleshooting'))
+    more = ''.join(f'<a href="{h}">{esc(t)}</a>' for h, t in links)
+    return (f'<section class="related-guides" aria-labelledby="related-guides"><h2 id="related-guides">{title}</h2>'
+            f'<div class="support-grid">{"".join(cards)}</div><nav class="actions" aria-label="{label}">{more}</nav></section>')
+
+
+def shared_ld_spans(text: str):
+    """Character spans of JSON-LD objects whose @type (first key) is a site-wide entity."""
+    spans, stack, i, n = [], [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == '\\' else 1
+            i = j + 1
+            continue
+        if c == '{':
+            stack.append(i)
+        elif c == '}' and stack:
+            start = stack.pop()
+            if re.match(r'\{\s*"@type"\s*:\s*"(?:%s)"' % '|'.join(SHARED_LD_TYPES), text[start:i + 1]):
+                spans.append((start, i + 1))
+        i += 1
+    return spans
+
+
 def slugify(text: str) -> str:
     text = htmllib.unescape(re.sub(r'<[^>]+>', '', text)).lower()
     text = re.sub(r'[^a-z0-9\s-]', '', text)
@@ -407,14 +509,23 @@ def localize_links(html: str) -> str:
 
     def href(m):
         return f'{m.group(1)}="{fix(m.group(2))}"'
+
+    def ld(m):
+        # The organization and the website are one entity in both languages: keep their objects and @id references.
+        keep = shared_ld_spans(m.group(2))
+
+        def url(u):
+            if u.group(1) in SHARED_LD_IDS or any(a <= u.start() < b for a, b in keep):
+                return u.group(0)
+            return '"' + ORIGIN + fix(u.group(1)) + '"'
+        return m.group(1) + re.sub(r'"' + re.escape(ORIGIN) + r'(/[^"]*)"', url, m.group(2)) + m.group(3)
     # Leave hreflang alternates and the language switch alone.
     parts = re.split(r'(<!--rp:(?:lang|langswitch|langlink)-->.*?<!--/rp:(?:lang|langswitch|langlink)-->|<div class="rp-lang".*?</div>)', html, flags=re.S)
     for i in range(0, len(parts), 2):
         seg = re.sub(r'\b(href)="(/[^"]*)"', href, parts[i])
         seg = re.sub(r'(<link rel="canonical" href=")' + re.escape(ORIGIN) + r'(/[^"]*)"', lambda m: m.group(1) + ORIGIN + fix(m.group(2)) + '"', seg)
         seg = re.sub(r'(<meta property="og:url" content=")' + re.escape(ORIGIN) + r'(/[^"]*)"', lambda m: m.group(1) + ORIGIN + fix(m.group(2)) + '"', seg)
-        seg = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)',
-                     lambda m: m.group(1) + re.sub(r'"' + re.escape(ORIGIN) + r'(/[^"]*)"', lambda u: '"' + ORIGIN + fix(u.group(1)) + '"', m.group(2)) + m.group(3), seg, flags=re.S)
+        seg = re.sub(r'(<script type="application/ld\+json">)(.*?)(</script>)', ld, seg, flags=re.S)
         parts[i] = seg
     return ''.join(parts)
 
@@ -557,6 +668,12 @@ def process_page(rel: str, html: str, versions: dict) -> str:
     if 'class="skip-link"' not in html:
         html = re.sub(r'(<body[^>]*>)', rf'\1<a class="skip-link" href="#main">{skip}</a>', html, count=1)
     html = replace_block(html, 'footer', footer_html(lang), fallback_pattern=r'<footer\b[^>]*>.*?</footer>', insert_after=r'</main>')
+    related = related_html(path, lang)
+    if related:
+        new = replace_block(html, 'related', related, fallback_pattern=RELATED_NAV)
+        if new == html and '<!--rp:related-->' not in html:
+            new = html.replace('</main>', f'<!--rp:related-->{related}<!--/rp:related--></main>', 1)
+        html = new
 
     # 5. Table of contents + breadcrumb structured data.
     html = add_toc(html, lang)

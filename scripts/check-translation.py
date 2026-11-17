@@ -12,7 +12,8 @@ from html.parser import HTMLParser
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SITE = ROOT / 'site'
-SKIP = {'404.html'}
+# English-only pages: the BeatEdit comparison targets an English search term and has no Indonesian twin.
+SKIP = {'404.html', 'beatedit-alternative-premiere-pro/index.html'}
 TRANSLATABLE_ATTRS = {'alt', 'aria-label', 'title', 'placeholder', 'lang', 'hreflang', 'aria-description'}
 ORIGIN = 'https://r-multicam.pages.dev'
 
