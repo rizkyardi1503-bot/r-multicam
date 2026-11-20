@@ -23,8 +23,9 @@ Run on Linux (no Resolve, no H: drive, no PowerShell):
 | druva-e2e, protocol, lua, installer | not run: they need the Druva footage on H:, fuscript.exe or PowerShell |
 | pack | deterministic build and file list pass; the `Expand-Archive` step needs Windows |
 
-**Package:** `R-Project-Multicam-AI-DaVinci-Windows-v1.0.1.zip`, 132,973 bytes, 25 files, SHA256
-`e9a32d04e5ce252d3f28712303d5b2c28736bbdd2bb87243e24c9f6726af5d02`.
+**Package:** `R-Project-Multicam-AI-DaVinci-Windows-v1.0.1.zip`, 133,046 bytes, 25 files, SHA256
+`44fd692c87013d558be693851a0c03331fec7769ecbc7046fbaa92314995f289` (repacked after `lib/account.js` gained the
+`googleHost` option for the Final Cut build; DaVinci still uses `davinci`, so its behaviour is unchanged).
 
 **Still to do on Windows:** `node tests\run-all.cjs` (it now includes synthetic-e2e) and a live sign-in against the real server.
 

@@ -7,8 +7,9 @@
  else if(params.get('oauth')==='google'&&(params.has('code')||params.has('error'))){try{flow=JSON.parse(sessionStorage.getItem(key)||'null');}catch{} }
  if(!start&&!flow)return;
  window.RP_PLUGIN_GOOGLE_ACTIVE=true;
- // Same relay for the Premiere plugin and the DaVinci Resolve engine (host:'davinci'); only the wording differs.
- const app=flow&&flow.host==='davinci'?'DaVinci Resolve':'Premiere',where=app==='Premiere'?'Premiere':'R Project Engine';
+ // Same relay for the Premiere plugin and the R Project Engine of DaVinci Resolve (host:'davinci') and Final Cut Pro
+ // (host:'finalcut'); only the wording differs.
+ const app=flow&&flow.host==='davinci'?'DaVinci Resolve':flow&&flow.host==='finalcut'?'Final Cut Pro':'Premiere',where=app==='Premiere'?'Premiere':'R Project Engine';
  history.replaceState(null,'','/');
  const valid=x=>x&&Number.isInteger(x.port)&&x.port>=1024&&x.port<=65535&&/^[0-9a-f]{64}$/.test(x.state||'')&&/^[A-Za-z0-9_-]{43}$/.test(x.challenge||'');
  const card=document.createElement('section');card.className='container';

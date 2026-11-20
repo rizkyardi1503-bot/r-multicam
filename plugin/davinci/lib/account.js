@@ -94,7 +94,8 @@ class Account {
     this.pluginVersion = opts.pluginVersion || PLUGIN_VERSION;
     this.log = opts.log || (() => {});
     this.timeoutMs = opts.timeoutMs || 30000;
-    this.startGoogleFlow = opts.startGoogle || startGoogle;
+    // googleHost picks the website relay's wording ('davinci' = DaVinci Resolve, 'finalcut' = Final Cut Pro).
+    this.startGoogleFlow = opts.startGoogle || (() => startGoogle({ host: opts.googleHost || 'davinci' }));
     this.google = null;
     this.session = null; this.profile = null; this.entitlement = null; this.verifiedMeta = null;
     this.verified = false; this.offline = false; this.offlineReason = ''; this.message = ''; this.busy = false;

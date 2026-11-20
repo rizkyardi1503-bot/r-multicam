@@ -1,0 +1,19 @@
+R Project Multicam AI for Final Cut Pro - third-party software
+
+The installer downloads these programs only when they are not already on the Mac, from their official sources,
+pinned to one exact version and verified with SHA-256 before they are used:
+
+Node.js v24.21.0 (macOS arm64 or x64)
+  Sources: https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-arm64.tar.gz
+           https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-x64.tar.gz
+  License: MIT (copied as NODE-LICENSE.txt) - https://github.com/nodejs/node/blob/main/LICENSE
+  Stored in: ~/Library/Application Support/RProjectMulticam/finalcut/runtime
+
+FFmpeg 9.0.2 static build for macOS (same build the R Project Premiere plugin uses)
+  Source: https://ffmpeg.martin-riedl.de/
+  FFmpeg project: https://ffmpeg.org/  License information: https://ffmpeg.org/legal.html
+  Stored in: ~/Library/Application Support/RProjectMulticam/tools (shared with the Premiere plugin)
+  FFmpeg is used locally for audio decoding. Your media is not uploaded.
+
+Final Cut Pro is a trademark of Apple Inc. R Project Multicam AI is not affiliated with Apple. It writes the
+documented FCPXML interchange format, which Final Cut Pro imports.

@@ -19,5 +19,11 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Syntax check
         run: for f in rp-engine/bin/*.mjs rp-engine/lib/*.mjs rp-engine/test/*.mjs; do node --check "$f"; done
+      - name: Final Cut package is in sync with the Mac engine, rp-engine and the DaVinci account code
+        run: node plugin/finalcut/pack-finalcut.cjs --check
+      - name: Final Cut engine, installer and package tests
+        run: node plugin/finalcut/tests/run-all.cjs
+      - name: DaVinci engine CLI end-to-end (generated media)
+        run: node plugin/davinci/tests/synthetic-e2e.cjs
       - name: End-to-end engine, MCP and FCPXML tests
         run: node rp-engine/test/run-tests.mjs
