@@ -1,4 +1,4 @@
-# R Project Multicam AI for DaVinci Resolve (Windows) · v1.0.0
+# R Project Multicam AI for DaVinci Resolve (Windows) · v1.0.1
 
 ## Bahasa Indonesia
 

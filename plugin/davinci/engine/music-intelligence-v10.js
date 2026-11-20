@@ -43,7 +43,11 @@ function preciseImpact(result,t){
 // drop_detection.md, best_drops.md): sustain judged against the local level (a bass-led lift counts), a real break
 // before the drop (kick-less run or bass deficit, so a 1-2 bar fill is not a drop), and the drop moved onto the beat
 // where the low band reaches its plateau. RP_DROP_PROTO only overrides these switches for tests.
-var DROP_FIXES={sustainFix:1,breakGate:1,breakBeats:99,defRel:.5,refWin:30,bassLedRel:.7,lowRefine:3,onBeat:1};
+// The kick-less-run part of the break gate is off on purpose: breakBeats 8, 16 and 99 gave identical results in that
+// research (breakdowns keep synth/bass attacks; only the bass-level deficit discriminates), and the old breakBeats:99
+// could never fire anyway (kicklessRun stops counting at 64). kicklessRun's 99 now only means "no per-beat attack data",
+// which keeps the gate open where it cannot be measured, exactly as before. RP_DROP_PROTO may still set breakBeats (<= 64).
+var KICKLESS_NO_DATA=99,DROP_FIXES={sustainFix:1,breakGate:1,defRel:.5,refWin:30,bassLedRel:.7,lowRefine:3,onBeat:1};
 function P(){return root.RP_DROP_PROTO||DROP_FIXES;}
 // P1: rolling loudness normalisation. Blocks of 10 s; scale = 95th percentile of raw values within +-W s, floored at
 // 25 % of the whole-file scale so a long quiet intro is not blown up to full level.
@@ -57,7 +61,7 @@ function protoSeries(series,W){W=W||90;var keys=['energy','bass','subbass','mid'
  return out;}
 // per-beat low-band attack (same window as attackJump.hit) for the break-length gate
 function beatAttack(result){var s=result.onsetSeries||[],a=beats(result);if(!s.length||!a.length)return null;var p=attackPrefix(s),h=new Float64Array(a.length);for(var i=0;i<a.length;i++)h[i]=p[lower(s,a[i]+.12)]-p[lower(s,a[i]-.03)];return {t:a,h:h};}
-function kicklessRun(BA,t){if(!BA)return 99;var i=nearestIndex(BA.t,t);if(i<0)return 99;var lo=Math.max(0,i-64),hi=Math.min(BA.t.length,i+64),w=[];for(var k=lo;k<hi;k++)w.push(BA.h[k]);var ref=quantile(w,.75);if(!(ref>0))return 99;var run=0;for(k=i-1;k>=0&&run<64;k--){if(BA.h[k]<.35*ref)run++;else break;}return run;}
+function kicklessRun(BA,t){if(!BA)return KICKLESS_NO_DATA;var i=nearestIndex(BA.t,t);if(i<0)return KICKLESS_NO_DATA;var lo=Math.max(0,i-64),hi=Math.min(BA.t.length,i+64),w=[];for(var k=lo;k<hi;k++)w.push(BA.h[k]);var ref=quantile(w,.75);if(!(ref>0))return KICKLESS_NO_DATA;var run=0;for(k=i-1;k>=0&&run<64;k--){if(BA.h[k]<.35*ref)run++;else break;}return run;}
 function localRef(series,pref,key,t,W){var l=lower(series,t-W),r=lower(series,t+W),v=[];for(var i=l;i<r;i+=2)v.push(num(series[i][key],0));return v.length?quantile(v,.9):0;}
 function spectralVector(series,pref,a,b){return [avg(series,pref.subbass,a,b),avg(series,pref.bass,a,b),avg(series,pref.mid,a,b),avg(series,pref.high,a,b)];}
 function spectralShift(pre,post){var ps=pre.reduce(function(a,b){return a+b;},0)+1e-6,qs=post.reduce(function(a,b){return a+b;},0)+1e-6,s=0;for(var i=0;i<4;i++)s+=Math.abs(pre[i]/ps-post[i]/qs);return s*100;}
@@ -114,7 +118,7 @@ function mainDropEvidence(c,mode,st){
  var phrase=!!(c.phrase16||c.phrase32);
  var count=(impact?1:0)+(realBuild?1:0)+(novelty?1:0)+(sustain?1:0)+(phrase?1:0);
  c.impact_profile=bassImpact?'bass':melodicImpact?'melodic':'none';c.drop_evidence_count=count;c.evidence={impact:impact,bass_impact:bassImpact,melodic_impact:melodicImpact,build:realBuild,novelty:novelty,sustain:sustain,phrase:phrase};
- if(P().breakGate){var bb=P().breakBeats||8,dd=P().deficit||12;c.break_ok=c.kickless_run>=bb||c.bass_deficit>=Math.max(dd,(P().defRel==null?.25:P().defRel)*num(c.bass_presence,0));if(!c.break_ok)return false;}
+ if(P().breakGate){var bb=P().breakBeats,dd=P().deficit||12;c.break_ok=c.kickless_run===KICKLESS_NO_DATA||(bb>0&&c.kickless_run>=bb)||c.bass_deficit>=Math.max(dd,(P().defRel==null?.25:P().defRel)*num(c.bass_presence,0));if(!c.break_ok)return false;}
  if(mode==='conservative')return impact&&realBuild&&novelty&&sustain&&phrase&&count===5;
  if(mode==='aggressive')return impact&&((realBuild&&(novelty||sustain))||(novelty&&sustain))&&count>=3;
  return impact&&realBuild&&novelty&&sustain&&count>=4;
@@ -201,9 +205,11 @@ function bestDropOffset(result,t,n){var map=root.RPBeatFirst.tempoMap(result)||[
 // A real breakdown -> slam has a long quiet stretch and a deep dip; a 1-2 bar fill in a running groove does not.
 var SLAMP=typeof WeakMap==='function'?new WeakMap():null;
 function slamSeries(result){var c=SLAMP&&SLAMP.get(result);if(c)return c;var s=(result.dropSeries||[]).slice().sort(function(a,b){return num(a.time,0)-num(b.time,0);}),p=new Float64Array(s.length+1);for(var i=0;i<s.length;i++){var b=num(s[i].raw_bass,0),u=num(s[i].raw_subbass,0);p[i+1]=p[i]+b*b+u*u;}c={s:s,p:p};if(SLAMP)SLAMP.set(result,c);return c;}
-function slamFeatures(result,t){var S=slamSeries(result),db=function(a,b){var l=lower(S.s,a),r=lower(S.s,b);return r>l?10*Math.log10(1e-12+(S.p[r]-S.p[l])/(r-l)):-120;},p=beatOffset(result,t,1)-t,lv=[],before=[],j;if(!(p>0))p=60/num(result.tempo,120);
- for(j=2;j<16;j++)lv.push(db(t+j*p,t+(j+1)*p));var plat=quantile(lv,.5);for(j=1;j<=32;j++)before.push(db(t-j*p,t-(j-1)*p));
- var low32=before.filter(function(x){return x<=plat-6;}).length,q25=before.slice().sort(function(a,b){return a-b;})[8];return {low32:low32,dip:round(plat-q25,1)};}
+// dropSeries has one row per 0.5 s, so a beat (0.4-0.46 s at 130-150 BPM) often holds no row. Such beats are left out:
+// read as -120 dB they made a huge "dip" and ranked that drop first.
+function slamFeatures(result,t){var S=slamSeries(result),db=function(a,b){var l=lower(S.s,a),r=lower(S.s,b);return r>l?10*Math.log10(1e-12+(S.p[r]-S.p[l])/(r-l)):null;},p=beatOffset(result,t,1)-t,lv=[],before=[],j,x;if(!(p>0))p=60/num(result.tempo,120);
+ for(j=2;j<16;j++){x=db(t+j*p,t+(j+1)*p);if(x!==null)lv.push(x);}if(!lv.length)return {low32:0,dip:0};var plat=quantile(lv,.5);for(j=1;j<=32;j++){x=db(t-j*p,t-(j-1)*p);if(x!==null)before.push(x);}
+ if(!before.length)return {low32:0,dip:0};var low32=Math.round(before.filter(function(x){return x<=plat-6;}).length*32/before.length),q25=before.slice().sort(function(a,b){return a-b;})[Math.floor(before.length/4)];return {low32:low32,dip:round(plat-q25,1)};}
 function candidates(result,duration,max){var v=result&&(result.musicV12||result.musicV10);if(!v)return [];var pre=v.best_drop_window.pre_beats,post=v.best_drop_window.post_beats,range=result.snapshot&&result.snapshot.range,lo=range?range.start:0,hi=range?range.end:duration;
  var list=v.accepted_drops.filter(function(e){return bestDropOffset(result,e.time,-pre)>=lo&&bestDropOffset(result,e.time,post)<=hi;}).map(function(e){return {e:e,f:slamFeatures(result,e.time)};});
  // Best Drops = real breakdown -> slam drops only (>= 12 of the 32 beats before are quiet), strongest slam first.

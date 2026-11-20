@@ -1,4 +1,4 @@
-# Removes R Project Multicam AI for DaVinci Resolve v1.0.0. Double-click Uninstall-DaVinci.bat.
+# Removes R Project Multicam AI for DaVinci Resolve v1.0.1. Double-click Uninstall-DaVinci.bat.
 # Stops R Project Engine, removes the script (administrator permission for the all-users copy), the engine, shortcuts,
 # command folders and the R Project keys in Fusion.prefs (only while DaVinci is closed). Keeps the shared FFmpeg and the
 # Premiere plugin. Never stops halfway: every step runs and a summary lists anything that could not be removed.

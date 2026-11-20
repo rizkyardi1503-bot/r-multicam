@@ -1,3 +1,33 @@
+# DaVinci v1.0.1 (Windows): test results, 20 Nov 2026
+
+## Round 5 (v1.0.1: engine 2.3.11.19, license server minimum version)
+
+**Why:** v1.0.0 sent `p_plugin_version = 2.3.11.8-public-v18`. The live `plugin_entitlement` now requires at least
+2.3.11.11, so every DaVinci user got `UPDATE_REQUIRED`. v1.0.1 ships the 2.3.11.19 engine (byte-identical copy of
+`plugin/windows/Plugin`, via `build-davinci.cjs`) and sends `2.3.11.19-davinci-v1.0.1`. On the live database,
+`plugin_release_internal.version_parts` reads that as 2.3.11.19, which is >= the minimum (2.3.11.11) and
+>= `latest_public('Windows')` (2.3.11.19). `Account` also accepts `opts.pluginVersion`.
+
+**Engine fix found while testing:** the 2.3.11.19 FFmpeg decoder uses `setInterval` as an idle watchdog. The vm
+context in `rp-engine-cli.js` did not provide `setInterval`/`clearInterval`, so Analyze failed and then hung. Both
+timers are now in the context. The new `tests/synthetic-e2e.cjs` (generated 128 BPM track with a drop at 60 s, 4
+test-pattern cameras) runs analyze -> plan -> drops anywhere ffmpeg is installed, and it hangs/fails without the fix.
+
+Run on Linux (no Resolve, no H: drive, no PowerShell):
+
+| Test file | Result |
+|---|---|
+| unit | 156/158. The 2 failures are Windows path checks (`C:\...` ProgramData fallback, `Fusion.prefs` folder); they fail the same way on v1.0.0. |
+| account | 88 checks passed, with the Windows-only device-id block (Premiere `LOCALAPPDATA`) skipped. New: 2.3.11.8 -> `UPDATE_REQUIRED` against the live minimum; the current build is allowed. |
+| synthetic-e2e | pass: BPM 128, main drop 60.00 s, 51 intervals, edit points on the steady beat grid, Best Drop at 60.00 s |
+| druva-e2e, protocol, lua, installer | not run: they need the Druva footage on H:, fuscript.exe or PowerShell |
+| pack | deterministic build and file list pass; the `Expand-Archive` step needs Windows |
+
+**Package:** `R-Project-Multicam-AI-DaVinci-Windows-v1.0.1.zip`, 132,973 bytes, 25 files, SHA256
+`e9a32d04e5ce252d3f28712303d5b2c28736bbdd2bb87243e24c9f6726af5d02`.
+
+**Still to do on Windows:** `node tests\run-all.cjs` (it now includes synthetic-e2e) and a live sign-in against the real server.
+
 # DaVinci v1.0.0 (Windows): test results, 24 Oct 2026
 
 ## Round 4 (review fixes before publishing)

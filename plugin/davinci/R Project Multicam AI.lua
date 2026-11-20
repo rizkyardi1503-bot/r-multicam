@@ -1,4 +1,4 @@
--- R Project Multicam AI - DaVinci Resolve bridge (Free and Studio) - v1.0.0
+-- R Project Multicam AI - DaVinci Resolve bridge (Free and Studio) - v1.0.1
 --
 -- Start "R Project Engine" first, then run this from Workspace > Scripts > R Project Multicam AI.
 -- This script has no UI and no editing logic of its own. It connects DaVinci to the R Project Engine:

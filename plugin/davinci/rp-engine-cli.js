@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// R Project Multicam AI - engine CLI for the DaVinci Resolve build (v1.0.0).
+// R Project Multicam AI - engine CLI for the DaVinci Resolve build (v1.0.1).
 // Runs the unchanged Premiere engine files (engine/, copied by build-davinci.cjs) in a vm context and mirrors the
 // panel.js orchestration (makeAIPlan, enrichMusicMap, analyzeBestDrops) with plain JSON in and out.
 //
@@ -23,7 +23,8 @@ function stdoutProgress(p, message) {
 }
 
 function loadEngine() {
-  const ctx = { console: { log() {}, info() {}, warn() {}, error: console.error, debug() {} }, setTimeout, clearTimeout, setImmediate, clearImmediate,
+  // Timers the CEP panel provides as globals (the 2.3.11.19 FFmpeg decoder uses setInterval as an idle watchdog).
+  const ctx = { console: { log() {}, info() {}, warn() {}, error: console.error, debug() {} }, setTimeout, clearTimeout, setInterval, clearInterval, setImmediate, clearImmediate,
     cep_node: { require, process }, require, process };
   ctx.globalThis = ctx; ctx.window = ctx;
   vm.createContext(ctx);

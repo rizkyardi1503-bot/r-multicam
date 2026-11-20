@@ -1,4 +1,4 @@
-# R Project Multicam AI for DaVinci Resolve (Free + Studio) v1.0.0 - Windows installer.
+# R Project Multicam AI for DaVinci Resolve (Free + Studio) v1.0.1 - Windows installer.
 #   Double-click Install-DaVinci.bat, or: powershell -ExecutionPolicy Bypass -File Install-DaVinci.ps1
 # Installs:
 #   - the Lua bridge "R Project Multicam AI.lua" into C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility

@@ -21,7 +21,7 @@ const DAY = 86400000;
 function fakeSupabase(clock) {
   const S = { users: { 'me@example.com': { id: 'u1', password: 'right-pass' } }, refresh: new Map(), access: new Map(), calls: [],
     profile: { user_id: 'u1', email: 'me@example.com', device_id: null, license_status: 'trial', trial_started_at: new Date(clock.t).toISOString(), trial_expires_at: new Date(clock.t + 3.5 * DAY).toISOString() },
-    latest: '2.3.11.8', minimum: '2.3.11.2', offline: false, n: 0 };
+    latest: '2.3.11.19', minimum: '2.3.11.11', offline: false, n: 0 };
   const issue = (user) => { const a = 'acc-' + (++S.n), r = 'ref-' + S.n; S.access.set(a, { user, exp: clock.t + 3600000 }); S.refresh.set(r, user); return { access_token: a, refresh_token: r, expires_at: Math.floor((clock.t + 3600000) / 1000), user: { id: user.id, email: user.email } }; };
   const ver = (v) => String(v).split(/[.-]/).slice(0, 4).map(Number);
   const ge = (a, b) => { const x = ver(a), y = ver(b); for (let i = 0; i < 4; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return true; };
@@ -118,7 +118,7 @@ function newAccount(dir, clock, sb, device = 'RP-AAAA-BBBB-CCCC-DDDD') {
   ok(st.canUse && st.label === 'Trial: 4 days left' && st.code === 'TRIAL', 'trial: ' + st.label);
   const rpcs = sb.S.calls.filter((c) => c.path.startsWith('/rest/v1/rpc/'));
   ok(rpcs.map((c) => c.path.split('/').pop()).join() === 'register_plugin_device,plugin_entitlement', 'register_plugin_device then plugin_entitlement');
-  ok(rpcs.every((c) => c.body.p_device_id === 'RP-AAAA-BBBB-CCCC-DDDD' && c.body.p_platform === 'Windows' && c.body.p_plugin_version === '2.3.11.8-public-v18'), 'rpc body: device, Windows, 2.3.11.8-public-v18');
+  ok(rpcs.every((c) => c.body.p_device_id === 'RP-AAAA-BBBB-CCCC-DDDD' && c.body.p_platform === 'Windows' && c.body.p_plugin_version === A.PLUGIN_VERSION) && A.PLUGIN_VERSION === '2.3.11.19-davinci-v1.0.1', 'rpc body: device, Windows, 2.3.11.19-davinci-v1.0.1');
   const saved = JSON.parse(fs.readFileSync(acc.sessionFile, 'utf8'));
   ok(saved.schema === 1 && saved.session.refresh_token && saved.entitlement.allowed === true && !JSON.stringify(saved).includes('right-pass'), 'session.json saved (tokens + entitlement, never the password)');
   await acc.ensureAllowed();
@@ -163,6 +163,18 @@ function newAccount(dir, clock, sb, device = 'RP-AAAA-BBBB-CCCC-DDDD') {
   await rejects(acc.syncEntitlement(), /signed in on another device/, 'session replaced');
   ok(!acc.session && !fs.existsSync(acc.sessionFile) && /another device/.test(acc.status().detail), 'replaced -> signed out with a clear message');
   console.log('PASS license states: lifetime, trial expired, update required, update available, signed in on another device');
+
+  // ---------------------------------------------------------------- version gate with the live server's rule (minimum 2.3.11.11)
+  {
+    const s2 = fakeSupabase(clock); s2.S.profile.license_status = 'lifetime';
+    const old = new A.Account({ fetch: s2.fetch, now: () => clock.t, dataDir: tmp('v1'), deviceId: () => 'RP-AAAA-BBBB-CCCC-DDDD', pluginVersion: '2.3.11.8-public-v18' });
+    await rejects(old.signIn('me@example.com', 'right-pass').then(() => old.ensureAllowed()), /no longer supported/, 'old 2.3.11.8 engine refused (the bug this release fixes)');
+    ok(old.status().code === 'UPDATE_REQUIRED', 'opts.pluginVersion override is sent: 2.3.11.8 -> UPDATE_REQUIRED');
+    const cur = newAccount(tmp('v2'), clock, s2);
+    const st2 = await cur.signIn('me@example.com', 'right-pass');
+    ok(st2.canUse && st2.code === 'LIFETIME' && !/update is available/.test(st2.detail || ''), 'current build ' + A.PLUGIN_VERSION + ' passes minimum 2.3.11.11 and is the latest 2.3.11.19');
+    console.log('PASS version gate: ' + A.PLUGIN_VERSION + ' allowed; 2.3.11.8 refused with UPDATE_REQUIRED');
+  }
 
   // ---------------------------------------------------------------- offline grace (72 h after the last verification)
   sb = fakeSupabase(clock); dir = tmp('c'); acc = newAccount(dir, clock, sb);

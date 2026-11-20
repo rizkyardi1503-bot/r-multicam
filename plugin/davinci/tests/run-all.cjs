@@ -1,7 +1,7 @@
 // Runs every DaVinci test in order and stops at the first failure.  Usage: node tests/run-all.cjs
 'use strict';
 const cp = require('child_process'), path = require('path');
-const tests = ['unit-tests.cjs', 'account-tests.cjs', 'druva-e2e.cjs', 'protocol-test.cjs', 'lua-tests.cjs', 'installer-tests.cjs', 'pack-tests.cjs'];
+const tests = ['unit-tests.cjs', 'account-tests.cjs', 'synthetic-e2e.cjs', 'druva-e2e.cjs', 'protocol-test.cjs', 'lua-tests.cjs', 'installer-tests.cjs', 'pack-tests.cjs'];
 for (const t of tests) {
   console.log('\n=== ' + t + ' ===');
   const t0 = Date.now();

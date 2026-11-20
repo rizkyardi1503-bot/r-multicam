@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// R Project Engine for DaVinci Resolve (Free and Studio) - v1.0.0.
+// R Project Engine for DaVinci Resolve (Free and Studio) - v1.0.1.
 // Serves the control page on http://127.0.0.1:<port>/?t=<token> (localhost only) and drives DaVinci through the
 // Lua bridge "R Project Multicam AI" (Workspace > Scripts). No npm dependencies.
 //   node rp-davinci-engine.js [--no-browser] [--port N]
@@ -9,7 +9,7 @@ const { Bridge } = require('./lib/bridge');
 const { Session } = require('./lib/workflow');
 const { Account } = require('./lib/account');
 
-const VERSION = 'DaVinci v1.0.0 (engine 2.3.11.8)';
+const VERSION = 'DaVinci v1.0.1 (engine 2.3.11.19)';
 const HEARTBEAT_MS = 5 * 60000;
 
 function appDir() {
@@ -192,7 +192,7 @@ button.sec{background:#38404b}button:disabled{opacity:.5;cursor:default}.btns{di
 a{color:#8ab4ff}.buy{display:inline-block;background:#2f9e6b;color:#fff;padding:10px 14px;border-radius:6px;text-decoration:none;font-weight:600}[hidden]{display:none!important}#acct small{display:block;margin-top:8px}
 button.google{background:#fff;color:#1f1f1f;display:inline-flex;align-items:center;gap:10px;border:1px solid #dadce0}.or{margin-top:10px;color:#8b95a3;font-size:12px}
 </style></head><body><main>
-<h1>R Project Multicam AI <small>for DaVinci Resolve · v1.0.0</small></h1>
+<h1>R Project Multicam AI <small>for DaVinci Resolve · v1.0.1</small></h1>
 <div class="card" id="acct"><div class="status"><span class="dot" id="adot"></span><div><b id="alabel">Account</b><br><small id="adetail">Checking your account…</small></div></div>
 <div id="signedOut"><div class="row"><div><label for="email">Email</label><input id="email" type="email" autocomplete="username"></div>
 <div><label for="password">Password</label><input id="password" type="password" autocomplete="current-password"></div></div>

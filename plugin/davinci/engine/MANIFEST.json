@@ -1,16 +1,16 @@
 {
  "source": "plugin/windows/Plugin",
  "files": {
-  "music-pacing-auto.js": "01d0616c25a0b6d10e4ce222b8584ff2261bb7a9f62e5ed3909c4a29749bbbed",
-  "audio-core.js": "7e5d111c5a95a42041db79d684c2030c2e551fbb2cd2bc41ad993dce2e6b1452",
-  "spectral-features.js": "6079aac236348dffadf55ab3c1394ae5e2d251bc33a6ed8dc2e721c931948fdf",
-  "audio-engine.js": "f3f9f186d59f14ccc5f0405028aa0f92b2660ff22b58142ee82762e0cc8b2a66",
+  "music-pacing-auto.js": "cd24f4e5b62d6c141665cd1614da55292555d8522ffc72967aab40fac8bd457a",
+  "audio-core.js": "81c0d79f22b7f562803c4c5625bdc17bcad342a22a2bd715a7d675c3fa84a01c",
+  "spectral-features.js": "b9249b2966654bf80860bd51a7e881b233e34bdc983d379490fa296ef1908328",
+  "audio-engine.js": "e8d91e24a08b96b2d28995e84f4e150fcdd6a1f69b72431d4e7cbc71424fdc2f",
   "music-learning.js": "55df4b08d9cc4ca3da46693d8cfee87291d46ff88f10cd2fa55d28a2e672cc4c",
-  "music-intelligence-v10.js": "b6e66cbf1b7b1025220698f2a2441b380e1679b90ae96efc4956d927e0919262",
-  "visual-quality.js": "7dc8f4263cce9c8c612ec3421cf17797a582ab5b5889d288d93fcf3f77c38d60",
-  "ai-director.js": "e3414001a35591b82b5992e7cf5e3cfad050a60b25735e93245c751f58a26125"
+  "music-intelligence-v10.js": "fc11219510aa0822ff005fede85820e2eb993f0d44dc2f4001bc07bf6fc1e6a3",
+  "visual-quality.js": "9acb87da6aa4297d7dfb9d51bb242b1a4245fc81b76dd27d6040782df803e112",
+  "ai-director.js": "edadab300e0f0c9590a102f4be5552f9619dec6504037a26994e2840c7bd1a1c"
  },
- "sourceBuildId": "R Project Multicam AI v2.3.11.8 · MUSIC ENGINE V18 · PUBLIC",
+ "sourceBuildId": "R Project Multicam AI v2.3.11.19 · MUSIC ENGINE V19 · PUBLIC",
  "order": [
   "music-pacing-auto.js",
   "audio-core.js",

@@ -5,16 +5,25 @@ function runtime(){
  var n=root.cep_node;if(!n)throw Error('CEP Node is unavailable. Reinstall and restart Premiere.');
  return {fs:n.require('fs'),path:n.require('path'),cp:n.require('child_process'),os:n.require('os'),Buffer:n.require('buffer').Buffer};
 }
+/* A candidate is used only if it actually runs: a saved path can point at a broken binary (for example an old copy of
+   Homebrew's ffmpeg after "brew upgrade"). Only a successful check is cached (per path, this panel session), so an
+   FFmpeg installed or repaired later is picked up without restarting Premiere. */
+var runsCache={};
+function runs(r,file){
+ if(!file||!r.fs.existsSync(file))return false;
+ if(runsCache[file])return true;
+ try{r.cp.execFileSync(file,['-version'],{windowsHide:true,timeout:5000,stdio:'ignore'});return (runsCache[file]=true);}catch(e){return false;}
+}
 function executable(userPath){
  var r=runtime(),proc=root.cep_node.require('process'),env=proc.env||{},platform=proc.platform,candidate=userPath&&userPath.trim(),candidates=[];
- if(candidate&&r.fs.existsSync(candidate))return candidate;
+ if(candidate&&runs(r,candidate))return candidate;
  var base=platform==='darwin'?r.path.join(r.os.homedir(),'Library','Application Support','RProjectMulticam','tools'):r.path.join(env.LOCALAPPDATA||r.os.homedir(),'RProjectMulticam','tools');
  var saved=r.path.join(base,'ffmpeg-path.txt');
- if(r.fs.existsSync(saved)){candidate=r.fs.readFileSync(saved,'utf8').replace(/^\uFEFF/,'').trim();if(candidate&&r.fs.existsSync(candidate))return candidate;}
+ if(r.fs.existsSync(saved)){candidate=r.fs.readFileSync(saved,'utf8').replace(/^\uFEFF/,'').trim();if(candidate&&runs(r,candidate))return candidate;}
  if(platform==='darwin')candidates=[r.path.join(base,'ffmpeg'),'/opt/homebrew/bin/ffmpeg','/usr/local/bin/ffmpeg','/usr/bin/ffmpeg'];
  else if(platform==='win32')candidates=[r.path.join(base,'ffmpeg.exe')];
- for(var i=0;i<candidates.length;i++)if(r.fs.existsSync(candidates[i]))return candidates[i];
- try{var cmd=platform==='win32'?'where':'which',out=String(r.cp.execFileSync(cmd,['ffmpeg'],{encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','ignore']})).split(/\r?\n/)[0].trim();if(out&&r.fs.existsSync(out))return out;}catch(e){}
+ for(var i=0;i<candidates.length;i++)if(runs(r,candidates[i]))return candidates[i];
+ try{var cmd=platform==='win32'?'where':'which',out=String(r.cp.execFileSync(cmd,['ffmpeg'],{encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','ignore']})).split(/\r?\n/)[0].trim();if(out&&runs(r,out))return out;}catch(e){}
  throw Error('FFmpeg is unavailable. Install FFmpeg or choose the FFmpeg executable in Settings.');
 }
 function fingerprint(snapshot){
@@ -37,6 +46,7 @@ function tempoStats(values){
  var confidence=clean.length>=4&&mad<2.5&&agree>=.6?'high':clean.length>=2&&mad<7?'medium':'low';
  return {bpm:Math.round(bpm),confidence:confidence,spread:Math.round(mad*10)/10,samples:clean.length,beatInterval:Math.round((60/bpm)*1000)/1000};
 }
+var DECODE_IDLE_MS=Number(root.RP_DECODE_IDLE_MS)||60000; // RP_DECODE_IDLE_MS: tests only
 var LITTLE_ENDIAN=new Uint8Array(new Uint32Array([1]).buffer)[0]===1;
 // Seek exactly: an input -ss on AAC audio (m4a, mp4/mov camera files) lands 8-64 ms off (even -ss 0 drops
 // the first AAC frame). Seek the input to 10 s before the start, then trim the rest after decoding: exact.
@@ -50,8 +60,12 @@ function decode(clip,ffmpeg,state,onProgress){
   var args=['-nostdin','-hide_banner','-v','error','-threads','2','-filter_threads','1'].concat(seekArgs(clip.file,clip.input),['-t',(clip.end-clip.start).toFixed(6),
    '-map','0:a:0','-vn','-ac','1','-ar','8000','-af','highpass=f=20,lowpass=f=3800','-f','f32le','pipe:1']);
   var proc=r.cp.spawn(ffmpeg,args,{windowsHide:true,shell:false});state.process=proc;
-  function fail(err){if(!settled){settled=true;reject(err);}}
+  // A stalled FFmpeg (offline network drive, a hung codec) used to leave the analysis waiting forever. Without data for
+  // DECODE_IDLE_MS it is killed like Stop does, with its own message.
+  var lastData=Date.now(),idle=setInterval(function(){if(settled||state.cancelled||Date.now()-lastData<DECODE_IDLE_MS)return;fail(Error('FFmpeg stopped sending audio for '+Math.round(DECODE_IDLE_MS/100)/10+' s while reading A1 ('+String(clip.file).split(/[\\/]/).pop()+'). Check that the media drive is reachable, then Analyze again.'));try{proc.kill();}catch(e){}},Math.min(5000,DECODE_IDLE_MS));
+  function fail(err){clearInterval(idle);if(!settled){settled=true;reject(err);}}
   proc.stdout.on('data',function(chunk){
+   lastData=Date.now();
    if(settled)return;
    if(state.cancelled){proc.kill();return;}
    try{
@@ -70,7 +84,7 @@ function decode(clip,ffmpeg,state,onProgress){
   proc.stderr.on('data',function(b){stderr=(stderr+b.toString()).slice(-2000);});
   proc.on('error',function(e){fail(Error('Could not start FFmpeg: '+e.message));});
   proc.on('close',function(code){
-   state.process=null;
+   clearInterval(idle);state.process=null;
    if(state.cancelled)return fail(Error('Analysis stopped.'));
    if(code!==0)return fail(Error('Cannot read A1 audio: '+stderr));
    if(sampleCount/8000<clip.end-clip.start-.15)return fail(Error('A1 media is shorter than the timeline clip. Check trimming or render A1 to WAV.'));

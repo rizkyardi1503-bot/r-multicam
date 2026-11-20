@@ -1,10 +1,10 @@
-// Builds the user package dist/R-Project-Multicam-AI-DaVinci-Windows-v1.0.0.zip (+ .sha256), deterministically:
+// Builds the user package dist/R-Project-Multicam-AI-DaVinci-Windows-v1.0.1.zip (+ .sha256), deterministically:
 // fixed file list, sorted entries, fixed timestamps, deflate level 9, LF/CRLF untouched. No npm dependencies.
 // Usage: node pack-davinci.cjs            (runs build-davinci.cjs first so engine/ matches the Premiere build)
 'use strict';
 const fs = require('fs'), path = require('path'), zlib = require('zlib'), crypto = require('crypto'), cp = require('child_process');
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const NAME = 'R-Project-Multicam-AI-DaVinci-Windows-v' + VERSION;
 const HERE = __dirname, DIST = path.join(HERE, 'dist');
 const DOS_TIME = 0, DOS_DATE = ((2026 - 1980) << 9) | (10 << 5) | 24;     // 2026-10-24 00:00:00 for every entry
