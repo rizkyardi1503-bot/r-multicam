@@ -1,0 +1,162 @@
+// Final Cut engine tests: the HTTP API (token, origin, license gate), the camera list, and a full run on synthetic
+// media through the real engine (FFmpeg on PATH or RP_FFMPEG): music -> 2 cameras -> Analyze -> Create Multicam Edit ->
+// .fcpxml with a multicam clip and a project, "opened" in Final Cut (stubbed).
+'use strict';
+const assert = require('assert/strict'), fs = require('fs'), os = require('os'), path = require('path'), cp = require('child_process'), http = require('http');
+
+const APP = path.join(__dirname, '..', 'app');
+const { start, LICENSE_VERSION } = require(path.join(APP, 'rp-finalcut-engine.js'));
+const { mediaIn, asText, safeName } = require(path.join(APP, 'lib', 'fcp-workflow.js'));
+const FFMPEG = process.env.RP_FFMPEG || 'ffmpeg';
+process.env.RP_FFMPEG = FFMPEG;
+
+let passed = 0;
+async function test(name, fn) { await fn(); passed++; console.log('ok - ' + name); }
+
+// ---------- synthetic media: 128 BPM, intro -> build -> drop, and two cameras that hear it from different offsets
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rp-fcp-test-'));
+const SR = 44100, BPM = 128, BEAT = 60 / BPM, DUR = 48;
+function song() {
+  const y = new Float32Array(SR * DUR);
+  let seed = 11; const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff) * 2 - 1;
+  const kick = (at, amp) => { let ph = 0; for (let i = 0; i < SR * 0.25; i++) { const t = i / SR, f = 50 + 120 * Math.exp(-t * 30); ph += 2 * Math.PI * f / SR; const k = Math.floor(at * SR) + i; if (k < y.length) y[k] += Math.sin(ph) * Math.exp(-t * 9) * amp; } };
+  const hat = (at, amp) => { for (let i = 0; i < SR * 0.05; i++) { const k = Math.floor(at * SR) + i; if (k < y.length) y[k] += rnd() * amp * Math.exp(-(i / SR) * 40); } };
+  for (let b = 0; b < DUR - 0.3; b += BEAT) {
+    if (b < 16) { kick(b, 0.35); hat(b + BEAT / 2, 0.05); }
+    else if (b < 26) { const p = (b - 16) / 10; kick(b, 0.3 + 0.3 * p); for (let k = 0; k < 4; k++) hat(b + k * BEAT / 4, 0.08 + 0.25 * p); }
+    else { kick(b, 1); hat(b + BEAT / 2, 0.15); }
+  }
+  for (let i = 26 * SR; i < y.length; i++) y[i] += 0.3 * Math.sin(2 * Math.PI * 55 * i / SR);
+  let peak = 0; for (const v of y) peak = Math.max(peak, Math.abs(v));
+  const buf = Buffer.alloc(44 + y.length * 2);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + y.length * 2, 4); buf.write('WAVEfmt ', 8); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(SR, 24); buf.writeUInt32LE(SR * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34); buf.write('data', 36); buf.writeUInt32LE(y.length * 2, 40);
+  for (let i = 0; i < y.length; i++) buf.writeInt16LE(Math.round(y[i] / peak / 1.05 * 32767), 44 + i * 2);
+  return buf;
+}
+function ff(args) { const r = cp.spawnSync(FFMPEG, ['-v', 'error', '-y', ...args], { encoding: 'utf8' }); if (r.status !== 0) throw new Error(r.stderr); }
+const music = path.join(tmp, 'Set Night 1.wav');
+fs.writeFileSync(music, song());
+const camDirs = [];
+[['Wide', 'red', [[0, 22], [24, 24]]], ['DJ', 'blue', [[3, DUR - 3]]]].forEach(([name, color, clips]) => {
+  const dir = path.join(tmp, name); fs.mkdirSync(dir); camDirs.push(dir);
+  clips.forEach(([at, len], j) => ff(['-f', 'lavfi', '-i', `color=c=${color}:size=320x180:rate=25`, '-ss', String(at), '-t', String(len), '-i', music,
+    '-filter_complex', '[1:a]volume=0.6,aecho=0.6:0.3:40:0.2[a]', '-map', '0:v', '-map', '[a]', '-t', String(len),
+    '-metadata', 'creation_time=' + new Date(Date.UTC(2026, 10, 20, 21, 0, 0) + at * 1000).toISOString(),
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', path.join(dir, `C${String(j + 1).padStart(4, '0')}.MP4`)]));
+  fs.writeFileSync(path.join(dir, 'notes.txt'), 'not media'); fs.writeFileSync(path.join(dir, '._C0001.MP4'), 'AppleDouble');
+});
+
+// ---------- helpers
+function fakeAccount(allowed = true) {
+  return { session: null, restore: async () => ({ signedIn: true, email: 'test@example.com', label: allowed ? 'Lifetime' : 'Trial expired' }),
+    heartbeat: async () => {}, ensureAllowed: async () => { if (!allowed) { const e = new Error('Your trial has ended. Buy Lifetime to continue.'); e.code = 'EXPIRED'; throw e; } },
+    status: () => ({ signedIn: true, email: 'test@example.com', canUse: allowed, label: allowed ? 'Lifetime' : 'Trial expired', licenseStatus: allowed ? 'lifetime' : 'expired' }) };
+}
+function picker(queue) { return { music: async () => queue.music.splice(0, 1), folder: async () => queue.folder.splice(0, 1), files: async () => queue.files.splice(0, 1)[0] || [] }; }
+function call(eng, method, p, body, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const data = body ? JSON.stringify(body) : '';
+    const req = http.request({ host: '127.0.0.1', port: eng.port, path: p + (p.includes('?') ? '' : '?t=' + eng.token), method,
+      headers: Object.assign({ Host: '127.0.0.1:' + eng.port }, body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}, headers) }, (res) => {
+      let t = ''; res.on('data', (c) => { t += c; }); res.on('end', () => { let j = null; try { j = JSON.parse(t); } catch (e) { /* html */ } resolve({ status: res.statusCode, body: j, text: t }); });
+    });
+    req.on('error', reject); if (data) req.write(data); req.end();
+  });
+}
+
+(async () => {
+  await test('unit: camera folders keep only video files, in name order, without macOS ._ files', async () => {
+    assert.deepEqual(mediaIn(camDirs[0]).map((f) => path.basename(f)), ['C0001.MP4', 'C0002.MP4']);
+    assert.equal(asText('a "b" \\ c'), '"a \\"b\\" \\\\ c"');
+    assert.equal(safeName('DJ: set/1'), 'DJ- set-1');
+  });
+
+  await test('license version reports the bundled engine version (accepted by the minimum-version rule)', async () => {
+    assert.match(LICENSE_VERSION, /^2\.3\.\d+\.\d+-finalcut-v\d+\.\d+\.\d+$/);
+  });
+
+  const opened = [], queue = { music: [music], folder: [camDirs[0]], files: [] };
+  const outDir = path.join(tmp, 'out');
+  const eng = await start({ quiet: true, awaitActions: true, account: fakeAccount(true), picker: picker(queue), open: async (f) => { opened.push(f); return 'Final Cut Pro'; }, outDir });
+  try {
+    await test('API refuses a wrong token, a foreign Host and a foreign Origin', async () => {
+      assert.equal((await call(eng, 'GET', '/api/status?t=wrong')).status, 403);
+      assert.equal((await call(eng, 'GET', '/api/status', null, { Host: 'evil.example:80' })).status, 403);
+      assert.equal((await call(eng, 'POST', '/api/music', {}, { Origin: 'http://evil.example' })).status, 403);
+      const page = await call(eng, 'GET', '/');
+      assert.equal(page.status, 200); assert.match(page.text, /for Final Cut Pro/); assert.doesNotMatch(page.text, /\$\{/);
+    });
+
+    await test('nothing chosen yet: Create Multicam Edit explains what is missing', async () => {
+      const r = await call(eng, 'POST', '/api/multicam', { cadences: [4, 8] });
+      assert.equal(r.status, 202);
+      const s = (await call(eng, 'GET', '/api/status')).body;
+      assert.equal(s.lastResult.ok, false); assert.match(s.lastResult.error, /music first/);
+    });
+
+    await test('choose music and two camera folders; remove and re-add keeps names unique', async () => {
+      assert.equal((await call(eng, 'POST', '/api/music', {})).body.ok, true);
+      assert.equal((await call(eng, 'POST', '/api/camera/add', { mode: 'folder' })).body.ok, true);
+      queue.folder.push(camDirs[0]);
+      const twice = (await call(eng, 'POST', '/api/camera/add', { mode: 'folder' })).body;
+      assert.deepEqual(twice.studio.cameras.map((c) => c.name), ['Wide', 'Wide 2']);
+      assert.equal((await call(eng, 'POST', '/api/camera/remove', { index: 1 })).body.studio.cameras.length, 1);
+      queue.folder.push(camDirs[1]);
+      const r = (await call(eng, 'POST', '/api/camera/add', { mode: 'folder' })).body;
+      assert.deepEqual(r.studio.cameras.map((c) => [c.name, c.files]), [['Wide', 2], ['DJ', 1]]);
+      assert.equal((await call(eng, 'POST', '/api/camera/remove', { index: 9 })).status, 400);
+      const cancelled = (await call(eng, 'POST', '/api/camera/add', { mode: 'folder' })).body;   // dialog cancelled
+      assert.equal(cancelled.ok, true); assert.equal(cancelled.studio.cameras.length, 2);
+    });
+
+    await test('Analyze Music finds 128 BPM and the drop', async () => {
+      assert.equal((await call(eng, 'POST', '/api/analyze', {})).status, 202);
+      const s = (await call(eng, 'GET', '/api/status')).body;
+      assert.notEqual(s.lastResult.ok, false, s.lastResult.error);
+      assert.ok(Math.abs(s.studio.analysis.bpm - BPM) <= 1, 'bpm ' + s.studio.analysis.bpm);
+      assert.ok(s.studio.analysis.drops >= 1, 'drops ' + s.studio.analysis.drops);
+    });
+
+    await test('Create Multicam Edit syncs every clip and writes an FCPXML with a multicam clip and a project', async () => {
+      const r = await call(eng, 'POST', '/api/multicam', { roles: ['Master Wide', 'DJ Close-Up'], cadences: [4, 6, 8], dropCamera: '1', sensitivity: 'balanced' });
+      assert.equal(r.status, 202);
+      const s = (await call(eng, 'GET', '/api/status')).body;
+      assert.notEqual(s.lastResult.ok, false, s.lastResult.error);
+      const res = s.studio.result;
+      assert.equal(res.placed, 3, 'all three clips synced'); assert.equal(res.excluded, 0);
+      assert.ok(res.cuts >= 4, 'cuts ' + res.cuts);
+      assert.deepEqual(opened, [res.fcpxml]);
+      assert.ok(res.fcpxml.startsWith(outDir) && /Set Night 1 - Multicam AI\.fcpxml$/.test(res.fcpxml));
+      const xml = fs.readFileSync(res.fcpxml, 'utf8');
+      assert.match(xml, /<fcpxml version="1\.\d+"/); assert.match(xml, /<mc-clip /); assert.match(xml, /<multicam /);
+      assert.match(xml, /<project name="Set Night 1 - Multicam AI"/); assert.match(xml, /<event name="R Project Multicam AI"/);
+      for (const dir of camDirs) for (const f of mediaIn(dir)) assert.ok(xml.includes(encodeURI('file://' + f).replace(/#/g, '%23')) || xml.includes('file://' + f), 'media ref ' + f);
+      const plan = JSON.parse(fs.readFileSync(res.fcpxml.replace(/ - Multicam AI\.fcpxml$/, '.rpplan.json'), 'utf8'));
+      assert.deepEqual(plan.cameras.map((c) => c.role), ['Master Wide', 'DJ Close-Up']);
+      const offsets = plan.cameras.map((c) => c.clips.map((k) => Math.round(k.offset * 25) / 25));
+      assert.deepEqual(offsets, [[0, 24], [3]], 'sync offsets ' + JSON.stringify(offsets));
+      const xmllint = cp.spawnSync('xmllint', ['--noout', res.fcpxml], { encoding: 'utf8' });
+      if (!xmllint.error) assert.equal(xmllint.status, 0, xmllint.stderr);
+    });
+
+    await test('a second run while one is running is refused (409)', async () => {
+      eng.studio.busy = 'Create Multicam Edit';
+      try { assert.equal((await call(eng, 'POST', '/api/analyze', {})).status, 409); assert.equal((await call(eng, 'POST', '/api/music', {})).status, 409); }
+      finally { eng.studio.busy = ''; }
+    });
+  } finally { await eng.close(); }
+
+  const locked = await start({ quiet: true, awaitActions: true, account: fakeAccount(false), picker: picker({ music: [music], folder: [], files: [] }), open: async () => '', outDir });
+  try {
+    await test('license gate: an expired trial cannot analyze or create an edit (403), choosing files still works', async () => {
+      assert.equal((await call(locked, 'POST', '/api/music', {})).status, 200);
+      const r = await call(locked, 'POST', '/api/analyze', {});
+      assert.equal(r.status, 403); assert.equal(r.body.code, 'EXPIRED');
+      assert.equal((await call(locked, 'POST', '/api/multicam', {})).status, 403);
+    });
+  } finally { await locked.close(); }
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+  console.log('PASS Final Cut engine: ' + passed + ' tests');
+})().catch((e) => { console.error(e); process.exit(1); });

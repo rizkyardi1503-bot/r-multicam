@@ -21,3 +21,9 @@ jobs:
         run: for f in rp-engine/bin/*.mjs rp-engine/lib/*.mjs rp-engine/test/*.mjs; do node --check "$f"; done
       - name: End-to-end engine, MCP and FCPXML tests
         run: node rp-engine/test/run-tests.mjs
+      - name: Final Cut engine package and tests
+        run: |
+          node plugin/finalcut/pack-finalcut.cjs --check
+          bash -n plugin/finalcut/Install-FinalCut.command
+          bash -n plugin/finalcut/Uninstall-FinalCut.command
+          node plugin/finalcut/tests/finalcut-tests.cjs

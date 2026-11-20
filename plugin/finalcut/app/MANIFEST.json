@@ -1,0 +1,28 @@
+{
+ "files": {
+  "engine/music-pacing-auto.js": "cd24f4e5b62d6c141665cd1614da55292555d8522ffc72967aab40fac8bd457a",
+  "engine/audio-core.js": "81c0d79f22b7f562803c4c5625bdc17bcad342a22a2bd715a7d675c3fa84a01c",
+  "engine/spectral-features.js": "b9249b2966654bf80860bd51a7e881b233e34bdc983d379490fa296ef1908328",
+  "engine/audio-engine.js": "f3716f1df131d90303f3c293839148a7445789f77b5f949b5eef1b6625004c71",
+  "engine/music-learning.js": "55df4b08d9cc4ca3da46693d8cfee87291d46ff88f10cd2fa55d28a2e672cc4c",
+  "engine/music-intelligence-v10.js": "fc11219510aa0822ff005fede85820e2eb993f0d44dc2f4001bc07bf6fc1e6a3",
+  "engine/visual-quality.js": "9acb87da6aa4297d7dfb9d51bb242b1a4245fc81b76dd27d6040782df803e112",
+  "engine/ai-director.js": "edadab300e0f0c9590a102f4be5552f9619dec6504037a26994e2840c7bd1a1c",
+  "engine/CSXS/manifest.xml": "f1567d9a3ae093878e4bb0572d03b14f920ab914e0f6e43dec6766105c83636e",
+  "rp-engine/package.json": "7a39fdf32ce80317e1b60750da2cdad6bf7d057c8d8080f7ac9241135ef4fe8b",
+  "rp-engine/bin/rp-engine-mcp.mjs": "f6a2ffb862e3e432ba61cf8192cfd28a49108736dcd35524cbbf8128110575e7",
+  "rp-engine/bin/rp-engine.mjs": "fe9370ed7624fc5951a7d64c7b6f98f9a3acf5ff7818686c7ef40490697b02b8",
+  "rp-engine/lib/cache.mjs": "a4b1a3bf462d46f1f9478f09a603126aa7fe3279faca6bfa4dd06a79fbaa1184",
+  "rp-engine/lib/engine.mjs": "f1aeea119fa8313a56cb06fa89214332887c54865394ac6061c5f8750f38054c",
+  "rp-engine/lib/fcpxml.mjs": "44c2e7810ff2ddebbee2ab5acf12c065c64b51d6f41b5cda5b9c3bbe7b126d44",
+  "rp-engine/lib/media.mjs": "ee4132d2ffb2b6303f5461c0bc584d84a5541aba058d46f2cc364995022e9aed",
+  "rp-engine/lib/plan-format.mjs": "62333a7d794874580a1309e8aba691ada200c5f6ee01f3a74a56fc4e05a09d87",
+  "rp-engine/lib/runtime.mjs": "bf3ff445a854d254f4d2ca456413ab42a2a03abd74b250bd4d32bad155df2ae7",
+  "rp-engine/lib/session.mjs": "336a3e0ff47a0d48cec3afddad442be8177e8f70fed2d0dd090c1388b411aaf5",
+  "rp-engine/lib/tools.mjs": "08cf4b285bec5d0c039389838a5e99735d748663760c611070ff34ef7eaa4677",
+  "rp-engine/schema/rp-multicam-plan-1.json": "95f01a5b417b37d51c717c8ee2fbc3289a8557f4ff5d5911e0eaa84adbe03c75",
+  "lib/account.js": "d036dc4bc22417a20cedd6151cc877f851673fbdfc3bf72d5405067380267d1a",
+  "lib/google-auth.js": "17d41ca8e53e6e9c926f07907b6ba6c3d00e9f1273e4cf92fef19cf3b2444d9b"
+ },
+ "sourceBuildId": "R Project Multicam AI v2.3.11.19 · MUSIC ENGINE V19 · PUBLIC macOS LOW MEMORY"
+}
