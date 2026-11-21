@@ -10,7 +10,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //    (no automatic revoke), and a late settlement notice never flips them back;
 //  - the order gets lifetime_activated_at only after the licence write worked, so a blocked account earns no affiliate
 //    commission and a retry after a failed licence write still sends the purchase_paid alert;
-//  - unknown order ids (Midtrans dashboard test notifications) are acknowledged instead of retried forever.
+//  - unknown order ids (Midtrans dashboard test notifications) are acknowledged instead of retried forever;
+//  - plan orders (monthly_v1, annual_v1) are granted by public.grant_subscription_order: exactly once per order, the days
+//    added on top of an active plan (docs/subscriptions-phase-1.md). Lifetime orders work as before.
 
 const enc = new TextEncoder();
 // Constant-time comparison for the Midtrans signature (no early exit on the first differing character).
@@ -120,6 +122,28 @@ Deno.serve(async (req) => {
   if (success && duplicateOf) {
     if (!alreadyPaid) await alert("purchase_duplicate", order.user_id, { order_id: order.order_id, first_order_id: duplicateOf, gross_amount_idr: Number(order.gross_amount_idr) });
     return json({ ok: true, warning: "DUPLICATE_PAYMENT" });
+  }
+
+  if (success && (order.product_code === "monthly_v1" || order.product_code === "annual_v1")) {
+    // A failed call answers 500 so Midtrans retries; the function itself never grants an order twice.
+    const g = await rest("rpc/grant_subscription_order", { method: "POST", body: JSON.stringify({ p_order_id: order.order_id }) });
+    const res = g.ok ? await g.json().catch(() => null) : null;
+    if (!res || typeof res !== "object") return json({ error: "LICENSE_ACTIVATION_FAILED" }, 500);
+    if (res.ok) {
+      if (!res.already) await alert("purchase_paid", order.user_id, { order_id: order.order_id, gross_amount_idr: Number(order.gross_amount_idr), product_code: order.product_code, via: "webhook" });
+      return json({ ok: true });
+    }
+    if (res.reason === "ALREADY_LIFETIME") {
+      // Paid for a plan while the account is lifetime (manually granted): keep lifetime, the owner refunds this payment.
+      if (!alreadyPaid) await alert("purchase_duplicate", order.user_id, { order_id: order.order_id, first_order_id: null, gross_amount_idr: Number(order.gross_amount_idr) });
+      return json({ ok: true, warning: "DUPLICATE_PAYMENT" });
+    }
+    if (res.reason === "BLOCKED" || res.reason === "PROFILE_NOT_FOUND") {
+      await alert("purchase_paid_not_activated", order.user_id, { order_id: order.order_id });
+      return json({ ok: true, warning: "PROFILE_NOT_FOUND_OR_BLOCKED" });
+    }
+    console.error("plan order not granted", String(res.reason || ""), String(body.order_id));
+    return json({ ok: true, warning: String(res.reason || "NOT_GRANTED") });
   }
 
   if (success) {

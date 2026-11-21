@@ -289,6 +289,15 @@
   transform: rotate(-45deg);
 }
 .home-price-card .home-note { margin: auto 0 0; padding-top: 16px; border-top: 1px solid var(--rp-line); color: var(--rp-muted); font-size: 13.5px; }
+/* Plans: the trial spans the row, then Monthly, Annual and (until its cutoff) Lifetime. */
+.home-price-grid.is-plans { grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr)); max-width: 1080px; }
+.home-price-grid.is-plans .is-trial { grid-column: 1 / -1; }
+.home-price-grid.is-plans .is-trial .home-checks { grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+.home-price-grid.is-plans .price { font-size: clamp(30px, 3.3vw, 42px); }
+.home-price-grid.is-plans .price b { white-space: nowrap; }
+.home-price-card .home-founder { margin: 0 0 6px; color: var(--rp-cyan); font-weight: 600; font-size: 15px; }
+.home-price-card .home-sub { margin: 0 0 20px; color: var(--rp-muted); font-size: 14px; }
+.home-price-card .home-was s { opacity: .6; white-space: nowrap; }
 .home-flow { max-width: 1000px; margin: clamp(44px, 5vw, 64px) auto 0; }
 .home-flow h3 { margin-bottom: 28px; text-align: center; font-size: 18px; }
 .home-flow ol { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--rp-line-strong); }

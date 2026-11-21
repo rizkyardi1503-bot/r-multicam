@@ -12,7 +12,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //    sends no notification for it, so it used to stay "created" forever);
 //  - activating here sends the owner's purchase_paid alert (the webhook skips it once the order is activated);
 //  - the order gets lifetime_activated_at only after the licence write worked (same order as the webhook), and an order
-//    whose money went back is never activated again.
+//    whose money went back is never activated again;
+//  - plan orders (monthly_v1, annual_v1) are granted by public.grant_subscription_order (exactly once per order); a plan
+//    order already granted is not asked about again, and "paid" is answered when it is the newest order.
 
 // Statuses the orders table accepts (plugin_payment_orders_status_check); anything else keeps the stored status.
 const STORABLE = new Set(["created", "pending", "authorize", "capture", "settlement", "deny", "cancel", "expire", "failure",
@@ -30,6 +32,8 @@ const CLOSED = new Set(["expire", "deny", "failure", "failed"]);
 // Money went back on these orders: a late "settlement" answer must not activate them again.
 const REFUND = new Set(["refund", "partial_refund", "chargeback", "partial_chargeback"]);
 const refunded = (o: any) => REFUND.has(o.status) || (o.status === "cancel" && !!o.paid_at);
+const isPlan = (o: any) => o.product_code === "monthly_v1" || o.product_code === "annual_v1";
+const granted = (o: any) => isPlan(o) && !!o.paid_at && !!o.lifetime_activated_at;
 const DAY_MS = 24 * 3600 * 1000;
 const SKIP_AFTER_MS = 25 * 3600 * 1000;
 const b64 = (s: string) => btoa(s);
@@ -65,7 +69,7 @@ Deno.serve(async (req) => {
     if (!al || (!al.ok && al.status !== 409)) console.error("owner alert not stored", event_name, String(metadata.order_id || ""), al ? al.status : "network");
   };
 
-  const pq = await rest("plugin_profiles?select=license_status,lifetime_order_id&user_id=eq." + encodeURIComponent(userId));
+  const pq = await rest("plugin_profiles?select=license_status,lifetime_order_id,subscription_expires_at&user_id=eq." + encodeURIComponent(userId));
   if (!pq.ok) return json({ error: "ORDER_LOOKUP_FAILED" }, 500);
   const prof = (await pq.json().catch(() => []))?.[0] || null;
   const firstOrder: string | null = prof && prof.license_status === "lifetime" && prof.lifetime_order_id ? prof.lifetime_order_id : null;
@@ -80,7 +84,7 @@ Deno.serve(async (req) => {
   // the account is lifetime (the answer is "paid" either way; its duplicate alert, if any, was sent when it was recorded).
   // The activation order itself is still asked while it has no stamp: an earlier attempt wrote the licence but not the stamp.
   const unfinished = (o: any) => o.order_id === firstOrder && !o.lifetime_activated_at;
-  const ask = orders.filter((o) => !refunded(o) && (!(firstOrder && o.paid_at) || unfinished(o)) && !(!o.paid_at && CLOSED.has(o.status) && age(o) > SKIP_AFTER_MS));
+  const ask = orders.filter((o) => !refunded(o) && !granted(o) && (!(firstOrder && o.paid_at) || unfinished(o)) && !(!o.paid_at && CLOSED.has(o.status) && age(o) > SKIP_AFTER_MS));
   // All at once; results are handled newest first as before. null = Midtrans unreachable or an error answer.
   const answers = await Promise.all(ask.map(async (order) => {
     const mr = await fetch("https://api.midtrans.com/v2/" + encodeURIComponent(order.order_id) + "/status", {
@@ -148,6 +152,26 @@ Deno.serve(async (req) => {
       continue; // the license already comes from the first order
     }
 
+    if (success && isPlan(order)) {
+      const g = await rest("rpc/grant_subscription_order", { method: "POST", body: JSON.stringify({ p_order_id: order.order_id }) });
+      const res = g.ok ? await g.json().catch(() => null) : null;
+      if (!res || typeof res !== "object") return json({ error: "LICENSE_ACTIVATION_FAILED", order_id: order.order_id }, 500);
+      if (res.ok) {
+        if (!res.already) await ownerAlert("purchase_paid", { order_id: order.order_id, gross_amount_idr: Number(order.gross_amount_idr), product_code: order.product_code, via: "check_payment" });
+        return json({ paid: true, activated: true, status, order_id: order.order_id, product_code: order.product_code, subscription_expires_at: res.subscription_expires_at || null });
+      }
+      if (res.reason === "BLOCKED" || res.reason === "PROFILE_NOT_FOUND") {
+        if (!order.paid_at) await ownerAlert("purchase_paid_not_activated", { order_id: order.order_id });
+        return json({ error: "This account is blocked. Contact support.", order_id: order.order_id }, 403);
+      }
+      if (res.reason === "ALREADY_LIFETIME") {
+        if (!order.paid_at) await ownerAlert("purchase_duplicate", { order_id: order.order_id, first_order_id: null, gross_amount_idr: Number(order.gross_amount_idr) });
+        continue;
+      }
+      console.error("plan order not granted", String(res.reason || ""), order.order_id);
+      continue;
+    }
+
     if (success) {
       const pr = await rest("plugin_profiles?user_id=eq." + encodeURIComponent(userId) + "&license_status=neq.blocked", {
         method: "PATCH",
@@ -174,5 +198,9 @@ Deno.serve(async (req) => {
     }
   }
   if (firstOrder) return json({ paid: true, activated: true, status: "settlement", order_id: firstOrder });
+  // The newest order is a plan order already granted (for example by the webhook): that payment went through.
+  if (granted(orders[0]) && !refunded(orders[0])) {
+    return json({ paid: true, activated: true, status: orders[0].status, order_id: orders[0].order_id, product_code: orders[0].product_code, subscription_expires_at: prof?.subscription_expires_at || null });
+  }
   return json({ paid: false, status: lastStatus });
 });
