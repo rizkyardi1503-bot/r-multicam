@@ -47,6 +47,32 @@ function openBrowser(url) {
   } catch (e) { /* the URL is printed in the console */ }
 }
 
+/** A Chromium browser that can open a page as its own app window (no tabs, no address bar): Edge ships with Windows. */
+function appBrowser() {
+  if (process.env.RP_APP_BROWSER) return process.env.RP_APP_BROWSER;           // tests
+  const env = process.env, list = process.platform === 'win32'
+    ? [env['ProgramFiles(x86)'], env.ProgramFiles, env.LOCALAPPDATA].filter(Boolean).flatMap((b) => [
+      path.join(b, 'Microsoft', 'Edge', 'Application', 'msedge.exe'), path.join(b, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(b, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe')])
+    : process.platform === 'darwin'
+      ? ['Google Chrome', 'Microsoft Edge', 'Brave Browser', 'Chromium'].flatMap((n) => ['/Applications', path.join(os.homedir(), 'Applications')].map((d) => path.join(d, n + '.app', 'Contents', 'MacOS', n)))
+      : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/microsoft-edge'];
+  return list.find((f) => { try { return fs.statSync(f).isFile(); } catch (e) { return false; } }) || '';
+}
+
+/** Opens the page in its own window. Returns the window's process (it ends when the window closes), or null when only a
+ *  normal browser tab could be opened. A separate browser profile keeps the window in a process of its own. */
+function openAppWindow(url, profileDir) {
+  const exe = appBrowser();
+  if (!exe) { openBrowser(url); return null; }
+  try {
+    const c = cp.spawn(exe, ['--app=' + url, '--user-data-dir=' + profileDir, '--window-size=980,900', '--no-first-run', '--no-default-browser-check',
+      '--disable-features=Translate', '--class=RProjectMulticamAI'], { detached: false, stdio: 'ignore', windowsHide: false });
+    c.on('error', () => openBrowser(url));
+    return c;
+  } catch (e) { openBrowser(url); return null; }
+}
+
 /** Is an R Project Engine answering at this URL (status API with its token, 1 s timeout)? */
 function engineAnswers(url, timeoutMs = 1000) {
   return new Promise((resolve) => {
@@ -213,9 +239,11 @@ async function start(opts = {}) {
   };
 }
 
+let ICON = '';
+try { ICON = 'data:image/png;base64,' + fs.readFileSync(path.join(APP, 'assets', 'icon-256.png')).toString('base64'); } catch (e) { /* no icon */ }
 function page(token) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>R Project Multicam AI</title><style>
+<title>R Project Multicam AI</title>${ICON ? '<link rel="icon" href="' + ICON + '">' : ''}<style>
 :root{--ink:#1d1d1f;--prose:#424245;--muted:#6e6e73;--line:#d2d2d7;--soft:#f5f5f7;--blue:#0071e3;--blue2:#0066cc;--ok:#34c759;--err:#d70015}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}body{margin:0;background:#fff;color:var(--ink);font:17px/1.47 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 button,input{font:inherit;color:inherit}button{cursor:pointer}[hidden]{display:none!important}
@@ -282,7 +310,8 @@ dialog .go{margin-top:6px}.alt{display:flex;justify-content:space-between;margin
 <div class="item"><span>Format</span><div class="seg" id="fmt"><button data-v="9x16" aria-pressed="true">9:16</button><button data-v="4x5" aria-pressed="false">4:5</button><button data-v="16x9" aria-pressed="false">16:9</button></div></div>
 <div class="item"><span>Length</span><div class="seg" id="len"><button data-v="15" aria-pressed="false">15 s</button><button data-v="30" aria-pressed="true">30 s</button><button data-v="60" aria-pressed="false">60 s</button></div></div>
 <div class="item"><span>Zoom on drop</span><button class="switch" id="zoom" aria-pressed="true" aria-label="Zoom on drop"></button></div>
-<div class="item"><span>Color</span><button class="add" id="lut">Add LUT</button></div></div>
+<div class="item"><span>Color</span><button class="add" id="lut">Add LUT</button></div>
+<div class="item"><span>Encoding</span><span id="enc" style="font-size:15px;color:var(--ink)">Auto</span></div></div>
 <button class="go" id="export" disabled>Export</button>
 <div class="more"><button class="btn" id="full">Full set</button><button class="btn" id="xfcp">Final Cut XML</button><button class="btn" id="xres">DaVinci XML</button></div></section>
 <div class="done" id="done" hidden><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="20"/><path d="m16 24 6 6 11-12"/></svg>
@@ -340,7 +369,7 @@ async function tick(){let s;try{s=await api('/api/status');}catch(e){return;}if(
  const d=st.drops||[],key=st.set?d.map((x)=>x.time).join(','):'';
  if(key!==dropsKey){dropsKey=key;sel=new Set();$('grid').innerHTML=d.map((x)=>'<button class="tile" data-i="'+x.index+'" aria-pressed="false">'+(x.thumb?'<img alt="" src="/api/thumb?i='+x.index+'&t='+T+'&k='+encodeURIComponent(key)+'">':'')+'<b>'+clock(x.time)+'</b><i></i></button>').join('');}
  $('drops').hidden=!st.set;$('exp').hidden=!st.set;$('dcount').textContent=d.length+' found';count();
- $('lut').textContent=st.lut?st.lut+'  ✕':'Add LUT';$('lut').dataset.on=st.lut?'1':'';
+ $('enc').textContent=st.encoder||'Auto';$('lut').textContent=st.lut?st.lut+'  ✕':'Add LUT';$('lut').dataset.on=st.lut?'1':'';
  ['full','xfcp','xres'].forEach((id)=>$(id).disabled=busy);
  const p=s.progress;$('prog').hidden=!busy;if(busy&&p){$('bar').style.width=Math.round(p.p*100)+'%';$('ptext').textContent=p.text||s.busy;}
  const lr=s.lastResult;if(!busy&&lr&&lr.ok===false&&!lr.license&&lr.at>(window._shown||0)){window._shown=lr.at;err(lr.error);}
@@ -354,14 +383,14 @@ connect();tick();setInterval(tick,1000);
 }
 
 async function main() {
-  const args = process.argv.slice(2), noBrowser = args.includes('--no-browser');
+  const args = process.argv.slice(2), noBrowser = args.includes('--no-browser'), appMode = args.includes('--app');
   const portArg = args.indexOf('--port'), port = portArg >= 0 ? Number(args[portArg + 1]) : 0;
   const dir = appDir(), lockFile = path.join(dir, 'engine.lock');
   fs.mkdirSync(dir, { recursive: true });
   const lock = await acquireLock(lockFile);
   if (lock.running) {
     console.log('R Project Engine is already running: ' + lock.running);
-    if (!noBrowser) openBrowser(lock.running);
+    if (!noBrowser) { if (appMode) openAppWindow(lock.running, path.join(dir, 'window')); else openBrowser(lock.running); }
     return;
   }
   let eng;
@@ -370,15 +399,18 @@ async function main() {
   fs.writeSync(lock.fd, JSON.stringify({ pid: process.pid, url: eng.url }));
   fs.closeSync(lock.fd);
   console.log('\nOpen this address if the browser does not open:\n  ' + eng.url + '\nClose this window to stop R Project Engine.\n');
-  if (!noBrowser) openBrowser(eng.url);
-  let ended = false;
+  let ended = false, win = null;
+  if (!noBrowser && appMode) win = openAppWindow(eng.url, path.join(dir, 'window'));
+  else if (!noBrowser) openBrowser(eng.url);
   const shutdown = () => {
     if (ended) return; ended = true;
     try { const l = JSON.parse(fs.readFileSync(lockFile, 'utf8')); if (l.pid === process.pid) fs.rmSync(lockFile, { force: true }); } catch (e) { /* gone */ }
     process.exit(0);
   };
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, shutdown);
+  // App mode: closing the window quits the app (a window that ends within seconds handed off to a running browser instead).
+  if (win) { const opened = Date.now(); win.on('exit', () => { if (Date.now() - opened > 5000) { eng.studio.stop(); shutdown(); } }); }
 }
 
 if (require.main === module) main().catch((e) => { console.error('R Project Engine failed: ' + (e && e.stack || e)); process.exitCode = 1; });
-module.exports = { start, page, VERSION, LICENSE_VERSION, acquireLock, engineAnswers };
+module.exports = { start, page, VERSION, LICENSE_VERSION, acquireLock, engineAnswers, appBrowser };

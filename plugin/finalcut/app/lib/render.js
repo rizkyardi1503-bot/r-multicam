@@ -3,7 +3,7 @@
 // Each camera shot is encoded to an intermediate file at a fixed size and frame rate (frame-exact, so there is no
 // drift), the shots are joined without re-encoding, and the master music is laid underneath. Original media is only read.
 'use strict';
-const fs = require('fs'), path = require('path'), cp = require('child_process');
+const fs = require('fs'), path = require('path'), os = require('os'), cp = require('child_process');
 
 const FORMATS = { '9x16': [1080, 1920], '4x5': [1080, 1350], '16x9': [1920, 1080] };
 const FPS = 30;
@@ -11,8 +11,48 @@ const ZOOM = 0.12, ZOOM_IN = 0.3;          // punch-in on the drop: +12 % over 0
 
 function ffmpegBin() { return process.env.RP_FFMPEG || 'ffmpeg'; }
 
+// ---------------------------------------------------------------- encoders (hybrid CPU + GPU)
+const CPU = { id: 'cpu', label: 'CPU', gpu: false, pix: 'yuv420p', args: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18'] };
+const GPUS = [
+  { id: 'videotoolbox', label: 'Apple GPU', gpu: true, pix: 'yuv420p', args: ['-c:v', 'h264_videotoolbox', '-b:v', '16M', '-maxrate', '24M', '-profile:v', 'high'] },
+  { id: 'nvenc', label: 'NVIDIA GPU', gpu: true, pix: 'yuv420p', args: ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '19', '-b:v', '0', '-profile:v', 'high'] },
+  { id: 'qsv', label: 'Intel GPU', gpu: true, pix: 'nv12', args: ['-c:v', 'h264_qsv', '-global_quality', '20', '-profile:v', 'high'] },
+  { id: 'amf', label: 'AMD GPU', gpu: true, pix: 'nv12', args: ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', '18', '-qp_p', '20'] },
+];
+let detected = null;
+
+/** Encoders that really work on this computer: GPU ones first (listed by FFmpeg AND able to encode a few frames), then the
+ *  CPU. RP_ENCODERS=cpu turns the GPU off. Cached for the life of the app. */
+function encoders() {
+  if (detected) return detected;
+  if (/^cpu$/i.test(process.env.RP_ENCODERS || '')) return (detected = Promise.resolve([CPU]));
+  detected = new Promise((resolve) => {
+    cp.execFile(ffmpegBin(), ['-hide_banner', '-encoders'], { timeout: 15000, windowsHide: true }, async (err, stdout) => {
+      const listed = GPUS.filter((g) => new RegExp('\\b' + g.args[1] + '\\b').test(String(stdout || '')));
+      const ok = [];
+      for (const g of listed) {
+        try {
+          await ff(['-f', 'lavfi', '-i', 'color=c=gray:s=256x256:r=30', '-frames:v', '10', '-vf', 'format=' + g.pix, ...g.args, '-f', 'null', '-'], { timeoutMs: 15000 });
+          ok.push(g);
+        } catch (e) { /* listed but no driver / no device */ }
+      }
+      resolve([...ok.slice(0, 1), CPU]);
+    });
+  });
+  return detected;
+}
+function encoderLabel(list) { return list.map((e) => e.label).join(' + '); }
+
+/** Runs fn(item) for every item with at most `limit` at a time; stops starting new ones after the first error. */
+async function pool(items, limit, fn) {
+  let next = 0, failed = null;
+  const worker = async () => { while (!failed && next < items.length) { const i = next++; try { await fn(items[i], i); } catch (e) { failed = failed || e; } } };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  if (failed) throw failed;
+}
+
 /** Runs ffmpeg; rejects with the last lines of its log. Stops it when the signal aborts. */
-function ff(args, { cwd, signal } = {}) {
+function ff(args, { cwd, signal, timeoutMs } = {}) {
   return new Promise((resolve, reject) => {
     if (signal && signal.aborted) return reject(Object.assign(new Error('Stopped.'), { name: 'AbortError' }));
     const p = cp.spawn(ffmpegBin(), ['-hide_banner', '-nostdin', '-loglevel', 'error', '-y', ...args], { cwd, windowsHide: true });
@@ -20,8 +60,10 @@ function ff(args, { cwd, signal } = {}) {
     p.stderr.on('data', (d) => { err = (err + d).slice(-4000); });
     const stop = () => p.kill('SIGKILL');
     if (signal) signal.addEventListener('abort', stop, { once: true });
+    const timer = timeoutMs ? setTimeout(stop, timeoutMs) : null;
     p.on('error', (e) => reject(new Error('FFmpeg could not start (' + e.message + '). Run the installer again.')));
     p.on('close', (code) => {
+      if (timer) clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', stop);
       if (signal && signal.aborted) return reject(Object.assign(new Error('Stopped.'), { name: 'AbortError' }));
       code === 0 ? resolve() : reject(new Error('FFmpeg failed: ' + err.trim().split('\n').slice(-3).join(' ')));
@@ -83,20 +125,22 @@ async function renderRange(plan, start, end, out, opts = {}) {
     }
     const list = shots(plan, start, end);
     if (!list.length) throw new Error('Nothing to render in this part of the set.');
-    const names = [];
+    const enc = opts.encoder || CPU;
     let frame0 = Math.round(start * FPS);
-    for (let i = 0; i < list.length; i++) {
-      const s = list[i], frame1 = Math.round(s.end * FPS), frames = frame1 - frame0;
-      frame0 = frame1;
-      if (frames <= 0) continue;
-      const name = 'shot' + String(i).padStart(4, '0') + '.mp4';
-      const input = s.file ? ['-ss', s.at.toFixed(3), '-i', s.file] : ['-f', 'lavfi', '-i', `color=c=black:s=${w}x${h}:r=${FPS}`];
-      const vf = (s.file ? videoFilter(w, h, opts.zoom && s.drop) + ',tpad=stop=-1:stop_mode=clone' : 'setsar=1') + lutFilter + `,fps=${FPS},format=yuv420p`;
-      await ff([...input, '-an', '-vf', vf, '-frames:v', String(frames), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
-        '-r', String(FPS), '-video_track_timescale', String(FPS * 1000), name], { cwd: work, signal: opts.signal });
-      names.push(name);
-      progress((i + 1) / (list.length + 1), 'Rendering ' + path.basename(out) + ' (' + (i + 1) + '/' + list.length + ')');
-    }
+    const items = list.map((sh, i) => { const frame1 = Math.round(sh.end * FPS), it = { sh, frames: frame1 - frame0, name: 'shot' + String(i).padStart(4, '0') + '.mp4' }; frame0 = frame1; return it; })
+      .filter((it) => it.frames > 0);
+    let doneShots = 0;
+    // Shots are independent: several encode at once (each FFmpeg also decodes and scales on the CPU).
+    await pool(items, opts.parallel || 2, async (it) => {
+      const s2 = it.sh;
+      const input = s2.file ? ['-ss', s2.at.toFixed(3), '-i', s2.file] : ['-f', 'lavfi', '-i', `color=c=black:s=${w}x${h}:r=${FPS}`];
+      const vf = (s2.file ? videoFilter(w, h, opts.zoom && s2.drop) + ',tpad=stop=-1:stop_mode=clone' : 'setsar=1') + lutFilter + `,fps=${FPS},format=${enc.pix}`;
+      await ff([...input, '-an', '-vf', vf, '-frames:v', String(it.frames), ...enc.args, '-g', String(FPS * 2), '-bf', '0',
+        '-r', String(FPS), '-video_track_timescale', String(FPS * 1000), it.name], { cwd: work, signal: opts.signal });
+      doneShots++;
+      progress(doneShots / (items.length + 1), 'Rendering ' + path.basename(out) + ' (' + doneShots + '/' + items.length + ') · ' + enc.label);
+    });
+    const names = items.map((it) => it.name);
     fs.writeFileSync(path.join(work, 'list.txt'), names.map((n) => "file '" + n + "'").join('\n') + '\n');
     const len = (Math.round(end * FPS) - Math.round(start * FPS)) / FPS;
     const fade = Math.min(1, len / 4);
@@ -118,4 +162,4 @@ async function still(plan, t, out, opts = {}) {
   return out;
 }
 
-module.exports = { renderRange, still, dropWindows, shots, sourceAt, FORMATS, FPS };
+module.exports = { renderRange, still, dropWindows, shots, sourceAt, encoders, encoderLabel, pool, CPU, FORMATS, FPS };

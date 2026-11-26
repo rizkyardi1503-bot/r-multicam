@@ -4,7 +4,9 @@
 
 **Baru di v1.2: dari set ke Reels.** Pilih musik + satu folder per kamera, klik **Find drops**, pilih drop, lalu
 **Export**: MP4 siap posting (9:16, 4:5 atau 16:9; 15/30/60 detik; zoom saat drop; LUT .cube). Juga **Full set**,
-**Final Cut XML** dan **DaVinci XML** dari hasil yang sama.
+**Final Cut XML** dan **DaVinci XML** dari hasil yang sama. Terbuka di jendela sendiri (ikon R), tanpa Terminal; tutup
+jendela = aplikasi berhenti. Export memakai GPU (NVIDIA, Intel, AMD, Apple) + CPU bersamaan bila ada; kalau GPU gagal,
+otomatis pakai CPU.
 
 **Yang dibutuhkan**
 - Mac dengan macOS 12 atau lebih baru (Apple Silicon atau Intel).
@@ -55,7 +57,9 @@ dari Desktop atau Start menu. Hasil edit disimpan di **Videos › R Project Mult
 
 **New in v1.2: from set to Reels.** Choose the music and one folder per camera, click **Find drops**, pick drops, then
 **Export**: ready-to-post MP4s (9:16, 4:5 or 16:9; 15/30/60 s; zoom on the drop; .cube LUT). Also **Full set**,
-**Final Cut XML** and **DaVinci XML** from the same result.
+**Final Cut XML** and **DaVinci XML** from the same result. Opens in its own window (R icon), no Terminal; closing the
+window quits it. Exports use the GPU (NVIDIA, Intel, AMD, Apple) and the CPU side by side when available, and fall back
+to the CPU if the GPU fails.
 
 **Requirements**
 - A Mac with macOS 12 or newer (Apple silicon or Intel).

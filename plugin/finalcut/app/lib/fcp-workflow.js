@@ -108,6 +108,7 @@ class Studio {
     this.loadTools = opts.loadTools || (() => import(pathToFileURL(path.join(__dirname, '..', 'rp-engine', 'lib', 'tools.mjs')).href).then((m) => m.TOOLS));
     this.music = null; this.cameras = []; this.analysis = null; this.result = null; this.timeline = null;
     this.plan = null; this.planFile = ''; this.project = ''; this.drops = []; this.exports = []; this.lut = '';
+    this.encoders = opts.encoders || null; this.encoderLabel = '';
     this.busy = ''; this.abort = null;
   }
 
@@ -116,7 +117,7 @@ class Studio {
       analysis: this.analysis, result: this.result, lut: this.lut ? path.basename(this.lut) : '',
       drops: this.drops.map((d) => ({ index: d.index, time: d.time, confidence: d.confidence, thumb: !!d.thumb })),
       set: this.plan ? { duration: this.plan.timeline.duration, cuts: this.plan.cuts.length, bpm: this.plan.music.bpm || null } : null,
-      exports: this.exports.map((e) => ({ name: path.basename(e.file), format: e.format, duration: e.duration })) };
+      exports: this.exports.map((e) => ({ name: path.basename(e.file), format: e.format, duration: e.duration })), encoder: this.encoderLabel };
   }
 
   /** Loads an FCPXML exported from Final Cut Pro or DaVinci Resolve: its music and one camera per video track. */
@@ -205,6 +206,7 @@ class Studio {
         progress(0.9 + 0.1 * (d.index + 1) / drops.length, 'Drop ' + (d.index + 1) + ' of ' + drops.length);
       }
       this.plan = plan; this.planFile = planFile; this.project = dir; this.drops = drops; this.exports = [];
+      this.encoderLabel = render.encoderLabel(await (this.encoders ? this.encoders() : render.encoders()));
       this.log('Found ' + drops.length + ' drop' + (drops.length === 1 ? '' : 's') + ' in ' + Math.round(plan.timeline.duration / 60) + ' min, ' + plan.cuts.length + ' camera cuts.');
       return { ok: true, drops: drops.length };
     });
@@ -223,16 +225,38 @@ class Studio {
     const title = safeName(path.basename(this.project).replace(/ \d{4}-\d\d-\d\d .*$/, ''));
     const tag = { '9x16': '9x16', '4x5': '4x5', '16x9': '16x9' }[format];
     return this.run('Export', async (tools, progress, ctx) => {
+      // Hybrid encoding: a GPU worker and a CPU worker take whole videos from one queue (a video is never split between
+      // encoders, so every file is consistent). A GPU failure redoes that video on the CPU and the GPU is not used again.
+      let list = this.encoders ? await this.encoders() : await render.encoders();
+      this.encoderLabel = render.encoderLabel(list);
+      this.log('Encoding with ' + this.encoderLabel + '.');
+      const share = jobs.map(() => 0), report = (text) => progress(share.reduce((a, b) => a + b, 0) / jobs.length, text);
       const done = [];
-      for (let j = 0; j < jobs.length; j++) {
-        const out = path.join(this.project, title + ' - ' + jobs[j].name + ' (' + tag + ').mp4');
-        const r = await render.renderRange(this.plan, jobs[j].start, jobs[j].end, out, { format, zoom: opts.zoom !== false, lut: opts.lut === false ? '' : this.lut,
-          signal: ctx.signal, progress: (p, text) => progress((j + p) / jobs.length, text) });
-        done.push({ file: out, format, duration: r.duration });
-        this.exports.push(done[done.length - 1]);
-        this.log('Exported ' + path.basename(out) + ' (' + Math.round(r.duration) + ' s).');
-      }
-      return { ok: true, exported: done.length, folder: this.project };
+      const one = async (job, j, enc) => {
+        const out = path.join(this.project, title + ' - ' + job.name + ' (' + tag + ').mp4');
+        const go = (e) => render.renderRange(this.plan, job.start, job.end, out, { format, zoom: opts.zoom !== false, lut: opts.lut === false ? '' : this.lut,
+          encoder: e, parallel: e.gpu ? 2 : Math.max(1, Math.min(3, Math.floor(os.cpus().length / 4))), signal: ctx.signal, progress: (p, text) => { share[j] = p; report(text); } });
+        let r;
+        try { r = await go(enc); }
+        catch (e) {
+          if (!enc.gpu || e.name === 'AbortError') throw e;
+          this.log(enc.label + ' failed (' + e.message + '); using the CPU for this video.');
+          list = list.filter((x) => !x.gpu); this.encoderLabel = render.encoderLabel(list);
+          r = await go(render.CPU);
+        }
+        done[j] = { file: out, format, duration: r.duration };
+        this.log('Exported ' + path.basename(out) + ' (' + Math.round(r.duration) + ' s) · ' + enc.label + '.');
+      };
+      let next = 0;
+      await Promise.all(list.map(async (enc) => {
+        while (next < jobs.length) {
+          const j = next++;
+          if (!list.includes(enc)) { await one(jobs[j], j, render.CPU); continue; }
+          await one(jobs[j], j, enc);
+        }
+      }));
+      this.exports.push(...done.filter(Boolean));
+      return { ok: true, exported: done.filter(Boolean).length, folder: this.project, encoders: this.encoderLabel };
     });
   }
 

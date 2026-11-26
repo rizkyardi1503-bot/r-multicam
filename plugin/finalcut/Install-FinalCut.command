@@ -100,23 +100,26 @@ rm -rf "$STAGE"; cp -R "$BASE/app" "$STAGE"
 rm -rf "$DEST/app"; mv "$STAGE" "$DEST/app"
 xattr -dr com.apple.quarantine "$DEST/app" 2>/dev/null || true
 
-# ---- Launcher: a small app in ~/Applications that opens the engine in Terminal (the window shows the engine log).
+# ---- Launcher: "R Project Multicam AI" in ~/Applications with the app icon. It starts the engine in the background and
+# opens the app in its own window; closing the window quits it.
 LAUNCH="$DEST/Start-RProject-Engine.command"
 cat > "$LAUNCH" <<EOF
 #!/bin/bash
-# R Project Engine for Final Cut Pro. Close this window to stop the engine.
+# R Project Multicam AI. Run with --app for the app window.
 exec "$NODE" "$DEST/app/rp-finalcut-engine.js" "\$@"
 EOF
 chmod 755 "$LAUNCH"
-APPBUNDLE="$APPS/R Project Engine for Final Cut.app"
+APPBUNDLE="$APPS/R Project Multicam AI.app"
+rm -rf "$APPS/R Project Engine for Final Cut.app"; rm -f "$ROOT/Desktop/R Project Engine for Final Cut.app"
 if command -v osacompile >/dev/null 2>&1; then
   rm -rf "$APPBUNDLE"
-  osacompile -o "$APPBUNDLE" -e "do shell script \"open -a Terminal \" & quoted form of \"$LAUNCH\"" >/dev/null 2>&1 || say_line "Could not create the app launcher; use $LAUNCH instead."
+  osacompile -o "$APPBUNDLE" -e "do shell script quoted form of \"$LAUNCH\" & \" --app >/dev/null 2>&1 &\"" >/dev/null 2>&1 || say_line "Could not create the app; use $LAUNCH --app instead."
+  [ -d "$APPBUNDLE" ] && cp "$DEST/app/assets/icon.icns" "$APPBUNDLE/Contents/Resources/applet.icns" 2>/dev/null && touch "$APPBUNDLE" || true
 fi
-[ -d "$APPBUNDLE" ] && ln -sfn "$APPBUNDLE" "$ROOT/Desktop/R Project Engine for Final Cut.app" 2>/dev/null || true
+[ -d "$APPBUNDLE" ] && ln -sfn "$APPBUNDLE" "$ROOT/Desktop/R Project Multicam AI.app" 2>/dev/null || true
 
 "$NODE" -e "require('$DEST/app/lib/fcp-workflow.js')" || fail "The engine does not start with Node.js on this Mac."
 say_line ""
-say_line "Installed. Start \"R Project Engine for Final Cut\" from your Applications folder (or the Desktop)."
-say_line "Terpasang. Buka \"R Project Engine for Final Cut\" dari folder Applications (atau Desktop)."
-if [ -z "${RP_INSTALL_TEST_ROOT:-}" ] && [ -z "${RP_NO_START:-}" ]; then open -a Terminal "$LAUNCH" || true; fi
+say_line "Installed. Open \"R Project Multicam AI\" from your Applications folder (or the Desktop)."
+say_line "Terpasang. Buka \"R Project Multicam AI\" dari folder Applications (atau Desktop)."
+if [ -z "${RP_INSTALL_TEST_ROOT:-}" ] && [ -z "${RP_NO_START:-}" ]; then if [ -d "$APPBUNDLE" ]; then open "$APPBUNDLE" || true; else "$LAUNCH" --app >/dev/null 2>&1 & fi; fi

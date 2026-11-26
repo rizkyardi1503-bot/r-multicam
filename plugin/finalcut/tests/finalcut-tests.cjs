@@ -254,6 +254,28 @@ ${cams[0].map((f) => `<asset-clip ref="v${cams.flat().indexOf(f)}" offset="0s" d
       assert.match(fs.readFileSync(s.studio.result.fcpxml, 'utf8'), /lane="-1"/);
     });
 
+    await test('hybrid encoding: GPU and CPU export videos side by side; a failing GPU falls back to the CPU', async () => {
+      const render = require(path.join(APP, 'lib', 'render.js'));
+      const gpu = { id: 'test', label: 'Test GPU', gpu: true, pix: 'yuv420p', args: ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20'] };
+      eng.studio.encoders = async () => [gpu, render.CPU];
+      const drop = eng.studio.drops[0].index;
+      const from = eng.lines.length;
+      assert.equal((await call(eng, 'POST', '/api/export', { drops: [drop], full: true, format: '4x5', length: 15 })).status, 202);
+      let s = (await call(eng, 'GET', '/api/status')).body;
+      assert.notEqual(s.lastResult.ok, false, s.lastResult.error);
+      assert.equal(s.lastResult.encoders, 'Test GPU + CPU');
+      const log = eng.lines.slice(from).map((l) => l.text).join('\n');
+      assert.match(log, /Exported .*\(4x5\)\.mp4.* · Test GPU\./); assert.match(log, /Exported .*\(4x5\)\.mp4.* · CPU\./);
+      const bad = { id: 'bad', label: 'Broken GPU', gpu: true, pix: 'yuv420p', args: ['-c:v', 'no_such_encoder'] };
+      eng.studio.encoders = async () => [bad, render.CPU];
+      assert.equal((await call(eng, 'POST', '/api/export', { drops: [drop], full: true, format: '9x16', length: 15 })).status, 202);
+      s = (await call(eng, 'GET', '/api/status')).body;
+      assert.notEqual(s.lastResult.ok, false, s.lastResult.error);
+      assert.equal(s.lastResult.exported, 2); assert.equal(s.lastResult.encoders, 'CPU');
+      assert.match(eng.lines.map((l) => l.text).join('\n'), /Broken GPU failed .*using the CPU for this video/);
+      eng.studio.encoders = null;
+    });
+
     await test('timeline with footage that is not on this computer: clear error, nothing loaded', async () => {
       const r = await call(eng, 'POST', '/api/xml', { name: 'x.fcpxml', text: fcpExport.split(camDirs[1]).join('/Volumes/Gone/DJ') });
       assert.equal(r.status, 400); assert.match(r.body.error, /not on this computer/);

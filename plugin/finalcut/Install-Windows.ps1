@@ -131,21 +131,26 @@ Move-Item -LiteralPath $stage -Destination $appDir
 & $node -e "require(process.argv[1])" (Join-Path $appDir 'lib\fcp-workflow.js')
 if ($LASTEXITCODE -ne 0) { throw 'The app does not start with Node.js on this computer.' }
 
-# ---------------------------------------------------------------- shortcuts
+# ---------------------------------------------------------------- launcher (no console window) and shortcuts with the app icon
 $engineJs = Join-Path $appDir 'rp-finalcut-engine.js'
+$launcher = Join-Path $Dest 'R Project Multicam AI.vbs'
+$vbs = 'CreateObject("WScript.Shell").Run """' + $node + '"" ""' + $engineJs + '"" --app", 0, False'
+[IO.File]::WriteAllText($launcher, $vbs, [Text.Encoding]::Unicode)
+$wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+$icon = Join-Path $appDir 'assets\icon.ico'
 $shell = New-Object -ComObject WScript.Shell
 foreach ($d in $ShortcutDirs) {
   New-Item -ItemType Directory -Force -Path $d | Out-Null
   $lnk = $shell.CreateShortcut((Join-Path $d 'R Project Multicam AI.lnk'))
-  $lnk.TargetPath = $node
-  $lnk.Arguments = '"' + $engineJs + '"'
+  $lnk.TargetPath = $wscript
+  $lnk.Arguments = '"' + $launcher + '"'
   $lnk.WorkingDirectory = $appDir
-  $lnk.Description = 'R Project Multicam AI for DaVinci Resolve (XML)'
-  $lnk.IconLocation = "$node,0"
+  $lnk.Description = 'R Project Multicam AI: from set to Reels'
+  $lnk.IconLocation = "$icon,0"
   $lnk.Save()
 }
 
 Write-Host ''
 Write-Host 'Installed. Open "R Project Multicam AI" from the Desktop or the Start menu.'
 Write-Host 'Terpasang. Buka "R Project Multicam AI" dari Desktop atau Start menu.'
-if (-not $NoStart) { Start-Process -FilePath $node -ArgumentList ('"' + $engineJs + '"') -WorkingDirectory $appDir }
+if (-not $NoStart) { Start-Process -FilePath $wscript -ArgumentList ('"' + $launcher + '"') }
