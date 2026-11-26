@@ -76,7 +76,7 @@
 
   // pricing_view: the first #pricing price card that is at least half on screen (the whole #pricing section
   // is taller than a phone screen, so it is never 35% visible there).
-  const priceCards=[...document.querySelectorAll('#pricing [data-rp-price]')].map(el=>el.closest?.('.card')||el);
+  const priceCards=[...document.querySelectorAll('#pricing [data-rp-price], #pricing [data-monthly-price], #pricing [data-price-view]')].map(el=>el.closest?.('.card')||el);
   if(priceCards.length && 'IntersectionObserver' in window){
     let sent=false;
     const observer=new IntersectionObserver(entries=>{

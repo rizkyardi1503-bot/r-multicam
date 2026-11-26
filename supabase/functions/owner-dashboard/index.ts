@@ -59,11 +59,17 @@ Deno.serve(async (req: Request) => {
   const ownersResponse=await fetch(url+'/rest/v1/plugin_profiles?select=user_id&account_role=eq.owner',{headers:admin,signal:AbortSignal.timeout(8000)});
   if(!ownersResponse.ok)throw Error('owner query');
   const ownerIds=new Set((await ownersResponse.json()).map((x:any)=>x.user_id));
-  const [events,activations,paid]=await Promise.all([
+  // Plans active right now (not limited to the period): prepaid monthly/annual accounts whose end date is still ahead.
+  const activePlans=async()=>{const p=new URLSearchParams({select:'user_id',license_status:'eq.subscription',subscription_expires_at:'gt.'+end,account_role:'neq.owner',limit:'10000'});const r=await fetch(url+'/rest/v1/plugin_profiles?'+p,{headers:admin,signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error('plan query');return (await r.json()).length;};
+  const [events,activations,paid,active_subscriptions,refusals]=await Promise.all([
    rows('website_analytics_events','id,event_name,occurred_at,visitor_id,user_id,utm_source,referrer_host,metadata','occurred_at'),
-   rows('plugin_profiles','user_id,first_activated_at,trial_started_at,device_platform,plugin_version','first_activated_at','&account_role=neq.owner'),
-   rows('plugin_payment_orders','id,user_id,paid_at,gross_amount_idr,status,lifetime_activated_at','paid_at')
+   rows('plugin_profiles','user_id,first_activated_at,trial_started_at,trial_expires_at,device_platform,plugin_version','first_activated_at','&account_role=neq.owner'),
+   rows('plugin_payment_orders','id,user_id,paid_at,gross_amount_idr,status,lifetime_activated_at,product_code','paid_at'),
+   activePlans(),
+   // Trials the abuse guard refused (20261122_trial_abuse_guard.sql): such accounts start expired, with no trial days.
+   rows('plugin_trial_denials','id,user_id,reason,created_at','created_at')
   ]);
+  const realTrial=(x:Record<string,any>)=>!!x.trial_started_at&&!!x.trial_expires_at&&Date.parse(x.trial_expires_at)>Date.parse(x.trial_started_at);
   const isExcluded=(x:Record<string,any>)=>x.metadata?.reporting_exclude===true||ownerIds.has(x.user_id)||x.utm_source==='qa';
   const excluded=events.filter(isExcluded);
   const clean=events.filter(x=>!isExcluded(x));
@@ -74,10 +80,10 @@ Deno.serve(async (req: Request) => {
   for(const e of views){const source=sourceFor(e);(groups[source]??=new Set()).add(e.visitor_id||'');const day=new Date(Date.parse(e.occurred_at)+8*3600000).toISOString().slice(0,10);const d=daily[day]??={views:0,visitors:new Set()};d.views++;if(e.visitor_id)d.visitors.add(e.visitor_id);}
   const customers=paid.filter(x=>!ownerIds.has(x.user_id)&&keptOrder(x));
   return json({generated_at:end,start,end,timezone:'Asia/Makassar',excluded_events:excluded.length,alerts,
-   metrics:{visitors:visitors('page_view'),page_views:views.length,pricing_visitors:visitors('pricing_view'),trial_click_visitors:visitors('trial_cta_clicked'),signup_submissions:visitors('signup_submitted'),download_visitors:visitors('download_started'),plugin_activations:activations.length,trial_activations:activations.filter(x=>x.trial_started_at).length,checkout_visitors:visitors('checkout_created'),paid_orders:customers.length,paid_customers:new Set(customers.map(x=>x.user_id)).size,revenue_idr:customers.reduce((a,x)=>a+Number(x.gross_amount_idr||0),0)},
+   metrics:{visitors:visitors('page_view'),page_views:views.length,pricing_visitors:visitors('pricing_view'),trial_click_visitors:visitors('trial_cta_clicked'),signup_submissions:visitors('signup_submitted'),download_visitors:visitors('download_started'),plugin_activations:activations.length,trial_activations:activations.filter(realTrial).length,trial_refusals:refusals.filter(x=>!ownerIds.has(x.user_id)).length,checkout_visitors:visitors('checkout_created'),paid_orders:customers.length,paid_customers:new Set(customers.map(x=>x.user_id)).size,revenue_idr:customers.reduce((a,x)=>a+Number(x.gross_amount_idr||0),0),active_subscriptions,subscription_revenue_idr:customers.filter(x=>x.product_code==='monthly_v1'||x.product_code==='annual_v1').reduce((a,x)=>a+Number(x.gross_amount_idr||0),0)},
    sources:Object.entries(groups).map(([source,ids])=>({source,visitors:[...ids].filter(Boolean).length})).sort((a,b)=>b.visitors-a.visitors),
    daily:Object.entries(daily).map(([date,d])=>({date,views:d.views,visitors:d.visitors.size})).sort((a,b)=>a.date.localeCompare(b.date)),
-   notes:['Counts are independent stage totals, not a matched-person conversion cohort.','Browser events can be blocked or forged; activation and payment totals use server records.','Revenue leaves out refunded, cancelled and duplicate orders.','Known owner and marked test events excluded. Anonymous historical owner visits cannot be identified retroactively.','Trial activations shown here belong to first plugin activations in this period.']});
+   notes:['Counts are independent stage totals, not a matched-person conversion cohort.','Browser events can be blocked or forged; activation and payment totals use server records.','Revenue leaves out refunded, cancelled and duplicate orders.','Known owner and marked test events excluded. Anonymous historical owner visits cannot be identified retroactively.','Trial activations shown here belong to first plugin activations in this period.','Trials refused: a second account on a computer that already had a trial, a throwaway email, or another spelling of an email that already had one. Those accounts start expired and are not counted as trial activations.']});
  } catch {return json({error:'Dashboard could not load completely. Try a shorter period or refresh.',alerts},503);}
 });
 

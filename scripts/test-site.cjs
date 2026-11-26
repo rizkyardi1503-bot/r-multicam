@@ -18,7 +18,7 @@ function landingTest(){
  for(const rel of ['start/index.html','id/start/index.html']){
   const html=fs.readFileSync(path.join(__dirname,'../site',rel),'utf8');
   const at=k=>{const i=html.indexOf(k);assert(i>0,rel+' has '+k);return i;};
-  assert(at('data-handoff ')<at('data-download="windows"'),'send-link CTA comes before the downloads');at('data-handoff-email');at('data-desktop-primary');at('class="start-steps"');at('data-rp-price');at('data-login');
+  assert(at('data-handoff ')<at('data-download="windows"'),'send-link CTA comes before the downloads');at('data-handoff-email');at('data-desktop-primary');at('class="start-steps"');at('data-price-view');at('data-login');
   assert(/<video[^>]*preload="none"[^>]*poster="\/media\/druva-auto-edit\.webp"/.test(html),'demo video loads only on tap');
   assert(!html.includes('<img'),'no image above the fold');assert(!html.includes('affiliate-ui.js'));assert(html.includes('noindex,follow'));
   assert(/(FREE 7-DAY TRIAL|TRIAL GRATIS 7 HARI) · (PREMIERE PRO PLUGIN|PLUGIN PREMIERE PRO) · WINDOWS &amp; MAC/.test(html));
@@ -95,10 +95,64 @@ async function portalTest(open=true,phone=false,opts={}){
  mode='normal';await w.test.downloadRelease('windows');assert.equal(downloads,1);
  console.log('PASS future installed version, invalid amount, hostile checkout host, straight to Midtrans, ZIP validation and valid download');
 }
+// Homepages (EN + ID): the three plan buttons, the lifetime card that JS hides after the cutoff, IDR-only prices,
+// plan offers in the structured data, and a FAQ whose JSON-LD repeats the visible answers word for word.
+function homepagePlansTest(){
+ const read=rel=>fs.readFileSync(path.join(__dirname,'../site',rel),'utf8');
+ const text=s=>s.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').trim();
+ for(const rel of ['index.html','id/index.html']){
+  const html=read(rel),section=html.slice(html.indexOf('id="pricing"'),html.indexOf('<p class="home-fine">'));
+  assert.deepEqual([...section.matchAll(/<button[^>]*data-buy="([a-z0-9_]+)"/g)].map(m=>m[1]),['monthly_v1','annual_v1','lifetime_v1'],rel+': every plan has its own buy button with its product code');
+  assert(section.includes('data-signup'),rel+': the free trial card stays');
+  assert(/<article[^>]*data-lifetime-only data-sales-end="2026-12-01T00:00:00\+08:00">/.test(section),rel+': lifetime card carries the cutoff and is hidden by JS afterwards');
+  assert.equal((section.match(/data-lifetime-only/g)||[]).length,1);
+  assert(section.includes('data-monthly-price')&&section.includes('data-founder-note'),rel+': monthly price and live founder counter hooks');
+  assert(/(Rp59\.000 founder price for the first 100 subscribers|Rp59\.000 harga founder untuk 100 pelanggan pertama)/.test(section),rel+': static founder wording without a number');
+  for(const price of ['Rp59.000','Rp99.000','Rp799.000','Rp1.188.000','Rp2.000.000'])assert(section.includes(price),rel+': '+price);
+  assert(/(Available until 30 November 2026|Tersedia sampai 30 November 2026)/.test(section));
+  assert(!/US\$|\$\s?\d|USD/.test(section),rel+': no USD price in the pricing section');
+  assert(!/(Keep it for a lifetime|Miliki seumur hidup)/.test(html),rel+': no "lifetime only" headline');
+  const graph=[...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(m=>JSON.parse(m[1])).flatMap(x=>x['@graph']||[x]);
+  const offers=graph.find(x=>x['@type']==='SoftwareApplication').offers;
+  assert.deepEqual(offers.map(o=>[o.price,o.priceCurrency]),[['99000','IDR'],['799000','IDR'],['2000000','IDR']],rel+': offers for Monthly, Annual and Lifetime, in IDR');
+  assert.equal(offers[2].priceValidUntil,'2026-11-30','the lifetime offer ends with the cutoff');assert(offers.every(o=>o.url.endsWith('/#pricing')));
+  const faq=graph.find(x=>x['@type']==='FAQPage').mainEntity;
+  const visible=[...html.slice(html.indexOf('home-faq-list')).matchAll(/<details><summary>([\s\S]*?)<\/summary><p>([\s\S]*?)<\/p><\/details>/g)].map(m=>[text(m[1]),text(m[2])]);
+  assert.deepEqual(faq.map(q=>[q.name,q.acceptedAnswer.text]),visible,rel+': FAQPage data equals the visible questions and answers');
+  const names=faq.map(q=>q.name).join('|');
+  for(const word of (rel.startsWith('id/')?['harganya','otomatis','berakhir','founder','lifetime']:['cost','automatically','plan ends','founder','lifetime']))assert(new RegExp(word,'i').test(names),rel+': FAQ covers '+word);
+  assert(!/How much is the lifetime license|Berapa harga lisensi lifetime/.test(html));
+ }
+ console.log('PASS homepages: plan buttons with product codes, lifetime card with cutoff, IDR-only prices, plan offers in JSON-LD, FAQ data equals the visible FAQ (EN+ID)');
+}
+// No page may keep a claim that stops being true on 30 November 2026.
+function staleClaimsTest(){
+ const root=path.join(__dirname,'../site');const walk=d=>fs.readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(d,e.name)):e.name==='index.html'?[path.join(d,e.name)]:[]);
+ const bad=[];
+ for(const file of walk(root)){const rel=path.relative(root,file).replace(/\\/g,'/');if(/(^|\/)releases\//.test(rel))continue;
+  const html=fs.readFileSync(file,'utf8');
+  for(const re of [/data-rp-price[^>]*>Rp2\.000\.000<\/b>\s*(one-time|sekali bayar)/,/(pay once|one payment|no subscription, one)/i,/Standard lifetime price/i,/lifetime license is Rp2\.000\.000/i,/lisensi lifetime (seharga )?Rp2\.000\.000/i,/Rp1\.800\.000/])if(re.test(html))bad.push(rel+' '+re);}
+ assert.deepEqual(bad,[],'claims that are false after 30 Nov 2026');
+ console.log('PASS no page keeps a "pay once / lifetime is the price" claim (release notes are history and stay)');
+}
+// Owner dashboard: subscription metrics appear only when the backend sends them.
+async function ownerMetricsTest(){
+ const node=()=>{const n={children:[],className:'',textContent:'',hidden:false,style:{},kids:{},append(...x){x.forEach(y=>n.children.push(y));},appendChild(x){n.children.push(x);return x;},replaceChildren(...x){n.children=[...x];},insertBefore(x){n.children.unshift(x);},get firstChild(){return n.children[0];},querySelector(q){return n.kids[q]||(n.kids[q]=node());},set innerHTML(v){n._html=v;},get innerHTML(){return n._html||'';},addEventListener(){}};return n;};
+ const w={};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../site/owner-dashboard.js'),'utf8'),{window:w,document:{createElement:node,head:node()},Date,Number,Array,Promise,setTimeout,clearTimeout});
+ const cards=async metrics=>{const root=node();const api=w.RP_OwnerDashboard.create(root,async()=>({metrics,sources:[],daily:[],alerts:[],generated_at:new Date().toISOString(),excluded_events:0}));await api.refresh(true);
+  const grid=[...Object.values(root.children)].flatMap(x=>x.kids?.['.metrics-grid']?[x.kids['.metrics-grid']]:[])[0];return grid.children.map(c=>[c.children[0].textContent,c.children[1].textContent]);};
+ const base={visitors:10,paid_orders:2,revenue_idr:1500000};
+ let list=await cards(base);assert(!list.some(([l])=>/subscription/i.test(l)),'older backend: no subscription cards');assert.equal(list.length,12);
+ list=await cards({...base,active_subscriptions:4,subscription_revenue_idr:3196000});
+ assert.deepEqual(list.slice(-2),[['Active subscriptions','4'],['Subscription revenue · IDR',(3196000).toLocaleString()]]);
+ list=await cards({...base,active_subscriptions:0,subscription_revenue_idr:0});assert.deepEqual(list.slice(-2),[['Active subscriptions','0'],['Subscription revenue · IDR','0']],'zero is shown when the backend sends it');
+ list=await cards({...base,active_subscriptions:null});assert.equal(list.length,12,'null counts as absent');
+ console.log('PASS owner dashboard: active_subscriptions and subscription_revenue_idr cards only when present');
+}
 (async()=>{await analyticsTest();await analyticsProxyTest();await portalTest(true);await portalTest(false);await portalTest(true,true);
  const node=()=>({hidden:true,href:'',classes:new Set(),get classList(){const c=this.classes;return{add:x=>c.add(x),toggle(){}};}});
  await portalTest(true,true,{dom:{'[data-phone-only]':[node()],'[data-handoff-email]':[node()],'[data-desktop-primary]':[node()]}});
- landingTest();
+ landingTest();homepagePlansTest();staleClaimsTest();await ownerMetricsTest();
  // Google sign-in: app browsers get the open-in-Safari/Chrome box (Instagram is covered by the phone run above).
  for(const [ua,inApp] of [['Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP2A; wv) AppleWebKit/537.36 Chrome/129 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/480.0.0]',true],['Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 musical_ly_35.1.0 BytedanceWebview TikTok',true],['Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Mobile/15E148 Line/14.10.0',true],['Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130 Safari/537.36',false],['Mozilla/5.0 (X11; Linux x86_64) Firefox/131.0',false],['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Version/15.6 Safari/605.1.15',false]])await portalTest(true,false,{ua,inApp});
  console.log('PASS in-app browsers (Facebook/Android WebView, TikTok, LINE, Instagram) swap Google for open-in-browser + copy link; desktop browsers keep Google');

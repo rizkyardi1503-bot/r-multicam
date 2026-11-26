@@ -33,7 +33,7 @@ WITH events AS (
  EXISTS(SELECT 1 FROM events e WHERE e.visitor_id=t.visitor_id AND e.event_name='checkout_opened') AS checkout_open,
  i.accounts=1 AND EXISTS(SELECT 1 FROM auth.users u WHERE u.id=i.user_id AND u.created_at>=t.touched_at) AS new_account,
  i.accounts=1 AND EXISTS(SELECT 1 FROM public.plugin_profiles p WHERE p.user_id=i.user_id AND p.first_activated_at>=t.touched_at) AS plugin_activation,
- i.accounts=1 AND EXISTS(SELECT 1 FROM public.plugin_profiles p WHERE p.user_id=i.user_id AND p.trial_started_at>=t.touched_at) AS trial_activation,
+ i.accounts=1 AND EXISTS(SELECT 1 FROM public.plugin_profiles p WHERE p.user_id=i.user_id AND p.trial_started_at>=t.touched_at AND p.trial_expires_at>p.trial_started_at) AS trial_activation,
  i.accounts=1 AND EXISTS(SELECT 1 FROM public.plugin_payment_orders o WHERE o.user_id=i.user_id
  AND o.paid_at>=t.touched_at AND o.status IN ('settlement','capture')
  AND (o.fraud_status IS NULL OR lower(o.fraud_status)='accept')) AS verified_paid

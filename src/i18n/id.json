@@ -40,7 +40,6 @@
   "Account required to download": "Perlu akun untuk mengunduh",
   "Sign in or create a free R Project account first. After your email is confirmed, sign in to download the Windows or macOS installer.": "Masuk atau buat akun R Project gratis terlebih dahulu. Setelah email kamu terkonfirmasi, masuk untuk mengunduh installer Windows atau macOS.",
   "IDR · one-time": "IDR · sekali bayar",
-  "USD · one-time": "USD · sekali bayar",
   "This plugin runs in Adobe Premiere Pro desktop on Windows or macOS, not on a phone, tablet or Linux. You can browse the website here; use a supported desktop to install.": "Plugin ini berjalan di Adobe Premiere Pro versi desktop di Windows atau macOS, bukan di ponsel, tablet, atau Linux. Kamu bisa menjelajahi website di sini; gunakan komputer desktop yang didukung untuk menginstal.",
   "Multicam AI supports Premiere Pro 2022 (v22) and newer. Your Premiere version is older or not known. Contact support and check Adobe requirements before installing or buying.": "Multicam AI mendukung Premiere Pro 2022 (v22) dan yang lebih baru. Versi Premiere kamu lebih lama atau tidak diketahui. Hubungi support dan cek persyaratan Adobe sebelum menginstal atau membeli.",
   "ACCOUNT EMAIL": "EMAIL AKUN",
@@ -104,16 +103,13 @@
   "ACCOUNT OVERVIEW": "RINGKASAN AKUN",
   "LICENSE STATUS": "STATUS LISENSI",
   "Use an affiliate code": "Gunakan kode afiliasi",
-  "Affiliate code · save 10% on lifetime access": "Kode afiliasi · hemat 10% untuk akses lifetime",
   "Enter your affiliate code": "Masukkan kode afiliasi kamu",
   "How to use it:": "Cara memakainya:",
   "Enter the code you received from an approved affiliate.": "Masukkan kode yang kamu terima dari afiliasi yang sudah disetujui.",
   "Click": "Klik",
-  "Buy lifetime": "Beli lifetime",
   "below.": "di bawah.",
   "Midtrans opens with the discounted amount. Check it before you pay.": "Midtrans terbuka dengan jumlah yang sudah didiskon. Periksa sebelum membayar.",
   "The code is checked when your order is created. Remove it to pay the standard price. Only one code can be used per order.": "Kode dicek saat pesanan kamu dibuat. Hapus kode untuk membayar harga standar. Hanya satu kode yang bisa dipakai per pesanan.",
-  "Buy lifetime ·": "Beli lifetime ·",
   "Check payment": "Cek pembayaran",
   "Refresh license": "Refresh lisensi",
   "Plugin v2.3.11.2 and newer include Continue with Google. Email/password remains optional for this same account. Never enter your Google password in the plugin.": "Plugin v2.3.11.2 dan yang lebih baru sudah mendukung Lanjutkan dengan Google. Email/kata sandi tetap opsional untuk akun yang sama. Jangan pernah memasukkan kata sandi Google kamu di plugin.",
@@ -131,7 +127,6 @@
   "Your checkout is ready": "Checkout kamu sudah siap",
   "If Midtrans did not open automatically, tap the button below to pay.": "Kalau Midtrans tidak terbuka otomatis, ketuk tombol di bawah untuk membayar.",
   "Open Midtrans checkout": "Buka checkout Midtrans",
-  "The standard lifetime price is fixed at Rp2.000.000. Approved affiliate codes can reduce the amount before the order is created.": "Harga lifetime standar tetap Rp2.000.000. Kode afiliasi yang disetujui dapat mengurangi jumlahnya sebelum pesanan dibuat.",
   "After paying, return here and click Check payment. Your license is activated only after server verification.": "Setelah membayar, kembali ke sini dan klik Cek pembayaran. Lisensi kamu baru aktif setelah diverifikasi server.",
   "The request took too long. Check your connection and try again.": "Permintaan terlalu lama. Cek koneksi kamu dan coba lagi.",
   "Connection unavailable. Check your internet connection and try again.": "Koneksi tidak tersedia. Cek koneksi internet kamu dan coba lagi.",
@@ -151,8 +146,6 @@
   "My account": "Akun saya",
   "Your account has a lifetime license. Sign in to the plugin with this account.": "Akun kamu memiliki lisensi lifetime. Masuk ke plugin dengan akun ini.",
   "Trial is ready and begins on first plugin activation.": "Trial sudah siap dan dimulai saat aktivasi plugin pertama.",
-  "Your free trial has ended. Lifetime access remains available as a one-time purchase.": "Trial gratis kamu sudah berakhir. Akses lifetime tetap tersedia dengan sekali bayar.",
-  "Buy a lifetime license to continue using Multicam AI.": "Beli lisensi lifetime untuk terus memakai Multicam AI.",
   "Your account is ready. Your 7-day trial begins on first plugin activation.": "Akun kamu sudah siap. Trial 7 hari kamu dimulai saat aktivasi plugin pertama.",
   "Trial has not started yet. It begins on first plugin activation.": "Trial belum dimulai. Trial dimulai saat aktivasi plugin pertama.",
   "Lifetime access is active.": "Akses lifetime aktif.",
@@ -179,13 +172,11 @@
   "Google sign-in was cancelled or could not be completed. Try again or use email and password.": "Masuk dengan Google dibatalkan atau tidak bisa diselesaikan. Coba lagi atau gunakan email dan kata sandi.",
   "Google sign-in expired or belongs to another browser tab. Click Continue with Google again.": "Masuk dengan Google kedaluwarsa atau berasal dari tab browser lain. Klik Lanjutkan dengan Google lagi.",
   "Google did not return a valid session. Try signing in again.": "Google tidak mengembalikan sesi yang valid. Coba masuk lagi.",
-  "Signed in with Google. Click Buy lifetime to continue to checkout.": "Berhasil masuk dengan Google. Klik Beli lifetime untuk lanjut ke checkout.",
   "Signed in with Google. You can download the installer and manage your license. The Premiere plugin (v2.3.11.2 and newer) also supports Continue with Google.": "Berhasil masuk dengan Google. Kamu bisa mengunduh installer dan mengelola lisensi. Plugin Premiere (v2.3.11.2 dan yang lebih baru) juga mendukung Lanjutkan dengan Google.",
   "1. Create account → 2. Confirm email → 3. Sign in and download. Your 7-day trial starts only when you first activate the plugin in Premiere.": "1. Buat akun → 2. Konfirmasi email → 3. Masuk dan unduh. Trial 7 hari kamu baru dimulai saat kamu pertama kali mengaktifkan plugin di Premiere.",
   "Use a password with at least 8 characters.": "Gunakan kata sandi minimal 8 karakter.",
   "Passwords do not match.": "Kata sandi tidak cocok.",
   "Thank you for creating your R Project account. Check your inbox and spam folder, click Confirm email, then sign in here. Download access is available only after you sign in with a confirmed account.": "Terima kasih telah membuat akun R Project. Cek inbox dan folder spam kamu, klik Confirm email, lalu masuk di sini. Akses unduhan hanya tersedia setelah kamu masuk dengan akun yang sudah terkonfirmasi.",
-  "Signed in. You can download the installer, manage your license, or buy lifetime access here.": "Berhasil masuk. Kamu bisa mengunduh installer, mengelola lisensi, atau membeli akses lifetime di sini.",
   "Enter a valid email address first.": "Masukkan alamat email yang valid terlebih dahulu.",
   "If an account exists for this email, check your inbox and spam folder for the password reset link.": "Jika ada akun untuk email ini, cek inbox dan folder spam kamu untuk link reset kata sandi.",
   "If this account still needs confirmation, check your inbox and spam folder. Already confirmed? Sign in.": "Jika akun ini masih perlu konfirmasi, cek inbox dan folder spam kamu. Sudah terkonfirmasi? Silakan masuk.",
@@ -199,7 +190,6 @@
   "Sign in to access your license and affiliate dashboard.": "Masuk untuk mengakses lisensi dan dashboard afiliasi kamu.",
   "License status refreshed.": "Status lisensi diperbarui.",
   "Create an account or sign in with your existing plugin account.": "Buat akun atau masuk dengan akun plugin yang sudah ada.",
-  "Create an account or sign in to buy a lifetime license.": "Buat akun atau masuk untuk membeli lisensi lifetime.",
   "Sign in with the email and password you used when creating your account.": "Masuk dengan email dan kata sandi yang kamu gunakan saat membuat akun.",
   "Signed out in another tab. Sign in again to continue.": "Kamu keluar di tab lain. Masuk lagi untuk melanjutkan.",
   "Auto": "Otomatis",
@@ -284,7 +274,32 @@
   "Link to this page": "Link ke halaman ini",
   "Copy link": "Salin link",
   "Link copied. Open Safari or Chrome and paste it into the address bar.": "Link sudah disalin. Buka Safari atau Chrome lalu tempel di kolom alamat.",
-  "Press and hold the link above, choose Copy, then paste it into Safari or Chrome.": "Tekan lama link di atas, pilih Salin, lalu tempel di Safari atau Chrome."
+  "Press and hold the link above, choose Copy, then paste it into Safari or Chrome.": "Tekan lama link di atas, pilih Salin, lalu tempel di Safari atau Chrome.",
+  "FOUNDER PRICE": "HARGA FOUNDER",
+  "MONTHLY": "BULANAN",
+  "ANNUAL": "TAHUNAN",
+  "Affiliate code · save 10% on any plan": "Kode afiliasi · hemat 10% untuk paket apa pun",
+  "Choose a plan below.": "Pilih paket di bawah.",
+  "Choose a plan": "Pilih paket",
+  "Renew your plan": "Perpanjang paketmu",
+  "Monthly ·": "Bulanan ·",
+  "Annual ·": "Tahunan ·",
+  "Prepaid, no automatic renewal. Days paid early are added to the days you have left.": "Prabayar, tanpa perpanjangan otomatis. Hari yang dibayar lebih awal ditambahkan ke sisa harimu.",
+  "Review this final amount before paying on Midtrans.": "Periksa jumlah akhir ini sebelum membayar di Midtrans.",
+  "Monthly plan · 30 days": "Paket Bulanan · 30 hari",
+  "Annual plan · 365 days": "Paket Tahunan · 365 hari",
+  "Lifetime license": "Lisensi lifetime",
+  "Monthly plan": "Paket Bulanan",
+  "Annual plan": "Paket Tahunan",
+  "Plan ended": "Paket berakhir",
+  "A code cannot be used with the founder price. Remove it to continue.": "Kode tidak bisa dipakai bersama harga founder. Hapus kode untuk melanjutkan.",
+  "Lifetime sales ended on 30 November 2026. Choose a Monthly or Annual plan instead.": "Penjualan lifetime berakhir pada 30 November 2026. Pilih paket Bulanan atau Tahunan.",
+  "Your access has ended. Choose a Monthly or Annual plan to continue.": "Aksesmu sudah berakhir. Pilih paket Bulanan atau Tahunan untuk melanjutkan.",
+  "Choose a plan to continue using Multicam AI.": "Pilih paket untuk terus memakai Multicam AI.",
+  "Your payment was already received and your access is active.": "Pembayaranmu sudah diterima dan aksesmu aktif.",
+  "Founder price applied.": "Harga founder diterapkan.",
+  "Signed in with Google. Choose your plan to continue to checkout.": "Berhasil masuk dengan Google. Pilih paketmu untuk lanjut ke checkout.",
+  "Signed in. You can download the installer, manage your license, or buy a plan here.": "Berhasil masuk. Kamu bisa mengunduh installer, mengelola lisensi, atau membeli paket di sini."
  },
  "patterns": [
   [
@@ -370,14 +385,6 @@
   [
    "^(.+) · v(\\S+) · Last seen (.+)\\. One plugin device can be active at a time\\. Sign in on the new device to switch\\.$",
    "$1 · v$2 · Terakhir aktif $3. Hanya satu perangkat plugin yang bisa aktif dalam satu waktu. Masuk di perangkat baru untuk berpindah."
-  ],
-  [
-   "^Lifetime license · (\\S+ [\\d.,]+) · (\\d+)% affiliate discount applied\\. Review this final amount before paying on Midtrans\\.$",
-   "Lisensi lifetime · $1 · diskon afiliasi $2% diterapkan. Periksa jumlah akhir ini sebelum membayar di Midtrans."
-  ],
-  [
-   "^Lifetime license · (\\S+ [\\d.,]+)\\. Review this final amount before paying on Midtrans\\.$",
-   "Lisensi lifetime · $1. Periksa jumlah akhir ini sebelum membayar di Midtrans."
   ],
   [
    "^Displayed lifetime price: (\\S+) one-time\\. Midtrans charges the verified amount above in IDR\\. No recurring plugin subscription\\.$",
@@ -466,6 +473,18 @@
   [
    "^shot (\\d+) of (\\d+)$",
    "shot $1 dari $2"
+  ],
+  [
+   "^Active until (.+)\\.$",
+   "Aktif sampai $1."
+  ],
+  [
+   "^Ended on (.+)\\. Choose a plan to continue\\.$",
+   "Berakhir pada $1. Pilih paket untuk melanjutkan."
+  ],
+  [
+   "^(\\d+)% affiliate discount applied\\.$",
+   "Diskon afiliasi $1% diterapkan."
   ]
  ]
 }
