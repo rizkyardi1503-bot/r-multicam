@@ -100,3 +100,10 @@ document.querySelectorAll('[data-download]').forEach(button => button.onclick = 
  else{visible=true;run(0);}
  document.addEventListener('visibilitychange',()=>{if(document.hidden)clear();else if(visible)run(step);});
 })();
+
+// Feature tiles: each tile has a tiny two-state picture; one timer flips all of them while the grid is on screen.
+(()=>{
+ const g=document.querySelector('[data-feat-loop]');if(!g||!('IntersectionObserver' in window))return;
+ if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){g.classList.add('is-b');return;}
+ let t=0;new IntersectionObserver((es)=>es.forEach((e)=>{clearInterval(t);if(e.isIntersecting)t=setInterval(()=>{if(!document.hidden)g.classList.toggle('is-b');},2200);}),{threshold:.15}).observe(g);
+})();

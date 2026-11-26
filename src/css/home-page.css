@@ -438,25 +438,41 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
 .home-feat { padding: clamp(26px, 2.8vw, 36px); }
 .home-feat p { margin: 0; }
 .home-feat .home-more { margin-top: 18px; }
-.home .home-feat.is-wide { grid-column: span 2; display: flex; flex-direction: column; background: radial-gradient(ellipse 60% 90% at 100% 0%, #d9b3ff73, transparent 70%), radial-gradient(ellipse 60% 90% at 0% 100%, #9cc4ff8c, transparent 70%), var(--rp-surface); }
-.home .home-feat.is-wide h3 { max-width: 16ch; font-size: clamp(30px, 3.4vw, 46px); line-height: 1.07; }
-.home-feat.is-wide p { max-width: 56ch; }
-.home-beats { display: flex; align-items: flex-end; gap: 6px; height: 64px; margin-top: auto; padding-top: 32px; box-sizing: content-box; }
-.home-beats b, .home-beats i {
-  display: grid;
-  place-items: center;
-  flex: 1;
-  border-radius: 6px;
-  background: #1d1d1f1a;
-  font: 700 10px/1 var(--rp-font-body);
-  font-style: normal;
-  letter-spacing: .14em;
-}
-.home-beats b { flex: 1.4; height: 100%; background: #ffffff99; border: 1px solid #fff; color: var(--rp-muted); }
-.home-beats i { height: 38%; }
-.home-beats i:nth-child(3), .home-beats i:nth-child(7) { height: 56%; }
-.home-beats i:nth-child(4), .home-beats i:nth-child(8) { height: 44%; }
-.home-beats .is-drop { flex: 1.6; height: 100%; background: var(--rp-violet); color: #fff; }
+/* Tiny two-state pictures on the feature tiles (app.js toggles .is-b on the grid). */
+.feat-viz { --c1: #0a84ff; --c2: #af52de; --c3: #ff9500; position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; height: 112px; margin-bottom: 22px; padding: 16px; border-radius: 16px; background: #fff; overflow: hidden; }
+.feat-viz i, .feat-viz b { display: block; font: 700 10px/1 var(--rp-font-body); font-style: normal; letter-spacing: .08em; transition: transform .7s var(--rp-ease), opacity .5s linear, background-color .5s linear, width .7s var(--rp-ease), filter .7s linear; }
+/* Music map: bars with the drop in the middle */
+.v-map { align-items: flex-end; }
+.v-map i { flex: 1; height: 34%; border-radius: 4px; background: #1d1d1f24; transform-origin: bottom; }
+.v-map i:nth-child(2), .v-map i:nth-child(7) { height: 52%; }
+.v-map i:nth-child(3), .v-map i:nth-child(4) { height: 70%; }
+.v-map b { flex: 1.8; display: grid; place-items: center; height: 100%; border-radius: 6px; background: var(--rp-violet); color: #fff; transform: scaleY(.55); transform-origin: bottom; }
+.is-b .v-map b { transform: none; }
+.is-b .v-map i { transform: scaleY(1.25); }
+/* Sync: three camera clips slide into line */
+.v-sync { flex-direction: column; align-items: stretch; gap: 8px; }
+.v-sync i { height: 18px; border-radius: 6px; background: var(--c1); }
+.v-sync i:nth-child(1) { transform: translateX(-12%); }
+.v-sync i:nth-child(2) { background: var(--c2); transform: translateX(10%); }
+.v-sync i:nth-child(3) { background: var(--c3); transform: translateX(-5%); }
+.is-b .v-sync i { transform: none; }
+/* Cut pace: a cut every 4 beats, then every 2 */
+.v-pace i { flex: 1; height: 44px; border-radius: 6px; background: #1d1d1f1a; }
+.v-pace i:nth-child(4n+1) { background: var(--rp-violet); }
+.is-b .v-pace i:nth-child(2n+1) { background: var(--rp-violet); }
+/* Camera roles: the highlighted angle changes, never the same kind twice */
+.v-roles i { flex: 1; display: grid; place-items: center; height: 52px; border-radius: 10px; background: var(--rp-surface); color: var(--rp-muted); }
+.v-roles i:nth-child(1), .is-b .v-roles i:nth-child(3) { background: var(--rp-violet); color: #fff; }
+.is-b .v-roles i:nth-child(1) { background: var(--rp-surface); color: var(--rp-muted); }
+/* Zoom: the frame pushes in */
+.v-zoom i { width: 46%; height: 64px; border-radius: 10px; background: linear-gradient(135deg, #9cc4ff, #d9b3ff 60%, #ffc9d9); box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--rp-line-strong); }
+.is-b .v-zoom i { transform: scale(1.45); }
+/* LUT: flat footage gets the look; the bar is the intensity */
+.v-lut { flex-direction: column; gap: 12px; }
+.v-lut i { width: 100%; height: 52px; border-radius: 10px; background: linear-gradient(90deg, #ff9500, #ff2d55 35%, #af52de 65%, #0a84ff); filter: saturate(.15) brightness(1.15); }
+.is-b .v-lut i { filter: none; }
+.v-lut b { align-self: flex-start; width: 18%; height: 6px; border-radius: 3px; background: var(--rp-violet); }
+.is-b .v-lut b { width: 100%; }
 
 /* ---------------------------------------------------------------- 5 · Pricing */
 .home-price-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--home-gap); max-width: 900px; margin-inline: auto; }
@@ -620,7 +636,6 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
   .promo-phone video { border-radius: 24px; }
   .edit-tip { display: none; }
   .home-steps, .home-price-grid, .home-feat-grid, .home-flow ol { grid-template-columns: minmax(0, 1fr); }
-  .home .home-feat.is-wide { grid-column: auto; }
   .home-feat, .home-price-card { padding: 24px; }
   .home-start-row .home-step-n { font-size: 60px; }
   .home-faq-list summary { font-size: 17px; padding-right: 36px; }
