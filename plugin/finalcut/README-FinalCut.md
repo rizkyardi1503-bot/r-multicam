@@ -1,10 +1,10 @@
-# R Project Multicam AI for Final Cut Pro (macOS) · v1.0.0
+# R Project Multicam AI for Final Cut Pro & DaVinci Resolve (macOS) · v1.1.0
 
 ## Bahasa Indonesia
 
 **Yang dibutuhkan**
 - Mac dengan macOS 12 atau lebih baru (Apple Silicon atau Intel).
-- Final Cut Pro 10.6 atau lebih baru.
+- Final Cut Pro 10.6 atau lebih baru, atau DaVinci Resolve 18 atau lebih baru.
 - Akun R Project (akun yang sama dengan plugin Premiere) dan koneksi internet untuk masuk.
 - Node.js dan FFmpeg tidak perlu dipasang sendiri; installer menyiapkannya (versi resmi, dicek SHA-256).
 
@@ -18,13 +18,14 @@
 1. Buka **R Project Engine for Final Cut**. Jendela Terminal dan halaman kontrol di browser terbuka. Biarkan Terminal tetap terbuka.
 2. **Masuk** dengan akun R Project (email/password atau Google). Status menampilkan sisa trial atau *Lifetime*.
    Premiere dan Final Cut di Mac yang sama dihitung sebagai satu perangkat.
-3. **1 · Music**: klik **Choose music…** lalu pilih rekaman musik master / DJ set. Klik **Analyze Music** untuk melihat BPM dan drop.
-4. **2 · Cameras**: klik **Add camera folder…** sekali untuk setiap kamera (satu folder = satu kamera, berisi semua klip kamera itu).
-   Isi role kamera, misalnya *Master Wide*, *DJ Close-Up*, *Crowd*.
-5. **3 · Auto Cut Multicam**: pilih Cut every (2/4/6/8 beat) dan Main Drop Camera, lalu klik **Create Multicam Edit**.
-6. Engine menyinkronkan setiap klip lewat audionya, memotong mengikuti musik, lalu membuka file `.fcpxml` di Final Cut Pro.
-   Pilih library, lalu buka project **"<nama musik> - Multicam AI"**. Multicam clip-nya ada di event **R Project Multicam AI**,
-   jadi angle masih bisa diganti di Final Cut.
+3. Di Final Cut / DaVinci: taruh musik master dan semua kamera di timeline (satu kamera per track video), lalu export:
+   - Final Cut Pro: **File › Export XML**.
+   - DaVinci Resolve: **File › Export › Timeline** → pilih **FCPXML**.
+4. Drop file `.fcpxml` ke halaman kontrol. Pilih **Open in** (Final Cut Pro / DaVinci Resolve) dan **Cut every** (2/4/6/8 beat).
+5. Klik **Create edit**. Engine menyinkronkan setiap klip lewat audionya dan memotong mengikuti musik.
+6. Import hasilnya:
+   - Final Cut Pro: terbuka otomatis, berupa multicam clip (angle masih bisa diganti).
+   - DaVinci Resolve: **File › Import › Timeline**, pilih file hasil. Potongan kamera di V1, musik di A1.
 7. File hasil disimpan di **Movies › R Project Multicam**. Media aslimu tidak diubah.
 
 **Catatan**
@@ -37,7 +38,8 @@
 - **"FFmpeg not found"**: jalankan Install-FinalCut.command lagi saat online.
 - **"Signed in on another device"**: satu akun hanya untuk satu komputer pada satu waktu. Masuk lagi di Mac ini.
 - **"Trial expired"**: beli Lifetime di https://r-multicam.pages.dev/#pricing.
-- **Final Cut tidak terbuka otomatis**: klik **Show in Finder**, lalu klik dua kali file `.fcpxml`, atau di Final Cut pilih
+- **"not on this computer"**: footage di XML tidak ada di Mac ini. Export dari Mac yang menyimpan footage-nya.
+- **Final Cut tidak terbuka otomatis**: klik **Show file**, lalu klik dua kali file `.fcpxml`, atau di Final Cut pilih
   File › Import › XML.
 
 **Hapus**: klik kanan **Uninstall-FinalCut.command** → Open. Hasil edit di Movies › R Project Multicam tetap ada.
@@ -46,7 +48,7 @@
 
 **Requirements**
 - A Mac with macOS 12 or newer (Apple silicon or Intel).
-- Final Cut Pro 10.6 or newer.
+- Final Cut Pro 10.6 or newer, or DaVinci Resolve 18 or newer.
 - An R Project account (the same account as the Premiere plugin) and an internet connection to sign in.
 - You don't need to install Node.js or FFmpeg yourself: the installer sets them up (official builds, SHA-256 verified).
 
@@ -58,13 +60,14 @@
 **Use**
 1. Open **R Project Engine for Final Cut**. A Terminal window and the control page in your browser open. Keep Terminal open.
 2. **Sign in** with your R Project account (email/password or Google). Premiere and Final Cut on one Mac count as one device.
-3. **1 · Music**: click **Choose music…** and pick the master music / DJ-set recording. **Analyze Music** shows BPM and drops.
-4. **2 · Cameras**: click **Add camera folder…** once per camera (one folder = one camera, with all of that camera's clips).
-   Type a role per camera, e.g. *Master Wide*, *DJ Close-Up*, *Crowd*.
-5. **3 · Auto Cut Multicam**: choose Cut every (2/4/6/8 beats) and the Main Drop Camera, then click **Create Multicam Edit**.
-6. The engine syncs every clip by its own audio, cuts to the music and opens the `.fcpxml` in Final Cut Pro. Choose a library,
-   then open the project **"<music name> - Multicam AI"**. The multicam clip is in the **R Project Multicam AI** event, so you
-   can still switch angles in Final Cut.
+3. In Final Cut / DaVinci, put the master music and every camera on the timeline (one camera per video track), then export:
+   - Final Cut Pro: **File › Export XML**.
+   - DaVinci Resolve: **File › Export › Timeline** → choose **FCPXML**.
+4. Drop the `.fcpxml` on the control page. Choose **Open in** (Final Cut Pro / DaVinci Resolve) and **Cut every** (2/4/6/8 beats).
+5. Click **Create edit**. The engine syncs every clip by its own audio and cuts to the music.
+6. Import the result:
+   - Final Cut Pro: it opens by itself as a multicam clip (you can still switch angles).
+   - DaVinci Resolve: **File › Import › Timeline** and pick the result. Camera cuts are on V1, the music on A1.
 7. Files are saved in **Movies › R Project Multicam**. Your media is not changed.
 
 **Notes**
@@ -77,7 +80,8 @@
 - **"FFmpeg not found"**: run Install-FinalCut.command again while online.
 - **"Signed in on another device"**: one account works on one computer at a time. Sign in again on this Mac.
 - **"Trial expired"**: buy Lifetime at https://r-multicam.pages.dev/#pricing.
-- **Final Cut does not open by itself**: click **Show in Finder** and double-click the `.fcpxml`, or in Final Cut choose
+- **"not on this computer"**: the footage in the XML is not on this Mac. Export on the Mac that holds the footage.
+- **Final Cut does not open by itself**: click **Show file** and double-click the `.fcpxml`, or in Final Cut choose
   File › Import › XML.
 
 **Uninstall**: right-click **Uninstall-FinalCut.command** → Open. Your edits in Movies › R Project Multicam are kept.
