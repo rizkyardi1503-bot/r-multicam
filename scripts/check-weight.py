@@ -21,7 +21,7 @@ JS_MAX = 128 * KB  # raised from 120 for the homepage animations in app.js (thre
 VIDEO_MAX = 3.2 * MB
 ALLOWED_SCRIPT_HOSTS = {"static.cloudflareinsights.com"}
 BLUR_MAX_PX = 20
-BACKDROP_MAX = {"home.css": 6}
+BACKDROP_MAX = {"home.css": 6, "site.css": 2}
 CDN_HOSTS = ("cdn.jsdelivr.net", "unpkg.com", "cdnjs")
 
 failures = []

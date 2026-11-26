@@ -28,7 +28,7 @@ SITE = ROOT / 'site'
 CSS_SRC = ROOT / 'src' / 'css'
 ORIGIN = 'https://r-multicam.pages.dev'
 
-BUNDLES = {'home.css': ['base.css', 'home-page.css'], 'site.css': ['base.css', 'pages.css']}
+BUNDLES = {'home.css': ['base.css', 'light.css', 'home-page.css'], 'site.css': ['base.css', 'light.css', 'pages.css']}
 SOURCE_CSS = {name for files in BUNDLES.values() for name in files} | set(BUNDLES)
 FONTS = ['/fonts/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2', '/fonts/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K4.woff2']
 MOTION = '/motion.mjs'
