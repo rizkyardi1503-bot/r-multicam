@@ -112,13 +112,13 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
 
 /* ---------------------------------------------------------------- Shared pieces */
 .home { --home-gap: clamp(18px, 2.4vw, 28px); }
-.home .section { position: relative; padding-block: clamp(72px, 10vw, 136px); }
+.home .section { position: relative; padding-block: clamp(52px, 7vw, 96px); }
 /* Full-bleed soft-grey band behind a .wrap section.
    border-image outset paints outside the box without creating horizontal scroll. */
 .home-band {
   border-image: linear-gradient(var(--rp-surface-2), var(--rp-surface-2)) fill 0 / 0 / 0 100vmax;
 }
-.home-head { max-width: 860px; margin-bottom: clamp(40px, 5vw, 72px); }
+.home-head { max-width: 860px; margin-bottom: clamp(28px, 4vw, 48px); }
 .home-head h2 { margin-bottom: 20px; }
 .home-head > p:last-child { margin: 0; max-width: 58ch; color: var(--rp-muted); font-size: clamp(18px, 1.7vw, 21px); line-height: 1.45; font-weight: 500; }
 .home-head.is-center { margin-inline: auto; text-align: center; }
@@ -364,9 +364,6 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
 .home .home-feat.is-wide { grid-column: span 2; display: flex; flex-direction: column; background: radial-gradient(ellipse 60% 90% at 100% 0%, #d9b3ff73, transparent 70%), radial-gradient(ellipse 60% 90% at 0% 100%, #9cc4ff8c, transparent 70%), var(--rp-surface); }
 .home .home-feat.is-wide h3 { max-width: 16ch; font-size: clamp(30px, 3.4vw, 46px); line-height: 1.07; }
 .home-feat.is-wide p { max-width: 56ch; }
-.home-feat:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 4px 32px; align-items: center; }
-.home-feat:last-child .home-tag { grid-column: 1 / -1; margin-bottom: 4px; }
-.home-feat:last-child h3 { margin: 0; }
 .home-beats { display: flex; align-items: flex-end; gap: 6px; height: 64px; margin-top: auto; padding-top: 32px; box-sizing: content-box; }
 .home-beats b, .home-beats i {
   display: grid;
@@ -536,7 +533,6 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
   .home-flow ol { grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 0; gap: 28px 20px; }
   .home-flow li { padding-top: 0; padding-left: 38px; }
   .home-flow-n { top: -2px; }
-  .home-feat:last-child { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 640px) {
   .home-hero h1 { font-size: clamp(38px, 11.4vw, 52px); }
