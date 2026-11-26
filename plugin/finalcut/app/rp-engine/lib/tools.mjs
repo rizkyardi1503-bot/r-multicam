@@ -165,12 +165,13 @@ export const TOOLS = [
         path_from: { type: "string", description: "Path prefix in the plan to replace (with path_to), e.g. a mount point on another machine." },
         path_to: { type: "string", description: "Replacement prefix, e.g. /Volumes/My SSD." },
         project_name: { type: "string" },
-        event_name: { type: "string" }
+        event_name: { type: "string" },
+        flat: { type: "boolean", description: "Flat timeline (camera clips cut on V1, music on A1) instead of a multicam clip: for DaVinci Resolve and other apps that do not import FCPXML multicam." }
       }
     },
     async run(args) {
       const plan = readPlan(args.plan);
-      const xml = planToFcpxml(plan, { mediaDir: args.media_dir, pathMap: args.path_from ? { from: args.path_from, to: args.path_to || "" } : null, projectName: args.project_name, eventName: args.event_name });
+      const xml = planToFcpxml(plan, { mediaDir: args.media_dir, pathMap: args.path_from ? { from: args.path_from, to: args.path_to || "" } : null, projectName: args.project_name, eventName: args.event_name, flat: !!args.flat });
       return { fcpxml: writeFile(args.output, xml), cuts: plan.cuts.length, angles: plan.cameras.map((c) => c.angle_id) };
     }
   },

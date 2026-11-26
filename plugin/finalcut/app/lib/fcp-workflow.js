@@ -1,9 +1,11 @@
-// Final Cut workflow: the user picks the music file and one folder (or a set of files) per camera with the macOS file
-// dialogs, the engine (rp-engine, the Premiere plugin's own code) syncs every clip by audio, paces the cuts to the music,
-// and writes an FCPXML that Final Cut Pro imports as a multicam clip plus a project already cut on the beat.
+// Final Cut Pro and DaVinci Resolve workflow. The user drops the timeline they exported as FCPXML (or picks the music and
+// one folder per camera); the engine (rp-engine, the Premiere plugin's own code) syncs every clip by audio, paces the
+// cuts to the music and writes an FCPXML: a multicam clip plus a project cut on the beat for Final Cut Pro, or a flat
+// timeline (camera clips on V1, music on A1) for DaVinci Resolve, which does not take multicam clips from FCPXML.
 'use strict';
 const fs = require('fs'), path = require('path'), os = require('os'), cp = require('child_process');
 const { pathToFileURL } = require('url');
+const { readTimeline } = require('./xml-import');
 
 const MEDIA = /\.(mov|mp4|m4v|mxf|mts|m2ts|avi|mkv|insv|lrv|3gp)$/i;
 const MUSIC_TYPES = ['public.audio', 'public.movie'];
@@ -41,7 +43,7 @@ function mediaIn(folder) {
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
-function outputRoot() { return path.join(os.homedir(), 'Movies', 'R Project Multicam'); }
+function outputRoot() { return path.join(os.homedir(), process.platform === 'win32' ? 'Videos' : 'Movies', 'R Project Multicam'); }
 function stamp(d = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + '.' + p(d.getMinutes()) + '.' + p(d.getSeconds());
@@ -49,13 +51,24 @@ function stamp(d = new Date()) {
 /** A file name that is safe in Finder and in FCP's import (no slashes or colons). */
 function safeName(s) { return String(s).replace(/[\/:\\]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Multicam'; }
 
-/** Opens the FCPXML in Final Cut Pro (falls back to the default app for .fcpxml). */
-function openInFinalCut(file) {
+/** Final Cut Pro: opens the FCPXML in it (imports it). DaVinci Resolve has no "open this file" import, so the file is
+ *  shown in Finder / Explorer for File > Import > Timeline. Returns what was done ('' when nothing could be opened). */
+function openResult(file, target) {
   return new Promise((resolve) => {
-    cp.execFile('open', ['-a', 'Final Cut Pro', file], (err) => {
-      if (!err) return resolve('Final Cut Pro');
-      cp.execFile('open', [file], (err2) => resolve(err2 ? '' : 'default app'));
-    });
+    if (target === 'fcp' && process.platform === 'darwin') {
+      return cp.execFile('open', ['-a', 'Final Cut Pro', file], (err) => {
+        if (!err) return resolve('Final Cut Pro');
+        cp.execFile('open', ['-R', file], (e2) => resolve(e2 ? '' : 'Finder'));
+      });
+    }
+    revealFile(file).then(resolve);
+  });
+}
+function revealFile(file) {
+  return new Promise((resolve) => {
+    if (process.platform === 'darwin') return cp.execFile('open', ['-R', file], (e) => resolve(e ? '' : 'Finder'));
+    if (process.platform === 'win32') return cp.execFile('explorer.exe', ['/select,', file], () => resolve('Explorer'));
+    cp.execFile('xdg-open', [path.dirname(file)], (e) => resolve(e ? '' : 'file manager'));
   });
 }
 
@@ -65,16 +78,29 @@ class Studio {
     this.log = opts.log || (() => {});
     this.onProgress = opts.progress || (() => {});
     this.picker = opts.picker || macPicker;
-    this.open = opts.open || openInFinalCut;
+    this.open = opts.open || openResult;
     this.outDir = opts.outDir || outputRoot();
     this.loadTools = opts.loadTools || (() => import(pathToFileURL(path.join(__dirname, '..', 'rp-engine', 'lib', 'tools.mjs')).href).then((m) => m.TOOLS));
-    this.music = null; this.cameras = []; this.analysis = null; this.result = null;
+    this.music = null; this.cameras = []; this.analysis = null; this.result = null; this.timeline = null;
     this.busy = ''; this.abort = null;
   }
 
   state() {
-    return { music: this.music, cameras: this.cameras.map((c) => ({ name: c.name, role: c.role, files: c.files.length, first: path.basename(c.files[0] || '') })),
+    return { timeline: this.timeline, music: this.music, cameras: this.cameras.map((c) => ({ name: c.name, role: c.role, files: c.files.length, first: path.basename(c.files[0] || '') })),
       analysis: this.analysis, result: this.result };
+  }
+
+  /** Loads an FCPXML exported from Final Cut Pro or DaVinci Resolve: its music and one camera per video track. */
+  loadTimeline(text, fileName) {
+    if (!text || typeof text !== 'string') throw new Error('Empty file.');
+    const t = readTimeline(text);
+    if (t.missing.length) throw new Error('These files are not on this computer: ' + t.missing.slice(0, 3).map((f) => path.basename(f)).join(', ') + (t.missing.length > 3 ? ' and ' + (t.missing.length - 3) + ' more' : '') + '. Connect the drive that holds the footage, then try again.');
+    this.music = t.music;
+    this.cameras = t.cameras.map((c, i) => ({ name: c.name, role: 'Camera ' + (i + 1), files: c.files }));
+    this.timeline = { file: String(fileName || 'timeline.fcpxml'), title: t.title, app: t.app };
+    this.analysis = null; this.result = null;
+    this.log('Timeline "' + t.title + '" from ' + (t.app === 'resolve' ? 'DaVinci Resolve' : 'Final Cut Pro') + ': music ' + path.basename(t.music) + ', ' + t.cameras.length + ' camera' + (t.cameras.length === 1 ? '' : 's') + ' (' + t.cameras.map((c) => c.name + ' ' + c.files.length).join(', ') + ').');
+    return { message: 'Loaded ' + t.title + '.', app: t.app };
   }
 
   async pickMusic() {
@@ -148,15 +174,16 @@ class Studio {
     });
   }
 
-  /** opts: {cadences:[2|4|6|8], dropCamera: index|null, sensitivity} */
+  /** opts: {cadences:[2|4|6|8], dropCamera: index|null, sensitivity, target: 'fcp' | 'resolve'} */
   async multicam(opts = {}) {
     if (!this.music) throw new Error('Choose the music first.');
     if (!this.cameras.length) throw new Error('Add at least one camera (one folder per camera).');
     const cadences = (opts.cadences || []).map(Number).filter((n) => [2, 4, 6, 8].includes(n));
     const dropCamera = opts.dropCamera === '' || opts.dropCamera == null ? undefined : Number(opts.dropCamera);
     if (dropCamera !== undefined && !(dropCamera >= 0 && dropCamera < this.cameras.length)) throw new Error('Main Drop Camera is not one of the cameras.');
-    const title = safeName(path.basename(this.music).replace(/\.[^.]+$/, '')), dir = path.join(this.outDir, title + ' ' + stamp());
-    const planFile = path.join(dir, title + '.rpplan.json'), fcpFile = path.join(dir, title + ' - Multicam AI.fcpxml');
+    const target = opts.target === 'resolve' ? 'resolve' : 'fcp';
+    const title = safeName(this.timeline ? this.timeline.title : path.basename(this.music).replace(/\.[^.]+$/, '')), dir = path.join(this.outDir, title + ' ' + stamp());
+    const planFile = path.join(dir, title + '.rpplan.json'), fcpFile = path.join(dir, title + ' - Multicam AI' + (target === 'resolve' ? ' (DaVinci)' : '') + '.fcpxml');
     return this.run('Create Multicam Edit', async (tools, progress, ctx) => {
       const tool = (n) => tools.find((t) => t.name === n);
       const r = await tool('plan_multicam').run({
@@ -166,20 +193,20 @@ class Studio {
         sensitivity: ['conservative', 'balanced', 'aggressive'].includes(opts.sensitivity) ? opts.sensitivity : undefined,
         cache_dir: path.join(this.outDir, '.cache'),
       }, progress, ctx);
-      await tool('export_fcpxml').run({ plan: planFile, output: fcpFile, project_name: title + ' - Multicam AI', event_name: 'R Project Multicam AI' });
+      await tool('export_fcpxml').run({ plan: planFile, output: fcpFile, project_name: title + ' - Multicam AI', event_name: 'R Project Multicam AI', flat: target === 'resolve' });
       const plan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
       const placed = plan.cameras.reduce((n, c) => n + (c.clips || []).length, 0), excluded = plan.cameras.reduce((n, c) => n + (c.excluded_clips || []).length, 0);
       plan.cameras.forEach((c) => {
         const ex = c.excluded_clips || [];
         this.log('  ' + (c.name || c.angle_id) + ': ' + (c.clips || []).length + ' clip(s) synced' + (ex.length ? ', ' + ex.length + ' left out (' + ex.slice(0, 3).map((x) => path.basename(x.file) + ': ' + (x.reason || '?')).join('; ') + (ex.length > 3 ? '; …' : '') + ')' : ''));
       });
-      const app = await this.open(fcpFile);
-      this.result = { fcpxml: fcpFile, folder: dir, cuts: r.cut_count ?? plan.cuts.length, placed, excluded, openedIn: app };
+      const app = await this.open(fcpFile, target);
+      this.result = { fcpxml: fcpFile, name: path.basename(fcpFile), folder: dir, target, cuts: r.cut_count ?? plan.cuts.length, placed, excluded, openedIn: app };
       this.log('Created ' + path.basename(fcpFile) + ': ' + this.result.cuts + ' cuts, ' + placed + ' clips synced' + (excluded ? ', ' + excluded + ' left out' : '') + '.');
-      this.log(app ? 'Opened in ' + app + '. In Final Cut choose a library, then open the project "' + title + ' - Multicam AI".' : 'Double-click the .fcpxml in ' + dir + ' to import it into Final Cut Pro.');
+      this.log(target === 'resolve' ? 'In DaVinci Resolve choose File > Import > Timeline and pick ' + path.basename(fcpFile) + '.' : app === 'Final Cut Pro' ? 'Opened in Final Cut Pro: choose a library, then open "' + title + ' - Multicam AI".' : 'In Final Cut Pro choose File > Import > XML and pick ' + path.basename(fcpFile) + '.');
       return { ok: true, ...this.result };
     });
   }
 }
 
-module.exports = { Studio, mediaIn, macPicker, asText, safeName, openInFinalCut, MEDIA };
+module.exports = { Studio, mediaIn, macPicker, asText, safeName, openResult, revealFile, MEDIA };

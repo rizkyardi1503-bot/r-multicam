@@ -7,6 +7,7 @@ const assert = require('assert/strict'), fs = require('fs'), os = require('os'),
 const APP = path.join(__dirname, '..', 'app');
 const { start, LICENSE_VERSION } = require(path.join(APP, 'rp-finalcut-engine.js'));
 const { mediaIn, asText, safeName } = require(path.join(APP, 'lib', 'fcp-workflow.js'));
+const { readTimeline, urlToPath } = require(path.join(APP, 'lib', 'xml-import.js'));
 const FFMPEG = process.env.RP_FFMPEG || 'ffmpeg';
 process.env.RP_FFMPEG = FFMPEG;
 
@@ -85,7 +86,7 @@ function call(eng, method, p, body, headers = {}) {
       assert.equal((await call(eng, 'GET', '/api/status', null, { Host: 'evil.example:80' })).status, 403);
       assert.equal((await call(eng, 'POST', '/api/music', {}, { Origin: 'http://evil.example' })).status, 403);
       const page = await call(eng, 'GET', '/');
-      assert.equal(page.status, 200); assert.match(page.text, /for Final Cut Pro/); assert.doesNotMatch(page.text, /\$\{/);
+      assert.equal(page.status, 200); assert.match(page.text, /Drop your \.fcpxml/); assert.doesNotMatch(page.text, /\$\{/);
     });
 
     await test('nothing chosen yet: Create Multicam Edit explains what is missing', async () => {
@@ -144,6 +145,82 @@ function call(eng, method, p, body, headers = {}) {
       eng.studio.busy = 'Create Multicam Edit';
       try { assert.equal((await call(eng, 'POST', '/api/analyze', {})).status, 409); assert.equal((await call(eng, 'POST', '/api/music', {})).status, 409); }
       finally { eng.studio.busy = ''; }
+    });
+
+    // ---------- timeline import (FCPXML exported from Final Cut Pro / DaVinci Resolve)
+    const url = (f) => 'file://' + encodeURI(f);
+    const cams = camDirs.map((d) => mediaIn(d));
+    const fcpExport = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n<fcpxml version="1.11"><resources>
+<format id="r1" frameDuration="1/25s" width="1920" height="1080"/>
+<asset id="m" name="Set Night 1" start="0s" duration="${DUR}s" hasAudio="1"><media-rep kind="original-media" src="${url(music)}"/></asset>
+${cams.flat().map((f, i) => `<asset id="c${i}" name="${path.basename(f)}" start="0s" duration="20s" hasVideo="1" hasAudio="1" format="r1"><media-rep kind="original-media" src="${url(f)}"/></asset>`).join('')}
+</resources><library><event name="Night"><project name="Druva &amp; friends"><sequence format="r1"><spine>
+<asset-clip ref="m" offset="0s" duration="${DUR}s">
+${cams[0].map((f) => `<asset-clip ref="c${cams.flat().indexOf(f)}" lane="1" offset="0s" duration="10s"/>`).join('')}
+${cams[1].map((f) => `<clip lane="2" offset="0s" duration="10s"><video ref="c${cams.flat().indexOf(f)}" offset="0s" duration="10s"/></clip>`).join('')}
+</asset-clip></spine></sequence></project></event></library></fcpxml>`;
+    const resolveExport = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n<!-- Exported from DaVinci Resolve -->\n<fcpxml version="1.10"><resources>
+<format id="r0" frameDuration="1/25s" width="1920" height="1080"/>
+<asset id="a1" name="music" src="${url(music)}" start="0s" duration="${DUR}s" hasAudio="1"/>
+${cams.flat().map((f, i) => `<asset id="v${i}" name="${path.basename(f)}" src="${url(f)}" start="0s" duration="20s" hasVideo="1" hasAudio="1" format="r0"/>`).join('')}
+</resources><library><event name="Timeline 1"><project name="Timeline 1"><sequence format="r0"><spine>
+${cams[0].map((f) => `<asset-clip ref="v${cams.flat().indexOf(f)}" offset="0s" duration="10s">${f === cams[0][0] ? `<asset-clip ref="a1" lane="-1" offset="0s" duration="${DUR}s"/>${cams[1].map((g) => `<asset-clip ref="v${cams.flat().indexOf(g)}" lane="1" offset="0s" duration="10s"/>`).join('')}` : ''}</asset-clip>`).join('')}
+</spine></sequence></project></event></library></fcpxml>`;
+
+    await test('unit: timeline reader finds the music and one camera per track, in FCP and Resolve exports', async () => {
+      assert.equal(urlToPath('file:///Users/me/My%20Shoot/A.MP4'), '/Users/me/My Shoot/A.MP4');
+      assert.equal(urlToPath('file:///C:/Shoot/A.MP4'), 'C:/Shoot/A.MP4');
+      assert.equal(urlToPath('file://localhost/Volumes/SSD/a.mov'), '/Volumes/SSD/a.mov');
+      const f = readTimeline(fcpExport);
+      assert.equal(f.app, 'fcp'); assert.equal(f.title, 'Druva & friends'); assert.equal(f.music, music);
+      assert.deepEqual(f.cameras.map((c) => [c.name, c.files.length]), [['V2', 2], ['V3', 1]]); assert.deepEqual(f.missing, []);
+      const r = readTimeline(resolveExport);
+      assert.equal(r.app, 'resolve'); assert.deepEqual(r.cameras.map((c) => [c.name, c.files.length]), [['V1', 2], ['V2', 1]]);
+      assert.throws(() => readTimeline('<html></html>'), /not an FCPXML/);
+      assert.throws(() => readTimeline(fcpExport.replace(/<asset id="m"[\s\S]*?<\/asset>/, '').replace('<asset-clip ref="m"', '<gap')), /No music/);
+    });
+
+    await test('Final Cut timeline: drop the XML, Create edit, multicam project back', async () => {
+      opened.length = 0;
+      const r = await call(eng, 'POST', '/api/xml', { name: 'night.fcpxml', text: fcpExport });
+      assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.app, 'fcp');
+      assert.deepEqual(r.body.studio.cameras.map((c) => [c.name, c.files]), [['V2', 2], ['V3', 1]]);
+      assert.equal((await call(eng, 'POST', '/api/multicam', { target: 'fcp', cadences: [4, 8] })).status, 202);
+      const s = (await call(eng, 'GET', '/api/status')).body, res = s.studio.result;
+      assert.notEqual(s.lastResult.ok, false, s.lastResult.error);
+      assert.equal(res.target, 'fcp'); assert.equal(res.placed, 3); assert.deepEqual(opened, [res.fcpxml]);
+      assert.match(res.name, /^Druva & friends - Multicam AI\.fcpxml$/);
+      const xml = fs.readFileSync(res.fcpxml, 'utf8'); assert.match(xml, /<mc-clip /); assert.match(xml, /<multicam /);
+      const dl = await call(eng, 'GET', '/api/result');
+      assert.equal(dl.status, 200); assert.equal(dl.text, xml);
+    });
+
+    await test('DaVinci timeline: flat FCPXML, camera clips cut on V1 at the synced position, music on A1', async () => {
+      const r = await call(eng, 'POST', '/api/xml', { name: 'Timeline 1.fcpxml', text: resolveExport });
+      assert.equal(r.body.app, 'resolve');
+      assert.equal((await call(eng, 'POST', '/api/multicam', { target: 'resolve', cadences: [4, 6, 8] })).status, 202);
+      const s = (await call(eng, 'GET', '/api/status')).body, res = s.studio.result;
+      assert.notEqual(s.lastResult.ok, false, s.lastResult.error);
+      assert.equal(res.target, 'resolve'); assert.match(res.name, /\(DaVinci\)\.fcpxml$/);
+      const xml = fs.readFileSync(res.fcpxml, 'utf8');
+      assert.doesNotMatch(xml, /<mc-clip|<multicam|<media /);
+      const xmllint = cp.spawnSync('xmllint', ['--noout', res.fcpxml], { encoding: 'utf8' });
+      if (!xmllint.error) assert.equal(xmllint.status, 0, xmllint.stderr);
+      const plan = JSON.parse(fs.readFileSync(path.join(res.folder, path.basename(res.folder).replace(/ \d{4}-.*$/, '') + '.rpplan.json'), 'utf8'));
+      const sec = (v) => { const m = /^(\d+)(?:\/(\d+))?s$/.exec(v); return Number(m[1]) / Number(m[2] || 1); };
+      const assets = Object.fromEntries([...xml.matchAll(/<asset id="(r\d+)"[^>]*>\s*<media-rep kind="original-media" src="([^"]+)"/g)].map((m) => [m[1], decodeURI(m[2].replace('file://', ''))]));
+      const offsetOf = Object.fromEntries(plan.cameras.flatMap((c) => c.clips.map((k) => [k.file, k.offset])));
+      const shots = [...xml.matchAll(/<asset-clip ref="(r\d+)" name="[^"]*" offset="([^"]+)" start="([^"]+)" duration="([^"]+)" tcFormat="[A-Z]+" srcEnable="video"/g)];
+      assert.equal(shots.length, plan.cuts.filter((c) => c.camera >= 0).length);
+      for (const [, ref, off, start] of shots) assert.ok(Math.abs(sec(off) - sec(start) - offsetOf[assets[ref]]) < 0.05, 'shot ' + ref + ' at ' + off + ' is in sync');
+      let t = 0; for (const [, , off, , dur] of shots) { assert.ok(Math.abs(sec(off) - t) < 1e-6 || sec(off) > t, 'shots in order'); t = sec(off) + sec(dur); }
+      assert.match(xml, /<asset-clip ref="r\d+" lane="-1" name="Set Night 1\.wav" offset="[^"]+" start="0s"/);
+    });
+
+    await test('timeline with footage that is not on this computer: clear error, nothing loaded', async () => {
+      const r = await call(eng, 'POST', '/api/xml', { name: 'x.fcpxml', text: fcpExport.split(camDirs[1]).join('/Volumes/Gone/DJ') });
+      assert.equal(r.status, 400); assert.match(r.body.error, /not on this computer/);
+      assert.equal((await call(eng, 'POST', '/api/xml', { name: 'x.fcpxml', text: '<html/>' })).status, 400);
     });
   } finally { await eng.close(); }
 
