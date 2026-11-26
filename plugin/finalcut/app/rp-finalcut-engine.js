@@ -39,6 +39,17 @@ function ffmpegPath() {
   return '';
 }
 
+/** Streams an MP4 with Range support (the player needs it to seek). */
+function sendVideo(req, res, file) {
+  const size = fs.statSync(file).size, m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+  const head = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
+  if (!m) { res.writeHead(200, Object.assign(head, { 'Content-Length': size })); return fs.createReadStream(file).pipe(res); }
+  let start = m[1] === '' ? Math.max(0, size - Number(m[2])) : Number(m[1]), end = m[1] !== '' && m[2] !== '' ? Math.min(Number(m[2]), size - 1) : size - 1;
+  if (!(start <= end && start < size)) { res.writeHead(416, { 'Content-Range': 'bytes */' + size }); return res.end(); }
+  res.writeHead(206, Object.assign(head, { 'Content-Range': 'bytes ' + start + '-' + end + '/' + size, 'Content-Length': end - start + 1 }));
+  return fs.createReadStream(file, { start, end }).pipe(res);
+}
+
 function openBrowser(url) {
   try {
     const c = process.platform === 'win32' ? cp.spawn('explorer.exe', [url], { detached: true, stdio: 'ignore' })
@@ -158,6 +169,8 @@ async function start(opts = {}) {
     'POST /api/drops': (b) => { studio.setRoles(b.roles); return job('Find drops', () => studio.findDrops({ cadences: b.cadences })); },
     'POST /api/export': (b) => job('Export', () => studio.exportVideos({ drops: b.drops, full: !!b.full, format: b.format, length: b.length, zoom: b.zoom !== false, lut: b.lut !== false })),
     'POST /api/export-xml': (b) => job('Export XML', () => studio.exportXml(b.target)),
+    'GET /api/timeline': (b, url) => quick('Timeline', () => ({ timeline: studio.dropTimeline(url.searchParams.get('i'), url.searchParams.get('l')) })),
+    'POST /api/camera': (b) => quick('Change camera', () => studio.setCamera(b.cut, b.camera)),
     'POST /api/lut': () => quick('Choose LUT', () => studio.pickLut()),
     'POST /api/lut/clear': () => quick('LUT', () => { studio.lut = ''; return { message: 'No LUT.' }; }),
     'POST /api/open-folder': async () => {
@@ -202,6 +215,14 @@ async function start(opts = {}) {
           'Content-Disposition': 'attachment; filename="' + r.name.replace(/[^\w .()-]/g, '_') + '"' });
         return res.end(fs.readFileSync(r.fcpxml));
       }
+      if (req.method === 'GET' && url.pathname === '/api/preview') {
+        const denied = await licensed('Preview');
+        if (denied) return send(denied.status, denied.body);
+        let file;
+        try { file = await studio.preview(url.searchParams.get('i'), { format: url.searchParams.get('f'), length: url.searchParams.get('l'), zoom: url.searchParams.get('z') !== '0' }); }
+        catch (e) { log('Preview: ' + e.message); return send(400, { ok: false, error: e.message }); }
+        return sendVideo(req, res, file);
+      }
       if (req.method === 'GET' && url.pathname === '/api/thumb') {
         const f = studio.thumb(url.searchParams.get('i'));
         if (!f) return send(404, { ok: false, error: 'No picture.' });
@@ -225,7 +246,7 @@ async function start(opts = {}) {
         for await (const chunk of req) { raw += chunk; if (raw.length > 40e6) { send(413, { ok: false, error: 'Too large.' }); req.destroy(); return; } }
         body = raw ? JSON.parse(raw) : {};
       }
-      const r = await route(body);
+      const r = await route(body, url);
       return send(r.status || 200, r.body);
     } catch (e) { return send(500, { ok: false, error: String(e && e.message || e) }); }
   });
@@ -244,80 +265,89 @@ try { ICON = 'data:image/png;base64,' + fs.readFileSync(path.join(APP, 'assets',
 function page(token) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>R Project Multicam AI</title>${ICON ? '<link rel="icon" href="' + ICON + '">' : ''}<style>
-:root{--ink:#1d1d1f;--prose:#424245;--muted:#6e6e73;--line:#d2d2d7;--soft:#f5f5f7;--blue:#0071e3;--blue2:#0066cc;--ok:#34c759;--err:#d70015}
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}body{margin:0;background:#fff;color:var(--ink);font:17px/1.47 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
-button,input{font:inherit;color:inherit}button{cursor:pointer}[hidden]{display:none!important}
-header{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 max(20px,calc(50% - 340px));background:#ffffffcc;-webkit-backdrop-filter:saturate(180%) blur(18px);backdrop-filter:saturate(180%) blur(18px);border-bottom:1px solid #0000000f}
-.brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:15px}.brand i{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:var(--blue);color:#fff;font-style:normal;font-size:14px}
-.pill{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:14px}.pill b{width:7px;height:7px;border-radius:50%;background:#c7c7cc}.pill b.on{background:var(--ok)}
-main{max-width:680px;margin:0 auto;padding:56px 20px 40px}
-h1{margin:0;font-size:clamp(34px,6vw,48px);line-height:1.08;letter-spacing:-.025em;font-weight:600;text-align:center}
-.sub{margin:14px auto 36px;max-width:30em;color:var(--muted);font-size:19px;text-align:center}
-.drop{display:grid;place-items:center;gap:10px;min-height:210px;padding:28px;border:1.5px dashed var(--line);border-radius:24px;background:var(--soft);text-align:center;transition:border-color .2s,background-color .2s}
-.drop.over{border-color:var(--blue);background:#0071e30d}.drop svg{width:44px;height:44px;color:var(--blue)}.drop strong{font-size:21px;font-weight:600}
-.link{padding:0;border:0;background:none;color:var(--blue2);font-size:17px}.link:hover{text-decoration:underline}
-.card{border-radius:24px;background:var(--soft);padding:24px}
-.tl{display:flex;align-items:center;justify-content:space-between;gap:12px}.tl strong{font-size:21px;font-weight:600}.tl small{display:block;color:var(--muted);font-size:14px}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}.chips span{padding:5px 12px;border-radius:999px;background:#fff;font-size:14px;color:var(--prose)}.chips span.mus{color:#bf4800}
-.row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:22px;flex-wrap:wrap}.row>span{font-size:15px;color:var(--muted)}
-.seg{display:inline-flex;padding:3px;border-radius:999px;background:#e8e8ed}.seg button{min-height:34px;padding:0 16px;border:0;border-radius:999px;background:none;color:var(--prose);font-size:14px;font-weight:500}
-.seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px #0000001f}
-.beats{display:inline-flex;gap:6px}.beats button{width:42px;height:34px;border:0;border-radius:999px;background:#e8e8ed;color:var(--prose);font-size:14px;font-weight:500}.beats button[aria-pressed="true"]{background:var(--ink);color:#fff}
-.go{display:block;width:100%;min-height:52px;margin-top:24px;border:0;border-radius:999px;background:var(--blue);color:#fff;font-size:17px;font-weight:500}.go:hover{background:#0077ed}.go:disabled{background:#0071e366;cursor:default}
-.prog{margin-top:22px}.bar{height:4px;border-radius:2px;background:#e8e8ed;overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .4s}
-.prog p{display:flex;justify-content:space-between;margin:10px 0 0;font-size:14px;color:var(--muted)}
-.done{margin-top:24px;text-align:center}.done svg{width:48px;height:48px;color:var(--ok)}.done h2{margin:10px 0 4px;font-size:24px;font-weight:600;letter-spacing:-.015em}.done p{margin:0;color:var(--muted)}
-.btns{display:flex;justify-content:center;gap:10px;margin-top:18px;flex-wrap:wrap}.btn{min-height:40px;padding:0 20px;border:1px solid var(--blue);border-radius:999px;background:#fff;color:var(--blue);font-size:15px;text-decoration:none;display:inline-flex;align-items:center}.btn.fill{background:var(--blue);color:#fff}
-.err{margin-top:16px;color:var(--err);font-size:15px;text-align:center}
-footer{max-width:680px;margin:0 auto;padding:0 20px 40px;color:var(--muted);font-size:13px;text-align:center}footer details{margin-top:10px;text-align:left}footer summary{cursor:pointer;text-align:center}
-#log{max-height:220px;overflow:auto;margin-top:10px;padding:12px;border-radius:12px;background:var(--soft);font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
+:root{--ink:#1d1d1f;--prose:#424245;--muted:#6e6e73;--line:#0000001a;--soft:#f5f5f7;--blue:#0071e3;--blue2:#0066cc;--ok:#34c759;--err:#d70015}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#fff;color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;overflow:hidden}
+button,input{font:inherit;color:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.45}[hidden]{display:none!important}
+header{flex:none;display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 18px;border-bottom:1px solid var(--line);background:#fbfbfd}
+.brand{display:flex;align-items:center;gap:9px;font-weight:600}.brand i{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:var(--blue);color:#fff;font-style:normal;font-size:14px}
+.pill{display:inline-flex;align-items:center;gap:8px;min-height:30px;padding:0 13px;border:1px solid #d2d2d7;border-radius:999px;background:#fff;font-size:13px}.pill b{width:7px;height:7px;border-radius:50%;background:#c7c7cc}.pill b.on{background:var(--ok)}
+.app{flex:1;min-height:0;display:grid;grid-template-columns:290px 1fr 300px}
+aside,.right{overflow:auto;padding:18px;background:#fbfbfd}aside{border-right:1px solid var(--line)}.right{border-left:1px solid var(--line)}
+h3{margin:0 0 10px;font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.02em;text-transform:uppercase}h3+*{margin-top:0}
+.box{border-radius:14px;background:#fff;border:1px solid var(--line);padding:4px 12px;margin-bottom:12px}
+.item{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px}.item+.item{border-top:1px solid var(--line)}.item>span{color:var(--muted);font-size:13px;white-space:nowrap}
+.add{min-height:28px;max-width:170px;padding:0 11px;border:0;border-radius:999px;background:var(--soft);color:var(--blue2);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cams{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;padding:6px 0}.cams span{display:inline-flex;align-items:center;gap:5px;padding:3px 4px 3px 10px;border-radius:999px;background:var(--soft);font-size:12px}.cams span button{width:18px;height:18px;border:0;border-radius:50%;background:#e3e3e8;color:var(--muted);font-size:10px}
+.seg{display:inline-flex;padding:2px;border-radius:999px;background:#ececf0}.seg button{min-height:28px;padding:0 11px;border:0;border-radius:999px;background:none;color:var(--prose);font-size:12px;font-weight:500}.seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px #0000001f}
+.beats{display:inline-flex;gap:4px}.beats button{width:32px;height:28px;border:0;border-radius:999px;background:#ececf0;color:var(--prose);font-size:12px;font-weight:500}.beats button[aria-pressed="true"]{background:var(--ink);color:#fff}
+.switch{position:relative;width:40px;height:24px;border:0;border-radius:999px;background:#e3e3e8;transition:background .2s}.switch::after{content:"";position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}.switch[aria-pressed="true"]{background:var(--ok)}.switch[aria-pressed="true"]::after{transform:translateX(16px)}
+.go{display:block;width:100%;min-height:42px;border:0;border-radius:999px;background:var(--blue);color:#fff;font-size:15px;font-weight:500}.go:hover:not(:disabled){background:#0077ed}
+.btn{min-height:36px;padding:0 16px;border:1px solid var(--blue);border-radius:999px;background:#fff;color:var(--blue);font-size:13px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none}.btn.fill{background:var(--blue);color:#fff}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.note{margin:8px 0 0;color:var(--muted);font-size:12px}
+.link{padding:0;border:0;background:none;color:var(--blue2);font-size:12px}.link:hover{text-decoration:underline}
+.drops{display:grid;gap:6px}.drow{display:grid;grid-template-columns:72px 1fr auto;align-items:center;gap:10px;padding:6px;border:1px solid transparent;border-radius:12px;background:#fff;text-align:left}
+.drow.on{border-color:var(--blue);background:#0071e30a}.drow img,.drow .ph{width:72px;height:44px;border-radius:7px;object-fit:cover;background:#e3e3e8}.drow b{font-size:14px}.drow small{display:block;color:var(--muted);font-size:11px}
+.tick{width:22px;height:22px;border-radius:50%;border:1.5px solid #c7c7cc;background:#fff;position:relative}.tick[aria-pressed="true"]{background:var(--blue);border-color:var(--blue)}.tick[aria-pressed="true"]::after{content:"";position:absolute;left:6px;top:2px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+main{min-width:0;display:flex;flex-direction:column;background:var(--soft)}
+.stage{flex:1;min-height:0;display:grid;place-items:center;padding:24px;position:relative}
+video{max-width:100%;max-height:calc(100vh - 52px - 48px - var(--tlh,0px));border-radius:14px;background:#000;box-shadow:0 20px 50px -25px #0006}
+.empty{max-width:340px;text-align:center;color:var(--muted)}.empty strong{display:block;margin-bottom:6px;color:var(--ink);font-size:22px;font-weight:600;letter-spacing:-.01em}
+.busy{position:absolute;inset:auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:999px;background:#ffffffe6;box-shadow:0 6px 20px -10px #0004;font-size:13px}.spin{width:16px;height:16px;border-radius:50%;border:2px solid #0071e333;border-top-color:var(--blue);animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.tl{flex:none;padding:12px 18px 16px;background:#fff;border-top:1px solid var(--line)}.tlhead{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-bottom:8px}
+.lanes{position:relative;display:grid;gap:4px;cursor:pointer;margin-left:96px}.lane{position:relative;height:22px;border-radius:6px;background:var(--soft)}.lane em{position:absolute;left:-96px;width:88px;top:3px;font-size:11px;font-style:normal;color:var(--muted);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blk{position:absolute;top:0;bottom:0;border-radius:5px;opacity:.9}.dropmark{position:absolute;top:-4px;bottom:-4px;width:2px;background:#ff375f;border-radius:1px}.dropmark::before{content:"DROP";position:absolute;top:-14px;left:-14px;font-size:9px;font-weight:700;color:#ff375f}
+.head{position:absolute;top:-6px;bottom:-6px;width:2px;background:var(--ink);pointer-events:none}
+.prog{margin-top:12px}.bar{height:4px;border-radius:2px;background:#e3e3e8;overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .4s}.prog p{display:flex;justify-content:space-between;gap:8px;margin:8px 0 0;font-size:12px;color:var(--muted)}
+.err{margin-top:10px;color:var(--err);font-size:13px}.done{margin-top:12px;padding:12px;border-radius:12px;background:#34c75914;font-size:13px}.done b{display:block;margin-bottom:6px}
+details{margin-top:18px;font-size:12px;color:var(--muted)}#log{max-height:180px;overflow:auto;margin-top:8px;padding:10px;border-radius:10px;background:var(--soft);font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
 dialog{width:min(400px,calc(100% - 32px));padding:28px;border:0;border-radius:22px;box-shadow:0 30px 80px -20px #0000004d}dialog::backdrop{background:#0000004d;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 dialog h2{margin:0 0 6px;font-size:24px;font-weight:600}dialog p{margin:0 0 18px;color:var(--muted);font-size:15px}
-dialog input{display:block;width:100%;min-height:44px;margin-bottom:10px;padding:0 14px;border:1px solid var(--line);border-radius:12px}dialog input:focus{outline:2px solid var(--blue);border-color:transparent}
-dialog .go{margin-top:6px}.alt{display:flex;justify-content:space-between;margin-top:14px}.or{margin:16px 0;text-align:center;color:var(--muted);font-size:13px}
-.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:44px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:15px}
-.x{position:absolute;right:16px;top:14px;width:30px;height:30px;border:0;border-radius:50%;background:var(--soft);color:var(--muted)}
-.step{margin-top:28px}.step h3{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 12px;font-size:21px;font-weight:600;letter-spacing:-.01em}.step h3 small{font-size:14px;font-weight:400;color:var(--muted)}
-.item{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px}.item+.item{border-top:1px solid #0000000f}.item>span{color:var(--muted);font-size:15px}
-.cams{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}.cams span{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 12px;border-radius:999px;background:#fff;font-size:14px}.cams span button{width:20px;height:20px;border:0;border-radius:50%;background:#e8e8ed;color:var(--muted);font-size:11px;line-height:1}
-.add{min-height:32px;padding:0 14px;border:0;border-radius:999px;background:#fff;color:var(--blue2);font-size:14px}.add.mus{max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hint{margin:12px 0 0;color:var(--muted);font-size:13px;text-align:center}.card.over{outline:2px dashed var(--blue);outline-offset:-2px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-.tile{position:relative;padding:0;border:0;border-radius:16px;overflow:hidden;background:#e8e8ed;aspect-ratio:16/10;outline:3px solid transparent;outline-offset:-3px;transition:outline-color .15s,transform .15s}
-.tile img{display:block;width:100%;height:100%;object-fit:cover}.tile b{position:absolute;left:8px;bottom:8px;padding:2px 8px;border-radius:999px;background:#ffffffe6;font-size:13px;font-weight:600}
-.tile i{position:absolute;right:8px;top:8px;width:22px;height:22px;border-radius:50%;border:2px solid #fff;background:#0000002e}
-.tile[aria-pressed="true"]{outline-color:var(--blue)}.tile[aria-pressed="true"] i{background:var(--blue)}.tile[aria-pressed="true"] i::after{content:"";position:absolute;left:6px;top:2px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
-.switch{position:relative;width:44px;height:26px;border:0;border-radius:999px;background:#e8e8ed;transition:background .2s}.switch::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}
-.switch[aria-pressed="true"]{background:var(--ok)}.switch[aria-pressed="true"]::after{transform:translateX(18px)}
-.more{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:12px}
-@media (max-width:560px){main{padding-top:36px}.item{flex-wrap:wrap;padding:8px 0}.grid{grid-template-columns:repeat(2,1fr)}}
+dialog input{display:block;width:100%;min-height:44px;margin-bottom:10px;padding:0 14px;border:1px solid #d2d2d7;border-radius:12px}dialog input:focus{outline:2px solid var(--blue);border-color:transparent}
+dialog .go{margin-top:6px}.alt{display:flex;justify-content:space-between;margin-top:14px}.alt .link{font-size:14px}.or{margin:16px 0;text-align:center;color:var(--muted);font-size:13px}
+.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:44px;border:1px solid #d2d2d7;border-radius:999px;background:#fff;font-size:15px}
+.btns{display:flex;justify-content:center;gap:10px;margin-top:18px;flex-wrap:wrap}.x{position:absolute;right:16px;top:14px;width:30px;height:30px;border:0;border-radius:50%;background:var(--soft);color:var(--muted)}
+.card-over{outline:2px dashed var(--blue);outline-offset:-2px}
+@media (max-width:980px){body{overflow:auto;height:auto}.app{display:block}aside,.right{border:0}.stage{min-height:420px}}
 </style></head><body>
 <header><div class="brand"><i>R</i>Multicam AI</div><button class="pill" id="acct"><b id="adot"></b><span id="alabel">Sign in</span></button></header>
-<main>
-<h1>From set to Reels.</h1>
-<p class="sub">Sync your cameras. Find every drop. Export ready to post.</p>
-<section class="step"><h3>Footage</h3><div class="card" id="footage">
-<div class="item"><span>Music</span><button class="add mus" id="music">Choose…</button></div>
-<div class="item"><span>Cameras</span><div class="cams" id="cams"><button class="add" id="addcam">+ Add camera</button></div></div>
+<div class="app">
+<aside>
+<h3>Footage</h3>
+<div class="box" id="footage">
+<div class="item"><span>Music</span><button class="add" id="music">Choose…</button></div>
+<div class="item"><span>Cameras</span><div class="cams" id="cams"></div></div>
 <div class="item"><span>Cut every</span><div class="beats" id="beats"><button data-b="2" aria-pressed="false">2</button><button data-b="4" aria-pressed="true">4</button><button data-b="6" aria-pressed="true">6</button><button data-b="8" aria-pressed="true">8</button></div></div>
-<p class="hint">One folder per camera · or drop an .fcpxml from Final Cut / DaVinci <button class="link" id="choose" style="font-size:13px">Choose XML</button></p>
-<input id="file" type="file" accept=".fcpxml,.xml" hidden></div>
-<button class="go" id="find" disabled>Find drops</button></section>
-<div class="prog" id="prog" hidden><div class="bar"><i id="bar"></i></div><p><span id="ptext">Starting…</span><button class="link" id="stop">Stop</button></p></div>
-<div class="err" id="err" role="alert" hidden></div>
-<section class="step" id="drops" hidden><h3>Drops <small><span id="dcount"></span> · <button class="link" id="all" style="font-size:14px">Select all</button></small></h3><div class="grid" id="grid"></div></section>
-<section class="step" id="exp" hidden><h3>Export</h3><div class="card">
+</div>
+<button class="go" id="find" disabled>Find drops</button>
+<p class="note">One folder per camera, or drop an .fcpxml here · <button class="link" id="choose">Choose XML</button></p><input id="file" type="file" accept=".fcpxml,.xml" hidden>
+<div id="dropsbox" hidden><h3 style="margin-top:22px">Drops <span id="dcount" style="text-transform:none"></span></h3><div class="drops" id="drops"></div>
+<p class="note"><button class="link" id="all">Select all for export</button></p></div>
+</aside>
+<main>
+<div class="stage" id="stage"><div class="empty" id="empty"><strong>From set to Reels.</strong>Add the music and one folder per camera, then Find drops.</div>
+<video id="vid" controls playsinline hidden></video><div class="busy" id="vbusy" hidden><span class="spin"></span><span>Preparing preview…</span></div></div>
+<div class="tl" id="tl" hidden><div class="tlhead"><span id="tlname"></span><span id="tltime">0:00</span></div><div class="lanes" id="lanes"></div></div>
+</main>
+<div class="right">
+<h3>Export</h3>
+<div class="box">
 <div class="item"><span>Format</span><div class="seg" id="fmt"><button data-v="9x16" aria-pressed="true">9:16</button><button data-v="4x5" aria-pressed="false">4:5</button><button data-v="16x9" aria-pressed="false">16:9</button></div></div>
 <div class="item"><span>Length</span><div class="seg" id="len"><button data-v="15" aria-pressed="false">15 s</button><button data-v="30" aria-pressed="true">30 s</button><button data-v="60" aria-pressed="false">60 s</button></div></div>
 <div class="item"><span>Zoom on drop</span><button class="switch" id="zoom" aria-pressed="true" aria-label="Zoom on drop"></button></div>
 <div class="item"><span>Color</span><button class="add" id="lut">Add LUT</button></div>
-<div class="item"><span>Encoding</span><span id="enc" style="font-size:15px;color:var(--ink)">Auto</span></div></div>
+<div class="item"><span>Encoding</span><span id="enc" style="color:var(--ink)">Auto</span></div>
+</div>
 <button class="go" id="export" disabled>Export</button>
-<div class="more"><button class="btn" id="full">Full set</button><button class="btn" id="xfcp">Final Cut XML</button><button class="btn" id="xres">DaVinci XML</button></div></section>
-<div class="done" id="done" hidden><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="20"/><path d="m16 24 6 6 11-12"/></svg>
-<h2 id="dtitle">Ready to post.</h2><p id="dtext"></p><div class="btns"><button class="btn fill" id="reveal">Show in folder</button></div></div>
-</main>
-<footer>Runs on this computer. Your media never leaves it. · ${VERSION}<details><summary>Details</summary><div id="log"></div></details></footer>
+<div class="two"><button class="btn" id="full" disabled>Full set</button><button class="btn" id="reveal">Show folder</button></div>
+<h3 style="margin-top:22px">Finish in</h3>
+<div class="two"><button class="btn" id="xfcp" disabled>Final Cut</button><button class="btn" id="xres" disabled>DaVinci</button></div>
+<p class="note">Exports the whole cut as XML for fine-tuning.</p>
+<div class="prog" id="prog" hidden><div class="bar"><i id="bar"></i></div><p><span id="ptext">Starting…</span><button class="link" id="stop">Stop</button></p></div>
+<div class="err" id="err" role="alert" hidden></div>
+<div class="done" id="done" hidden><b id="dtitle"></b><span id="dtext"></span></div>
+<details><summary>Details · ${VERSION}</summary><div id="log"></div></details>
+</div>
+</div>
 <dialog id="sheet"><button class="x" id="close" aria-label="Close">✕</button>
 <div id="out"><h2>Sign in</h2><p>Use your R Project account.</p><input id="email" type="email" placeholder="Email" autocomplete="username"><input id="password" type="password" placeholder="Password" autocomplete="current-password">
 <button class="go" id="signin">Sign in</button><div class="alt"><button class="link" id="forgot">Forgot password?</button><a class="link" href="https://r-multicam.pages.dev/?signup" target="_blank" rel="noopener noreferrer">Create account</a></div>
@@ -325,34 +355,51 @@ dialog .go{margin-top:6px}.alt{display:flex;justify-content:space-between;margin
 <div id="in" hidden><h2 id="iemail"></h2><p id="ilabel"></p><div class="btns"><a class="btn fill" id="buy" href="https://r-multicam.pages.dev/#pricing" target="_blank" rel="noopener noreferrer">Get a plan</a><button class="btn" id="check">Refresh</button><button class="btn" id="signout">Sign out</button></div></div>
 <p id="amsg" style="margin:14px 0 0"></p></dialog>
 <script>
-const T=${JSON.stringify(token)};const $=(id)=>document.getElementById(id);let last=0,beats=[4,6,8],fmt='9x16',len=30,zoom=true,sel=new Set(),dropsKey='',signed=false,can=false,busy=false,lastAct='';
+const T=${JSON.stringify(token)};const $=(id)=>document.getElementById(id);
+let last=0,beats=[4,6,8],fmt='9x16',len=30,zoom=true,sel=new Set(),active=-1,dropsKey='',signed=false,can=false,busy=false,lastAct='',lut='',tl=null,vkey='';
+const COLORS=['#0071e3','#ff9f0a','#30d158','#bf5af2','#ff375f','#64d2ff','#ffd60a','#ac8e68'];
 const esc=(s)=>String(s).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const clock=(t)=>{t=Math.max(0,Math.floor(t));const h=Math.floor(t/3600),m=Math.floor(t/60)%60,x=t%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0');};
-async function api(p,b){const r=await fetch(p+'?t='+T,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{cache:'no-store'});let j={};try{j=await r.json();}catch(e){}return j;}
+const q=(p,o)=>p+'?t='+T+Object.entries(o||{}).map(([k,v])=>'&'+k+'='+encodeURIComponent(v)).join('');
+async function api(p,b,o){const r=await fetch(q(p,o),b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{cache:'no-store'});let j={};try{j=await r.json();}catch(e){}return j;}
 function err(m){$('err').textContent=m||'';$('err').hidden=!m;}
 function addLog(l){last=Math.max(last,l.n);const d=$('log');d.textContent+=(d.textContent?'\\n':'')+l.t+'  '+l.text;d.scrollTop=d.scrollHeight;}
-let es=null;function connect(){if(es)es.close();es=new EventSource('/api/events?t='+T+'&since='+last);es.onmessage=(e)=>addLog(JSON.parse(e.data));es.onerror=()=>{es.close();setTimeout(connect,2000);};}
+let es=null;function connect(){if(es)es.close();es=new EventSource(q('/api/events',{since:last}));es.onmessage=(e)=>addLog(JSON.parse(e.data));es.onerror=()=>{es.close();setTimeout(connect,2000);};}
 async function quick(p,b){err('');const r=await api(p,b||{});if(!r.ok)err(r.error);tick();return r;}
 async function run(p,b,act){if(!can){$('sheet').showModal();return;}err('');$('done').hidden=true;lastAct=act;const r=await api(p,b);if(!r.ok)err(r.error);tick();}
 async function load(f){if(!f)return;const text=await f.text();quick('/api/xml',{name:f.name,text});}
-const card=$('footage');['dragenter','dragover'].forEach((e)=>card.addEventListener(e,(v)=>{v.preventDefault();card.classList.add('over');}));
-['dragleave','drop'].forEach((e)=>card.addEventListener(e,(v)=>{v.preventDefault();card.classList.remove('over');}));
-card.addEventListener('drop',(v)=>load(v.dataTransfer.files[0]));$('choose').onclick=()=>$('file').click();$('file').onchange=(v)=>{load(v.target.files[0]);v.target.value='';};
-$('music').onclick=()=>quick('/api/music');$('addcam').onclick=()=>quick('/api/camera/add',{mode:'folder'});
-$('cams').onclick=(e)=>{const i=e.target.dataset.rm;if(i!=null)quick('/api/camera/remove',{index:+i});};
-const seg=(id,set)=>$(id).querySelectorAll('button').forEach((b)=>b.onclick=()=>{$(id).querySelectorAll('button').forEach((x)=>x.setAttribute('aria-pressed',String(x===b)));set(b.dataset.v);});
+const side=document.querySelector('aside');['dragenter','dragover'].forEach((e)=>side.addEventListener(e,(v)=>{v.preventDefault();side.classList.add('card-over');}));
+['dragleave','drop'].forEach((e)=>side.addEventListener(e,(v)=>{v.preventDefault();side.classList.remove('card-over');}));
+side.addEventListener('drop',(v)=>load(v.dataTransfer.files[0]));$('choose').onclick=()=>$('file').click();$('file').onchange=(v)=>{load(v.target.files[0]);v.target.value='';};
+$('music').onclick=()=>quick('/api/music');
+$('cams').onclick=(e)=>{if(e.target.id==='addcam')return quick('/api/camera/add',{mode:'folder'});const i=e.target.dataset.rm;if(i!=null)quick('/api/camera/remove',{index:+i});};
+const seg=(id,set)=>$(id).querySelectorAll('button').forEach((b)=>b.onclick=()=>{$(id).querySelectorAll('button').forEach((x)=>x.setAttribute('aria-pressed',String(x===b)));set(b.dataset.v);show();});
 seg('fmt',(v)=>fmt=v);seg('len',(v)=>len=+v);
 $('beats').querySelectorAll('button').forEach((b)=>b.onclick=()=>{const n=+b.dataset.b,on=beats.includes(n);if(on&&beats.length===1)return;beats=on?beats.filter((x)=>x!==n):beats.concat(n).sort();b.setAttribute('aria-pressed',String(!on));});
-$('zoom').onclick=()=>{zoom=!zoom;$('zoom').setAttribute('aria-pressed',String(zoom));};
-$('lut').onclick=()=>quick($('lut').dataset.on?'/api/lut/clear':'/api/lut');
+$('zoom').onclick=()=>{zoom=!zoom;$('zoom').setAttribute('aria-pressed',String(zoom));show();};
+$('lut').onclick=()=>quick(lut?'/api/lut/clear':'/api/lut').then(show);
 $('find').onclick=()=>run('/api/drops',{cadences:beats},'drops');
-$('grid').onclick=(e)=>{const t=e.target.closest('.tile');if(!t)return;const i=+t.dataset.i;sel.has(i)?sel.delete(i):sel.add(i);t.setAttribute('aria-pressed',String(sel.has(i)));count();};
-$('all').onclick=()=>{const tiles=[...$('grid').children];const allOn=tiles.every((t)=>sel.has(+t.dataset.i));tiles.forEach((t)=>{const i=+t.dataset.i;allOn?sel.delete(i):sel.add(i);t.setAttribute('aria-pressed',String(!allOn));});count();};
-function count(){const n=sel.size;$('export').textContent=n?'Export '+n+' clip'+(n>1?'s':''):'Pick drops to export';$('export').disabled=busy||!n;}
+$('drops').onclick=(e)=>{const row=e.target.closest('.drow');if(!row)return;const i=+row.dataset.i;
+ if(e.target.closest('.tick')){sel.has(i)?sel.delete(i):sel.add(i);e.target.closest('.tick').setAttribute('aria-pressed',String(sel.has(i)));count();return;}
+ active=i;document.querySelectorAll('.drow').forEach((r)=>r.classList.toggle('on',+r.dataset.i===i));show();};
+$('all').onclick=()=>{const ticks=[...document.querySelectorAll('.drow')];const allOn=ticks.every((r)=>sel.has(+r.dataset.i));ticks.forEach((r)=>{const i=+r.dataset.i;allOn?sel.delete(i):sel.add(i);r.querySelector('.tick').setAttribute('aria-pressed',String(!allOn));});count();};
+function count(){const n=sel.size;$('export').textContent=n?'Export '+n+' clip'+(n>1?'s':''):'Tick drops to export';$('export').disabled=busy||!n;}
 $('export').onclick=()=>run('/api/export',{drops:[...sel],format:fmt,length:len,zoom},'video');
 $('full').onclick=()=>run('/api/export',{full:true,format:fmt,zoom},'video');
 $('xfcp').onclick=()=>run('/api/export-xml',{target:'fcp'},'fcp');$('xres').onclick=()=>run('/api/export-xml',{target:'resolve'},'resolve');
 $('stop').onclick=()=>api('/api/stop',{});$('reveal').onclick=()=>api(lastAct==='video'?'/api/open-folder':'/api/reveal',{});
+// Preview: a fast low-resolution render of the chosen drop, with its camera timeline underneath.
+const vid=$('vid');vid.addEventListener('loadstart',()=>{if(vid.src)$('vbusy').hidden=false;});vid.addEventListener('canplay',()=>{$('vbusy').hidden=true;});
+vid.addEventListener('error',()=>{$('vbusy').hidden=true;if(vid.src)err('Preview could not be made. Details shows why.');});
+async function show(){if(active<0)return;const key=[active,fmt,len,zoom,lut].join('|');
+ const r=await api('/api/timeline',null,{i:active,l:len});if(r.ok){tl=r.timeline;drawTl();}
+ if(key===vkey)return;vkey=key;$('empty').hidden=true;vid.hidden=false;vid.src=q('/api/preview',{i:active,f:fmt,l:len,z:zoom?1:0,k:key});vid.play().catch(()=>{});}
+function drawTl(){if(!tl)return;$('tl').hidden=false;document.body.style.setProperty('--tlh',(56+tl.cameras.length*26)+'px');$('tlname').textContent='Drop at '+clock(tl.start+tl.drop)+' · '+tl.shots.length+' shots';
+ const L=tl.length,pct=(t)=>(t/L*100).toFixed(3)+'%';
+ $('lanes').innerHTML=tl.cameras.map((c,k)=>'<div class="lane"><em>'+esc(c.name)+'</em>'+tl.shots.filter((s)=>s.camera===k).map((s)=>'<i class="blk" style="left:'+pct(s.start)+';width:'+pct(s.end-s.start)+';background:'+COLORS[k%COLORS.length]+'"></i>').join('')+'</div>').join('')+
+  '<i class="dropmark" style="left:'+pct(tl.drop)+'"></i><i class="head" id="head" style="left:0"></i>';}
+$('lanes').onclick=(e)=>{if(!tl||vid.hidden)return;const r=$('lanes').getBoundingClientRect();vid.currentTime=Math.max(0,Math.min(tl.length,(e.clientX-r.left)/r.width*tl.length));};
+(function loop(){if(tl&&!vid.hidden&&$('head')){$('head').style.left=(Math.min(1,vid.currentTime/tl.length)*100)+'%';$('tltime').textContent=clock(vid.currentTime)+' / '+clock(tl.length);}requestAnimationFrame(loop);})();
 $('acct').onclick=()=>$('sheet').showModal();$('close').onclick=()=>$('sheet').close();
 const acc=async(p,b)=>{const r=await api(p,b);$('amsg').textContent=r.ok?(r.message||''):(r.error||'');tick();return r;};
 $('signin').onclick=async()=>{await acc('/api/account/signin',{email:$('email').value,password:$('password').value});$('password').value='';};
@@ -362,21 +409,21 @@ async function tick(){let s;try{s=await api('/api/status');}catch(e){return;}if(
  const a=s.account||{};signed=!!a.signedIn;can=!!a.canUse;$('adot').className=can?'on':'';$('alabel').textContent=signed?a.label:'Sign in';
  $('out').hidden=signed;$('in').hidden=!signed;$('iemail').textContent=a.email||'';$('ilabel').textContent=a.detail||a.label||'';$('buy').hidden=a.licenseStatus==='lifetime';
  const st=s.studio||{};busy=!!s.busy;
- $('music').textContent=st.music?'♪ '+st.music.split(/[\\/]/).pop():'Choose…';
- $('cams').innerHTML=(st.cameras||[]).map((c,i)=>'<span>'+esc(c.name)+' · '+c.files+'<button data-rm="'+i+'" aria-label="Remove">✕</button></span>').join('')+'<button class="add" id="addcam">+ Add camera</button>';
- $('addcam').onclick=()=>quick('/api/camera/add',{mode:'folder'});
+ $('music').textContent=st.music?'♪ '+st.music.split(/[\\\\/]/).pop():'Choose…';$('music').title=st.music||'';
+ $('cams').innerHTML=(st.cameras||[]).map((c,i)=>'<span>'+esc(c.name)+' · '+c.files+'<button data-rm="'+i+'" aria-label="Remove">✕</button></span>').join('')+'<button class="add" id="addcam">+ Add</button>';
  const ready=!!(st.music&&(st.cameras||[]).length);$('find').disabled=busy||!ready;$('find').textContent=can?(st.set?'Find drops again':'Find drops'):'Sign in to start';
  const d=st.drops||[],key=st.set?d.map((x)=>x.time).join(','):'';
- if(key!==dropsKey){dropsKey=key;sel=new Set();$('grid').innerHTML=d.map((x)=>'<button class="tile" data-i="'+x.index+'" aria-pressed="false">'+(x.thumb?'<img alt="" src="/api/thumb?i='+x.index+'&t='+T+'&k='+encodeURIComponent(key)+'">':'')+'<b>'+clock(x.time)+'</b><i></i></button>').join('');}
- $('drops').hidden=!st.set;$('exp').hidden=!st.set;$('dcount').textContent=d.length+' found';count();
- $('enc').textContent=st.encoder||'Auto';$('lut').textContent=st.lut?st.lut+'  ✕':'Add LUT';$('lut').dataset.on=st.lut?'1':'';
- ['full','xfcp','xres'].forEach((id)=>$(id).disabled=busy);
+ if(key!==dropsKey){dropsKey=key;sel=new Set();active=-1;vkey='';tl=null;vid.removeAttribute('src');vid.hidden=true;$('tl').hidden=true;$('empty').hidden=false;
+  $('drops').innerHTML=d.map((x,n)=>'<div class="drow" data-i="'+x.index+'" role="button" tabindex="0">'+(x.thumb?'<img alt="" src="'+q('/api/thumb',{i:x.index,k:key})+'">':'<span class="ph"></span>')+'<span><b>'+clock(x.time)+'</b><small>Drop '+(n+1)+'</small></span><button class="tick" aria-pressed="false" aria-label="Export this drop"></button></div>').join('');
+  if(d.length){active=d[0].index;document.querySelector('.drow').classList.add('on');setTimeout(show,0);}}
+ $('dropsbox').hidden=!st.set;$('dcount').textContent=d.length?'· '+d.length:'';count();
+ lut=st.lut||'';$('lut').textContent=lut?lut+'  ✕':'Add LUT';$('enc').textContent=st.encoder||'Auto';
+ ['full','xfcp','xres'].forEach((id)=>$(id).disabled=busy||!st.set);
  const p=s.progress;$('prog').hidden=!busy;if(busy&&p){$('bar').style.width=Math.round(p.p*100)+'%';$('ptext').textContent=p.text||s.busy;}
  const lr=s.lastResult;if(!busy&&lr&&lr.ok===false&&!lr.license&&lr.at>(window._shown||0)){window._shown=lr.at;err(lr.error);}
- const okDone=!busy&&lr&&lr.ok!==false&&lr.at>(window._done||0)&&/Export/.test(lr.action||'');
- if(okDone){window._done=lr.at;$('done').hidden=false;
-  if(lr.action==='Export'){$('dtitle').textContent=lr.exported+' video'+(lr.exported>1?'s':'')+' ready to post.';$('dtext').textContent='Saved next to your project.';lastAct='video';}
-  else{$('dtitle').textContent='Your XML is ready.';$('dtext').textContent=lr.target==='resolve'?'In DaVinci Resolve: File → Import → Timeline.':lr.openedIn==='Final Cut Pro'?'Opened in Final Cut Pro.':'In Final Cut Pro: File → Import → XML.';lastAct='xml';}}
+ if(!busy&&lr&&lr.ok!==false&&lr.at>(window._done||0)&&/Export/.test(lr.action||'')){window._done=lr.at;$('done').hidden=false;
+  if(lr.action==='Export'){$('dtitle').textContent=lr.exported+' video'+(lr.exported>1?'s':'')+' ready to post.';$('dtext').textContent='Saved next to your project · '+(lr.encoders||'');lastAct='video';}
+  else{$('dtitle').textContent='XML ready.';$('dtext').textContent=lr.target==='resolve'?'In DaVinci Resolve: File → Import → Timeline.':lr.openedIn==='Final Cut Pro'?'Opened in Final Cut Pro.':'In Final Cut Pro: File → Import → XML.';lastAct='xml';}}
  if(busy)$('done').hidden=true;}
 connect();tick();setInterval(tick,1000);
 </script></body></html>`;

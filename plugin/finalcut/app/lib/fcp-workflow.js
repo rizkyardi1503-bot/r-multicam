@@ -108,7 +108,7 @@ class Studio {
     this.loadTools = opts.loadTools || (() => import(pathToFileURL(path.join(__dirname, '..', 'rp-engine', 'lib', 'tools.mjs')).href).then((m) => m.TOOLS));
     this.music = null; this.cameras = []; this.analysis = null; this.result = null; this.timeline = null;
     this.plan = null; this.planFile = ''; this.project = ''; this.drops = []; this.exports = []; this.lut = '';
-    this.encoders = opts.encoders || null; this.encoderLabel = '';
+    this.encoders = opts.encoders || null; this.encoderLabel = ''; this.overrides = {}; this.previews = new Map();
     this.busy = ''; this.abort = null;
   }
 
@@ -116,7 +116,7 @@ class Studio {
     return { timeline: this.timeline, music: this.music, cameras: this.cameras.map((c) => ({ name: c.name, role: c.role, files: c.files.length, first: path.basename(c.files[0] || '') })),
       analysis: this.analysis, result: this.result, lut: this.lut ? path.basename(this.lut) : '',
       drops: this.drops.map((d) => ({ index: d.index, time: d.time, confidence: d.confidence, thumb: !!d.thumb })),
-      set: this.plan ? { duration: this.plan.timeline.duration, cuts: this.plan.cuts.length, bpm: this.plan.music.bpm || null } : null,
+      set: this.plan ? { duration: this.plan.timeline.duration, cuts: this.plan.cuts.length, bpm: this.plan.music.bpm || null, edits: Object.keys(this.overrides).length } : null,
       exports: this.exports.map((e) => ({ name: path.basename(e.file), format: e.format, duration: e.duration })), encoder: this.encoderLabel };
   }
 
@@ -173,7 +173,54 @@ class Studio {
     return { message: 'Removed ' + c.name + '.' };
   }
 
-  forget() { this.plan = null; this.planFile = ''; this.drops = []; this.exports = []; }
+  forget() { this.plan = null; this.planFile = ''; this.drops = []; this.exports = []; this.overrides = {}; this.previews = new Map(); }
+
+  /** The plan with the camera changes made in the timeline. */
+  edited() {
+    const o = this.overrides;
+    if (!this.plan || !Object.keys(o).length) return this.plan;
+    return Object.assign({}, this.plan, { cuts: this.plan.cuts.map((c, i) => (o[i] != null ? Object.assign({}, c, { camera: o[i] }) : c)) });
+  }
+
+  /** Shots of one drop for the timeline: [{start, end, camera, cut, drop}] in seconds from the clip start. */
+  dropTimeline(i, length) {
+    if (!this.plan) throw new Error('Find the drops first.');
+    const w = render.dropWindows(this.plan, [15, 30, 60].includes(Number(length)) ? Number(length) : 30)[Number(i)];
+    if (!w) throw new Error('No drop ' + (Number(i) + 1) + '.');
+    const shots = render.shots(this.edited(), w.start, w.end).map((s) => ({ start: s.start - w.start, end: s.end - w.start, camera: s.camera, cut: s.cut, drop: s.drop,
+      changed: this.overrides[s.cut] != null }));
+    return { index: w.index, start: w.start, end: w.end, drop: w.time - w.start, length: w.end - w.start, shots,
+      cameras: this.plan.cameras.map((c) => ({ name: c.name, role: c.role, has: (c.clips || []).length > 0 })) };
+  }
+
+  /** Puts another camera on one cut (camera -1 = back to the engine's choice). */
+  setCamera(cut, camera) {
+    if (!this.plan) throw new Error('Find the drops first.');
+    const c = Number(cut), k = Number(camera);
+    if (!this.plan.cuts[c]) throw new Error('No such cut.');
+    if (k === -1 || k === this.plan.cuts[c].camera) delete this.overrides[c];
+    else if (k >= 0 && k < this.plan.cameras.length) this.overrides[c] = k;
+    else throw new Error('No such camera.');
+    this.log('Cut ' + (c + 1) + ': ' + (this.overrides[c] != null ? this.plan.cameras[k].name : 'engine choice') + '.');
+    return { message: 'Camera changed.' };
+  }
+
+  /** A small, fast MP4 of one drop for the preview player (cached per settings). Resolves to its path. */
+  preview(i, opts = {}) {
+    if (!this.plan) return Promise.reject(new Error('Find the drops first.'));
+    const format = render.FORMATS[opts.format] ? opts.format : '9x16', length = [15, 30, 60].includes(Number(opts.length)) ? Number(opts.length) : 30;
+    const w = render.dropWindows(this.plan, length)[Number(i)];
+    if (!w) return Promise.reject(new Error('No such drop.'));
+    const zoom = opts.zoom !== false, key = [w.index, format, length, zoom ? 1 : 0, this.lut, JSON.stringify(this.overrides)].join('|');
+    if (this.previews.has(key)) return this.previews.get(key);
+    const size = { '9x16': [360, 640], '4x5': [432, 540], '16x9': [640, 360] }[format];
+    const out = path.join(this.project, '.preview', 'p' + require('crypto').createHash('sha1').update(key).digest('hex').slice(0, 16) + '.mp4');
+    const job = (fs.existsSync(out) ? Promise.resolve() : render.renderRange(this.edited(), w.start, w.end, out, { size, zoom, lut: this.lut, parallel: 3, audioBitrate: '128k',
+      encoder: { id: 'preview', label: 'Preview', gpu: false, pix: 'yuv420p', args: ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28'] } })).then(() => out);
+    job.catch(() => this.previews.delete(key));
+    this.previews.set(key, job);
+    return job;
+  }
 
   async pickLut() {
     const [file] = await this.picker.lut();
@@ -234,7 +281,7 @@ class Studio {
       const done = [];
       const one = async (job, j, enc) => {
         const out = path.join(this.project, title + ' - ' + job.name + ' (' + tag + ').mp4');
-        const go = (e) => render.renderRange(this.plan, job.start, job.end, out, { format, zoom: opts.zoom !== false, lut: opts.lut === false ? '' : this.lut,
+        const go = (e) => render.renderRange(this.edited(), job.start, job.end, out, { format, zoom: opts.zoom !== false, lut: opts.lut === false ? '' : this.lut,
           encoder: e, parallel: e.gpu ? 2 : Math.max(1, Math.min(3, Math.floor(os.cpus().length / 4))), signal: ctx.signal, progress: (p, text) => { share[j] = p; report(text); } });
         let r;
         try { r = await go(enc); }
@@ -267,7 +314,9 @@ class Studio {
     const title = safeName(path.basename(this.project).replace(/ \d{4}-\d\d-\d\d .*$/, ''));
     const fcpFile = path.join(this.project, title + ' - Multicam AI' + (t === 'resolve' ? ' (DaVinci)' : '') + '.fcpxml');
     return this.run('Export XML', async (tools) => {
-      await tools.find((x) => x.name === 'export_fcpxml').run({ plan: this.planFile, output: fcpFile, project_name: title + ' - Multicam AI', event_name: 'R Project Multicam AI', flat: t === 'resolve' });
+      let planFile = this.planFile;
+      if (Object.keys(this.overrides).length) { planFile = this.planFile.replace(/\.rpplan\.json$/, '.edited.rpplan.json'); fs.writeFileSync(planFile, JSON.stringify(this.edited(), null, 1)); }
+      await tools.find((x) => x.name === 'export_fcpxml').run({ plan: planFile, output: fcpFile, project_name: title + ' - Multicam AI', event_name: 'R Project Multicam AI', flat: t === 'resolve' });
       const app = await this.open(fcpFile, t);
       this.result = { fcpxml: fcpFile, name: path.basename(fcpFile), folder: this.project, target: t, cuts: this.plan.cuts.length, openedIn: app };
       this.log('Created ' + path.basename(fcpFile) + '.');

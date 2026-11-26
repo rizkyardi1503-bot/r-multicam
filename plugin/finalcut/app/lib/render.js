@@ -82,12 +82,12 @@ function sourceAt(plan, camera, t) {
 /** Camera shots covering [start, end): [{start, end, file, at, drop}] (file null = no coverage). */
 function shots(plan, start, end) {
   const out = [];
-  for (const c of plan.cuts) {
+  plan.cuts.forEach((c, idx) => {
     const s = Math.max(start, c.start), e = Math.min(end, c.end);
-    if (e - s < 1 / FPS) continue;
+    if (e - s < 1 / FPS) return;
     const src = sourceAt(plan, c.camera, s);
-    out.push({ start: s, end: e, file: src ? src.file : null, at: src ? src.at : 0, drop: c.drop != null && Math.abs(c.start - s) < 1e-3 });
-  }
+    out.push({ start: s, end: e, cut: idx, camera: src ? src.camera : -1, file: src ? src.file : null, at: src ? src.at : 0, drop: c.drop != null && Math.abs(c.start - s) < 1e-3 });
+  });
   return out;
 }
 
@@ -113,7 +113,8 @@ function videoFilter(w, h, punch) {
  * Returns {file, duration, shots}.
  */
 async function renderRange(plan, start, end, out, opts = {}) {
-  const [w, h] = FORMATS[opts.format] || FORMATS['9x16'];
+  const [w, h] = opts.size || FORMATS[opts.format] || FORMATS['9x16'];
+  fs.mkdirSync(opts.workDir || path.dirname(out), { recursive: true });
   const work = fs.mkdtempSync(path.join(opts.workDir || path.dirname(out), '.render-'));
   const progress = opts.progress || (() => {});
   try {
@@ -147,7 +148,7 @@ async function renderRange(plan, start, end, out, opts = {}) {
     fs.mkdirSync(path.dirname(out), { recursive: true });
     await ff(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-ss', start.toFixed(3), '-t', len.toFixed(3), '-i', plan.music.file,
       '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-af', `afade=t=in:d=${fade / 2},afade=t=out:st=${(len - fade).toFixed(3)}:d=${fade}`,
-      '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-t', len.toFixed(3), '-movflags', '+faststart', path.resolve(out)], { cwd: work, signal: opts.signal });
+      '-c:a', 'aac', '-b:a', opts.audioBitrate || '256k', '-ar', '48000', '-t', len.toFixed(3), '-movflags', '+faststart', path.resolve(out)], { cwd: work, signal: opts.signal });
     progress(1, 'Rendered ' + path.basename(out));
     return { file: out, duration: len, shots: names.length };
   } finally { fs.rmSync(work, { recursive: true, force: true }); }

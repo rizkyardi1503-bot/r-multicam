@@ -86,7 +86,7 @@ function call(eng, method, p, body, headers = {}) {
       assert.equal((await call(eng, 'GET', '/api/status', null, { Host: 'evil.example:80' })).status, 403);
       assert.equal((await call(eng, 'POST', '/api/music', {}, { Origin: 'http://evil.example' })).status, 403);
       const page = await call(eng, 'GET', '/');
-      assert.equal(page.status, 200); assert.match(page.text, /From set to Reels\./); assert.match(page.text, /drop an \.fcpxml/); assert.doesNotMatch(page.text, /\$\{/);
+      assert.equal(page.status, 200); assert.match(page.text, /From set to Reels\./); assert.match(page.text, /drop an \.fcpxml here/); assert.doesNotMatch(page.text, /\$\{/);
     });
 
     await test('nothing chosen yet: Create Multicam Edit explains what is missing', async () => {
@@ -274,6 +274,26 @@ ${cams[0].map((f) => `<asset-clip ref="v${cams.flat().indexOf(f)}" offset="0s" d
       assert.equal(s.lastResult.exported, 2); assert.equal(s.lastResult.encoders, 'CPU');
       assert.match(eng.lines.map((l) => l.text).join('\n'), /Broken GPU failed .*using the CPU for this video/);
       eng.studio.encoders = null;
+    });
+
+    await test('editor: drop timeline, camera change on a cut, and a seekable preview video', async () => {
+      const drop = eng.studio.drops[0].index;
+      const tl = (await call(eng, 'GET', '/api/timeline?i=' + drop + '&l=15&t=' + eng.token)).body;
+      assert.equal(tl.ok, true, tl.error);
+      assert.ok(Math.abs(tl.timeline.length - 15) < 0.01); assert.ok(tl.timeline.shots.length >= 1);
+      assert.ok(tl.timeline.shots.every((x, i, a) => x.start >= 0 && x.end <= 15.001 && (!i || Math.abs(a[i - 1].end - x.start) < 1e-6)), 'shots tile the clip');
+      const shot = tl.timeline.shots.find((x) => x.camera >= 0), other = shot.camera === 0 ? 1 : 0;
+      assert.equal((await call(eng, 'POST', '/api/camera', { cut: shot.cut, camera: other })).body.ok, true);
+      const tl2 = (await call(eng, 'GET', '/api/timeline?i=' + drop + '&l=15&t=' + eng.token)).body.timeline;
+      const changed = tl2.shots.find((x) => x.cut === shot.cut);
+      assert.equal(changed.changed, true);
+      assert.equal((await call(eng, 'POST', '/api/camera', { cut: 99999, camera: 0 })).status, 400);
+      const full = await call(eng, 'GET', '/api/preview?i=' + drop + '&f=9x16&l=15&t=' + eng.token);
+      assert.equal(full.status, 200, full.text);
+      const part = await call(eng, 'GET', '/api/preview?i=' + drop + '&f=9x16&l=15&t=' + eng.token, null, { Range: 'bytes=0-99' });
+      assert.equal(part.status, 206);
+      assert.equal((await call(eng, 'POST', '/api/camera', { cut: shot.cut, camera: -1 })).body.ok, true);
+      assert.equal((await call(eng, 'GET', '/api/timeline?i=' + drop + '&l=15&t=' + eng.token)).body.timeline.shots.find((x) => x.cut === shot.cut).changed, false);
     });
 
     await test('timeline with footage that is not on this computer: clear error, nothing loaded', async () => {
