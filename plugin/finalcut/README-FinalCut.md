@@ -1,4 +1,4 @@
-# R Project Multicam AI for Final Cut Pro & DaVinci Resolve (macOS) · v1.1.0
+# R Project Multicam AI for Final Cut Pro & DaVinci Resolve (macOS + Windows) · v1.1.0
 
 ## Bahasa Indonesia
 
@@ -13,6 +13,9 @@
 2. Klik kanan **Install-FinalCut.command** → **Open** → **Open**. Tidak perlu password administrator.
 3. Setelah selesai, **R Project Engine for Final Cut** terbuka sendiri. Nanti bisa dibuka lagi dari folder
    **Applications** atau Desktop.
+
+**Pasang di Windows (DaVinci Resolve)**: ekstrak ZIP, klik dua kali **Install-Windows.bat**. Buka **R Project Multicam AI**
+dari Desktop atau Start menu. Hasil edit disimpan di **Videos › R Project Multicam**. Hapus: **Uninstall-Windows.bat**.
 
 **Pakai**
 1. Buka **R Project Engine for Final Cut**. Jendela Terminal dan halaman kontrol di browser terbuka. Biarkan Terminal tetap terbuka.
@@ -56,6 +59,9 @@
 1. Extract the ZIP and move the folder to your home folder (don't run it from Downloads).
 2. Right-click **Install-FinalCut.command** → **Open** → **Open**. No administrator password is needed.
 3. When it finishes, **R Project Engine for Final Cut** starts. Later, open it from **Applications** or the Desktop.
+
+**Install on Windows (DaVinci Resolve)**: extract the ZIP and double-click **Install-Windows.bat**. Open **R Project Multicam AI**
+from the Desktop or the Start menu. Edits are saved in **Videos › R Project Multicam**. Remove it with **Uninstall-Windows.bat**.
 
 **Use**
 1. Open **R Project Engine for Final Cut**. A Terminal window and the control page in your browser open. Keep Terminal open.

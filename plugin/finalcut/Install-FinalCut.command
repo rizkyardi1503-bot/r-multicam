@@ -5,7 +5,7 @@
 # No administrator password is needed. Re-running it updates the engine in place.
 set -euo pipefail
 BASE="$(cd "$(dirname "$0")" && pwd)"
-VERSION="1.0.0"
+VERSION="1.1.0"
 say_line(){ printf '%s\n' "$*"; }
 fail(){ say_line "ERROR: $*"; say_line "Press Enter to close."; read -r _ || true; exit 1; }
 blocked(){ fail "macOS did not allow Terminal to read the installer folder ($BASE). Move the extracted folder to your home folder (outside Downloads, Desktop and Documents) and run Install-FinalCut.command again, or allow Terminal under System Settings > Privacy & Security > Files and Folders."; }
@@ -13,7 +13,7 @@ ls "$BASE" >/dev/null 2>&1 || blocked
 [ "$(uname -s)" = "Darwin" ] || [ -n "${RP_INSTALL_TEST_ROOT:-}" ] || fail "This installer is for macOS."
 [ -f "$BASE/app/rp-finalcut-engine.js" ] || fail "The app folder is missing. Extract the whole ZIP first, then run Install-FinalCut.command from the extracted folder."
 
-say_line "R Project Multicam AI for Final Cut Pro v$VERSION"
+say_line "R Project Multicam AI (Final Cut Pro + DaVinci Resolve) v$VERSION"
 SUMS="$BASE/SHA256SUMS-FinalCut.txt"
 [ -f "$SUMS" ] || fail "Package checksum inventory is missing."
 while IFS= read -r line || [ -n "$line" ]; do

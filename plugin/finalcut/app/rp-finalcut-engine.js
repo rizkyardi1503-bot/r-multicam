@@ -88,7 +88,7 @@ async function start(opts = {}) {
   const studio = opts.studio || new Studio({ log, progress: (p) => { progress = p; }, picker: opts.picker, open: opts.open, outDir: opts.outDir });
   const token = opts.token || crypto.randomBytes(16).toString('hex');
   // License gate: same R Project account and device as the Premiere plugin, checked before every engine action.
-  const account = opts.account || new Account({ log, platform: 'macOS', pluginVersion: LICENSE_VERSION, sessionFile: path.join(supportDir(), 'finalcut', 'session.json') });
+  const account = opts.account || new Account({ log, platform: process.platform === 'win32' ? 'Windows' : 'macOS', pluginVersion: LICENSE_VERSION, sessionFile: path.join(supportDir(), 'finalcut', 'session.json') });
   const restored = Promise.resolve(account.restore()).then((st) => { if (st && st.signedIn) log('Account: ' + st.email + ' · ' + st.label); }).catch((e) => log('Account check failed: ' + e.message));
   const beat = setInterval(() => { if (account.session) Promise.resolve(account.heartbeat()).catch((e) => log('Account: ' + e.message)); }, HEARTBEAT_MS);
   if (beat.unref) beat.unref();
