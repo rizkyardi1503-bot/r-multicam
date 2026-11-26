@@ -438,41 +438,69 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
 .home-feat { padding: clamp(26px, 2.8vw, 36px); }
 .home-feat p { margin: 0; }
 .home-feat .home-more { margin-top: 18px; }
-/* Tiny two-state pictures on the feature tiles (app.js toggles .is-b on the grid). */
-.feat-viz { --c1: #0a84ff; --c2: #af52de; --c3: #ff9500; position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; height: 112px; margin-bottom: 22px; padding: 16px; border-radius: 16px; background: #fff; overflow: hidden; }
-.feat-viz i, .feat-viz b { display: block; font: 700 10px/1 var(--rp-font-body); font-style: normal; letter-spacing: .08em; transition: transform .7s var(--rp-ease), opacity .5s linear, background-color .5s linear, width .7s var(--rp-ease), filter .7s linear; }
-/* Music map: bars with the drop in the middle */
-.v-map { align-items: flex-end; }
-.v-map i { flex: 1; height: 34%; border-radius: 4px; background: #1d1d1f24; transform-origin: bottom; }
-.v-map i:nth-child(2), .v-map i:nth-child(7) { height: 52%; }
-.v-map i:nth-child(3), .v-map i:nth-child(4) { height: 70%; }
-.v-map b { flex: 1.8; display: grid; place-items: center; height: 100%; border-radius: 6px; background: var(--rp-violet); color: #fff; transform: scaleY(.55); transform-origin: bottom; }
-.is-b .v-map b { transform: none; }
-.is-b .v-map i { transform: scaleY(1.25); }
-/* Sync: three camera clips slide into line */
-.v-sync { flex-direction: column; align-items: stretch; gap: 8px; }
-.v-sync i { height: 18px; border-radius: 6px; background: var(--c1); }
-.v-sync i:nth-child(1) { transform: translateX(-12%); }
-.v-sync i:nth-child(2) { background: var(--c2); transform: translateX(10%); }
-.v-sync i:nth-child(3) { background: var(--c3); transform: translateX(-5%); }
-.is-b .v-sync i { transform: none; }
-/* Cut pace: a cut every 4 beats, then every 2 */
-.v-pace i { flex: 1; height: 44px; border-radius: 6px; background: #1d1d1f1a; }
-.v-pace i:nth-child(4n+1) { background: var(--rp-violet); }
-.is-b .v-pace i:nth-child(2n+1) { background: var(--rp-violet); }
-/* Camera roles: the highlighted angle changes, never the same kind twice */
-.v-roles i { flex: 1; display: grid; place-items: center; height: 52px; border-radius: 10px; background: var(--rp-surface); color: var(--rp-muted); }
-.v-roles i:nth-child(1), .is-b .v-roles i:nth-child(3) { background: var(--rp-violet); color: #fff; }
-.is-b .v-roles i:nth-child(1) { background: var(--rp-surface); color: var(--rp-muted); }
-/* Zoom: the frame pushes in */
-.v-zoom i { width: 46%; height: 64px; border-radius: 10px; background: linear-gradient(135deg, #9cc4ff, #d9b3ff 60%, #ffc9d9); box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--rp-line-strong); }
-.is-b .v-zoom i { transform: scale(1.45); }
-/* LUT: flat footage gets the look; the bar is the intensity */
-.v-lut { flex-direction: column; gap: 12px; }
-.v-lut i { width: 100%; height: 52px; border-radius: 10px; background: linear-gradient(90deg, #ff9500, #ff2d55 35%, #af52de 65%, #0a84ff); filter: saturate(.15) brightness(1.15); }
-.is-b .v-lut i { filter: none; }
-.v-lut b { align-self: flex-start; width: 18%; height: 6px; border-radius: 3px; background: var(--rp-violet); }
-.is-b .v-lut b { width: 100%; }
+/* Labelled pictures on the feature tiles: each one draws what its text says, with the panel's own words
+   (app.js toggles .is-b on the grid for the second state). */
+.feat-viz { --c1: #0a84ff; --c2: #af52de; --c3: #ff9500; position: relative; display: flex; flex-direction: column; justify-content: center; gap: 10px; height: 168px; margin-bottom: 22px; padding: 16px; border-radius: 16px; background: #fff; overflow: hidden; }
+.feat-viz p { display: flex; align-items: center; gap: 6px; margin: 0; }
+.feat-viz small, .feat-viz span, .feat-viz em, .feat-viz b { font: 700 10px/1 var(--rp-font-body); font-style: normal; letter-spacing: .06em; color: var(--rp-muted); }
+.feat-viz i, .feat-viz b, .feat-viz span, .feat-viz em { transition: transform .8s var(--rp-ease), opacity .5s linear, background-color .5s linear, color .5s linear, width .8s var(--rp-ease), filter .8s linear, clip-path .8s var(--rp-ease), left .8s var(--rp-ease); }
+/* 1 Music map: the panel's BPM / DROPS / ENERGY read-out over the music with its drop */
+.v-map p span { flex: 1; display: grid; gap: 5px; padding: 8px 10px; border-radius: 10px; background: var(--rp-surface); }
+.v-map p b { color: var(--rp-ink); font-size: 15px; letter-spacing: -.01em; opacity: .25; }
+.is-b .v-map p b { opacity: 1; }
+.vz-wave { position: relative; display: flex; align-items: flex-end; gap: 3px; height: 54px; }
+.vz-wave i { flex: 1; height: 30%; border-radius: 3px; background: #1d1d1f26; transform-origin: bottom; transform: scaleY(.35); }
+.vz-wave i:nth-child(n+4) { height: 50%; } .vz-wave i:nth-child(n+6) { height: 70%; } .vz-wave i:nth-child(n+9) { height: 100%; background: #0a84ff66; }
+.is-b .vz-wave i { transform: none; }
+.vz-wave em { align-self: stretch; display: grid; place-items: center; padding: 0 7px; border-radius: 4px; background: #ff2d55; color: #fff; opacity: .2; }
+.is-b .vz-wave em { opacity: 1; }
+/* 2 Sync: music on top, each camera and the drone slide into place under it */
+.v-sync { gap: 7px; }
+.v-sync small { flex: none; width: 46px; }
+.v-sync i, .v-sync b { flex: 1; height: 20px; border-radius: 6px; }
+.v-sync b { background: repeating-linear-gradient(90deg, #1d1d1f38 0 2px, #1d1d1f12 2px 12.5%); }
+.v-sync p:nth-child(2) i { background: var(--c1); transform: translateX(-14%); }
+.v-sync p:nth-child(3) i { background: var(--c2); transform: translateX(12%); }
+.v-sync p:nth-child(4) i { background: var(--c3); transform: translateX(-7%) scaleX(.5); transform-origin: 70% 50%; }
+.is-b .v-sync p:nth-child(2) i, .is-b .v-sync p:nth-child(3) i { transform: none; }
+.is-b .v-sync p:nth-child(4) i { transform: scaleX(.5); }
+/* 3 Cut pace: the panel's 2 / 4 / 6 / 8 Beat boxes and where the cuts land on the beats */
+.v-pace p span { flex: 1; padding: 9px 2px; border-radius: 8px; background: var(--rp-surface); text-align: center; }
+.v-pace p span:nth-child(2), .is-b .v-pace p span:nth-child(1) { background: var(--rp-violet); color: #fff; }
+.is-b .v-pace p span:nth-child(2) { background: var(--rp-surface); color: var(--rp-muted); }
+.vz-beats { display: flex; gap: 4px; }
+.vz-beats i { flex: 1; height: 34px; border-radius: 6px; background: #1d1d1f14; box-shadow: inset 3px 0 0 transparent; }
+.vz-beats i:nth-child(4n+1), .is-b .vz-beats i:nth-child(2n+1) { box-shadow: inset 3px 0 0 #ff2d55; }
+.v-pace > small { color: #ff2d55; }
+/* 4 Camera roles: the shot order never repeats a kind */
+.v-roles p { gap: 4px; }
+.v-roles p span { flex: 1; padding: 20px 2px; border-radius: 8px; background: #0a84ff24; color: var(--rp-violet-soft); text-align: center; }
+.v-roles p span:nth-child(2n) { background: #af52de24; color: #8a3bb5; }
+.v-roles p span:nth-child(3) { background: #ff950029; color: #a85f00; }
+.v-roles p span:nth-child(1), .is-b .v-roles p span:nth-child(3) { box-shadow: 0 0 0 2px currentColor; }
+.is-b .v-roles p span:nth-child(1) { box-shadow: none; }
+.v-roles > small { align-self: center; color: #b3261e; }
+/* 5 Best Drops and Random Zoom: drops lifted out of the timeline, and a push-in on the real frame */
+.v-zoom { flex-direction: row; align-items: center; gap: 12px; }
+.vz-drops { flex: 1.7; display: flex; align-items: center; gap: 3px; }
+.vz-drops i { flex: .6; height: 26px; border-radius: 5px; background: #1d1d1f14; }
+.vz-drops b { flex: 2; display: grid; place-items: center; height: 26px; border-radius: 5px; background: #ff2d5533; color: #c2183c; }
+.is-b .vz-drops b { background: #ff2d55; color: #fff; transform: translateY(-14px); }
+.vz-frame { position: relative; flex: 1; height: 100%; border-radius: 10px; overflow: hidden; }
+.vz-frame i { position: absolute; inset: 0; background: url(/media/druva-auto-edit.webp) 50% 58% / cover; }
+.is-b .vz-frame i { transform: scale(1.5); }
+.vz-frame small { position: absolute; left: 6px; bottom: 6px; padding: 3px 6px; border-radius: 4px; background: #ffffffd9; color: var(--rp-ink); }
+/* 6 Color LUT: the same real frame before and after, and the panel's intensity slider */
+.vz-split { position: relative; flex: 1; border-radius: 10px; overflow: hidden; }
+.vz-split i, .vz-split b { position: absolute; inset: 0; background: url(/media/druva-auto-edit.webp) 50% 58% / cover; }
+.vz-split i { filter: saturate(.25) contrast(.75) brightness(1.5); }
+.vz-split b { clip-path: inset(0 0 0 82%); }
+.is-b .vz-split b { clip-path: inset(0 0 0 22%); }
+.vz-split small { position: absolute; bottom: 6px; left: 6px; padding: 3px 6px; border-radius: 4px; background: #ffffffd9; color: var(--rp-ink); }
+.vz-split small:last-child { left: auto; right: 6px; }
+.v-lut p span { position: relative; flex: 1; height: 6px; border-radius: 3px; background: var(--rp-surface); }
+.v-lut p span i { position: absolute; inset: 0 auto 0 0; width: 18%; border-radius: 3px; background: var(--rp-violet); }
+.is-b .v-lut p span i { width: 78%; }
 
 /* ---------------------------------------------------------------- 5 · Pricing */
 .home-price-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--home-gap); max-width: 900px; margin-inline: auto; }
