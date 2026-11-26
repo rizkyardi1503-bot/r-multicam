@@ -68,3 +68,35 @@ document.querySelectorAll('[data-download]').forEach(button => button.onclick = 
  v.addEventListener('play',()=>window.RP_ANALYTICS?.track('demo_started',{label:'how_it_works_video'}),{once:true});
  bs.forEach((b,i)=>b.addEventListener('click',()=>{const go=()=>{v.currentTime=ts[i];const p=v.play();if(p)p.catch(()=>{});mark();};if(v.readyState>=1)go();else{v.preload='auto';v.addEventListener('loadedmetadata',go,{once:true});v.load();}}));
 })();
+
+// "Three steps" explainer: a small light-theme timeline that plays Analyze Music -> Sync Cameras -> Auto Cut in a loop
+// while it is on screen. Motion is CSS transitions switched by state classes; this only builds the bars and keeps time.
+// Reduced motion: the finished state is shown, the tabs still switch the caption.
+(()=>{
+ const root=document.querySelector('[data-flow]');if(!root)return;
+ const el=(tag,cls,style)=>{const x=document.createElement(tag);x.className=cls;if(style)x.style.cssText=style;return x;};
+ const wave=root.querySelector('[data-flow-wave]'),cam=root.querySelector('[data-flow-cam]'),monitor=root.querySelector('[data-flow-monitor]'),cap=root.querySelector('[data-flow-caption]');
+ const tabs=[...root.querySelectorAll('.flow-tabs button')],caps=[...cap.children];
+ // Music: quiet intro, build-up, drop at 50 %, then full energy (64 bars, 8 beats).
+ const N=64;for(let i=0;i<N;i++){const x=i/N,beat=i%8===0,h=x<.25?.22:x<.5?.22+(x-.25)*2.2:.78;const b=el('span','flow-bar'+(beat?' is-beat':''),'height:'+Math.round((beat?Math.min(1,h+.22):h*(.6+.4*Math.abs(Math.sin(i*1.7))))*100)+'%;transition-delay:'+(i*14)+'ms');wave.appendChild(b);}
+ wave.appendChild(el('b','flow-drop','left:50%')).textContent='DROP';
+ // Cameras: each track has one long clip (out of place until synced) and the shots Auto Cut keeps.
+ const CUTS=[[0,12.5,1],[12.5,25,2],[25,37.5,1],[37.5,50,3],[50,62.5,2],[62.5,75,1],[75,87.5,3],[87.5,100,2]];
+ [1,2,3].forEach((n)=>{const lane=root.querySelector('[data-flow-track="'+n+'"]');lane.appendChild(el('span','flow-clip c'+n));
+  CUTS.forEach(([a,b,c],k)=>{if(c===n)lane.appendChild(el('span','flow-seg c'+n,'left:'+a+'%;width:'+(b-a)+'%;transition-delay:'+(k*70)+'ms'));});});
+ const still=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const DUR=[3400,3000,6200],SWEEP=5200;let step=0,timers=[],visible=false;
+ const clear=()=>{timers.forEach(clearTimeout);timers=[];};
+ const show=(n)=>{step=n;tabs.forEach((b,i)=>b.setAttribute('aria-pressed',String(i===n)));caps.forEach((c,i)=>{c.hidden=i!==n;});
+  root.classList.toggle('is-analyzed',n>=0);root.classList.toggle('is-synced',n>=1);root.classList.toggle('is-cut',n>=2);
+  monitor.dataset.cam='1';cam.textContent='CAM 1';
+  if(n===2&&!still)CUTS.forEach(([a,,c])=>timers.push(setTimeout(()=>{monitor.dataset.cam=String(c);cam.textContent='CAM '+c;},SWEEP*a/100)));
+  if(n===2&&still){monitor.dataset.cam='2';cam.textContent='CAM 2';}};
+ const run=(n)=>{clear();if(n===0&&!still){root.classList.remove('is-analyzed','is-synced','is-cut');void root.offsetWidth;}show(n);
+  if(!still&&visible)timers.push(setTimeout(()=>run((n+1)%3),DUR[n]));};
+ tabs.forEach((b,i)=>b.addEventListener('click',()=>run(i)));
+ if(still){show(2);return;}
+ if('IntersectionObserver' in window)new IntersectionObserver((es)=>es.forEach((e)=>{const was=visible;visible=e.isIntersecting;if(visible&&!was)run(0);else if(!visible)clear();}),{threshold:.3}).observe(root);
+ else{visible=true;run(0);}
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)clear();else if(visible)run(step);});
+})();
