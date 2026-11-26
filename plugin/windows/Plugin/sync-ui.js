@@ -352,7 +352,11 @@ function showResult(a){
  miss.forEach(function(w){lines.push('! '+w);});
  a.cameras.forEach(function(c){var n={placed:0,review:0,excluded:0};c.rows.forEach(function(r){n[r.status==='placed'?'placed':r.status==='review'?'review':'excluded']++;});
   if(c.drone){lines.push('· '+c.name+' (drone, no audio'+(c.reference?'; camera clock bridged through '+c.reference:'')+'): '+n.placed+' placed [CLOCK], '+n.excluded+' excluded'+(c.flights&&c.flights.length?' · '+c.flights.length+' flight'+(c.flights.length===1?'':'s'):''));if(c.learned)lines.push('  remembered drone clock offset '+(c.learned.offset>=0?'+':'')+c.learned.offset.toFixed(2)+' s'+(c.learned.day?' (from the '+c.learned.day+' shoot'+(c.learned.day!==c.shootDay?', nearest to this one':'')+')':c.learned.at?' (saved '+String(c.learned.at).slice(0,10)+')':'')+' applied');(c.warnings||[]).forEach(function(w){lines.push('  ! '+w);});return;}
-  lines.push('· '+c.name+(c.clockAnchored?' (audio, checked against its camera clock)':' (audio only)')+': '+n.placed+' placed, '+n.review+' review, '+n.excluded+' excluded');});
+  lines.push('· '+c.name+(c.clockAnchored?' (audio, checked against its camera clock)':' (audio only)')+': '+n.placed+' placed, '+n.review+' review, '+n.excluded+' excluded');
+  // Clips the camera clock puts outside the music were never searched by audio: if they were filmed during the set,
+  // that camera's clock is wrong (Zumana 25 Nov: a Blackmagic ~93 min late lost 36 clips this way). Say so.
+  var outside=c.rows.filter(function(r){return r.status==='excluded'&&r.reason==='camera clock places it outside the music';}).length;
+  if(outside)lines.push('  ! '+outside+' clip'+(outside===1?'':'s')+' excluded because the '+c.name+' clock places '+(outside===1?'it':'them')+' outside the music. If '+(outside===1?'it was':'they were')+' filmed during the set, the '+c.name+' clock is probably wrong: set the camera clock before the next shoot.');});
  if(a.reference)lines.push('The A1 music does not cover every camera: clips outside it were matched against the audio of '+a.reference.clips.join(', ')+' (placed by the music first).');
  lines.push('');lines.push('On camera tracks: '+s.placed+(s.check?' ('+s.check+' marked [CHECK], quick look)':'')+(s.clock?' · drone [CLOCK]: '+s.clock+' (about ±0.5 s; correct one clip per flight after building)':''));
  lines.push('Review track: '+s.review+(s.unplaced?' · not placed (no position at all): '+s.unplaced:'')+' · excluded: '+s.excluded);
