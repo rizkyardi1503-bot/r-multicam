@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.11";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.19",
-    download: base + "?platform=windows&version=2.3.11.19",
-    sha256: "38a41a86e8a5a87df178d540beb6e2bb3459b07996f928ae05d4fdcff631ec15"
+    version: "2.3.11.20",
+    download: base + "?platform=windows&version=2.3.11.20",
+    sha256: "8f802b3acc176b7bce83451f3c7a97fc092fc006072182fc4775bfd46a84abe5"
   },
   macos: {
-    version: "2.3.11.19",
-    download: base + "?platform=macos&version=2.3.11.19",
-    sha256: "8c875e46d137374da06f1b3877e72086ee6bb9be2a362f9487aa64ea29b65274"
+    version: "2.3.11.20",
+    download: base + "?platform=macos&version=2.3.11.20",
+    sha256: "883714bf14e2983494f1340eed3ba56dd5b193bb46fe933d0a392c1a9edff574"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.19 PUBLIC Windows and macOS: new LUT for All Footage puts one .cube LUT on every footage clip or the selected clips at the intensity you choose (Premiere Pro 26 and later), without changing a Lumetri you already graded with. Sync Cameras to Music marks less certain placements for checking and works on network paths. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.19 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
+    release_notes: "v2.3.11.20 PUBLIC Windows and macOS: drone sync now follows a camera whose clock places the drone inside the music, so one camera with a wrong clock no longer leaves every drone clip out; the sync result names a camera whose clock looks wrong. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.20 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

@@ -78,12 +78,13 @@ function deviceZone(clips){
     (same file-name vs creation_time zone, e.g. both store true UTC): on a real set (aertbat) the DJI drone matched the
     Blackmagic camera within 1.5 s while a DJI Osmo of the same brand was 2 min 16 s off. Then same brand, known zone,
     most placed clips. */
-function chooseReference(cameras,droneMake,droneZone){
+function rankReferences(cameras,droneMake,droneZone){
  var ok=(cameras||[]).filter(function(c){return c&&num(c.anchor);}),known=function(c){return c.zone!==null&&c.zone!==undefined?1:0;},
   sameZone=function(c){return droneZone!==null&&droneZone!==undefined&&known(c)&&c.zone===droneZone?1:0;};
  ok.sort(function(a,b){var sa=a.make&&a.make===droneMake?1:0,sb=b.make&&b.make===droneMake?1:0;return sameZone(b)-sameZone(a)||sb-sa||known(b)-known(a)||(b.placed||0)-(a.placed||0);});
- return ok[0]||null;
+ return ok;
 }
+function chooseReference(cameras,droneMake,droneZone){return rankReferences(cameras,droneMake,droneZone)[0]||null;}
 /** Master start in local wall time for each clocked camera, and how far they disagree with the chosen reference. */
 function clockReport(cameras,ref){
  return (cameras||[]).filter(function(c){return c&&num(c.anchor);}).map(function(c){
@@ -100,9 +101,20 @@ function clockReport(cameras,ref){
  * Returns {reference, droneZone, refZone, clips:[{id,name,flight,start,status,reason}], flights:[...] , warnings:[...]}
  */
 function planDrone(drone,cameras,opts){
- opts=opts||{};var gap=Number(opts.flightGap)||FLIGHT_GAP,music=Number(opts.musicDuration)||0,frame=Number(opts.frame)||0,warnings=[];
- var dz=deviceZone(drone.clips),ref=chooseReference(cameras,drone.make,dz);
- if(!ref)return {reference:null,clips:(drone.clips||[]).map(function(c){return {id:c.id,name:c.name,flight:-1,start:null,status:'excluded',reason:'no audio-synced camera with a trusted clock to bridge from'};}),flights:[],warnings:['No camera clock to bridge from: sync at least one camera by audio with its clock trusted.']};
+ opts=opts||{};var dz=deviceZone(drone.clips),ranked=rankReferences(cameras,drone.make,dz),best=null;
+ if(!ranked.length)return {reference:null,clips:(drone.clips||[]).map(function(c){return {id:c.id,name:c.name,flight:-1,start:null,status:'excluded',reason:'no audio-synced camera with a trusted clock to bridge from'};}),flights:[],warnings:['No camera clock to bridge from: sync at least one camera by audio with its clock trusted.']};
+ // A camera whose clock is wrong (Zumana 25 Nov: the Blackmagic ran ~93 min late and stores true UTC like the Mavic, so it
+ // won the zone match) would put every drone clip outside the music. The first camera in the order above (zone, brand,
+ // placed clips) is kept unless it places fewer than half as many drone clips inside the music as another camera: a clip
+ // or two at the music's edge, or drone footage filmed before the set, must not move the drone to another camera.
+ var plans=ranked.map(function(ref,i){var p=planWith(drone,cameras,opts,ref,dz);return {plan:p,i:i,n:p.clips.filter(function(c){return c.status==='placed';}).length};});
+ plans.forEach(function(x){if(!best||x.n>best.n)best=x;});
+ if(plans[0].n*2>=best.n)return plans[0].plan;
+ best.plan.warnings.unshift(ranked[0].name+' clock places '+plans[0].n+' drone clip(s) inside the music; the drone follows '+best.plan.reference+' instead ('+best.n+' inside).');
+ return best.plan;
+}
+function planWith(drone,cameras,opts,ref,dz){
+ var gap=Number(opts.flightGap)||FLIGHT_GAP,music=Number(opts.musicDuration)||0,frame=Number(opts.frame)||0,warnings=[];
  var rz=ref.zone===null||ref.zone===undefined?null:ref.zone;
  if(dz===null||rz===null){warnings.push('Time zone not found in file names; assuming the drone and '+ref.name+' clocks use the same zone.');dz=0;rz=0;}
  // A correction the user made before for this drone and reference camera: applied to every clip.
