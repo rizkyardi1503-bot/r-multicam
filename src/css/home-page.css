@@ -2,7 +2,9 @@
    R Project — homepage sections (EN + ID). Builds on base.css components.
    Clean product look: white and soft-grey surfaces, near-black type in the system
    UI face (San Francisco on Apple devices), large calm headlines, rounded tiles
-   without borders, one blue accent, and black panels for the real footage. Light by design: no blur filters, no infinite animation,
+   without borders, one blue accent, black panels for the real footage, and
+   translucent "glass" materials (frosted navigation bar, glass panel and chips). backdrop-filter is kept to a few
+   small surfaces (see BACKDROP_MAX in scripts/check-weight.py); no infinite animation,
    opacity/transform transitions only, a single will-change (timeline playhead).
    ========================================================================== */
 
@@ -69,8 +71,17 @@ code, kbd { background: #1d1d1f0a; }
 .card { border-radius: var(--rp-radius); }
 
 /* Header */
-.rp-header { background: #fffffff7; }
-.rp-scrolled .rp-header { background: var(--rp-bg); }
+/* Frosted navigation bar: translucent, blurs what scrolls under it. */
+.rp-header {
+  min-height: 52px;
+  padding-block: 6px;
+  border-bottom-color: transparent;
+  background: #ffffffb8;
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  backdrop-filter: saturate(180%) blur(18px);
+}
+.rp-scrolled .rp-header { background: #ffffffb8; border-bottom-color: var(--rp-line); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .rp-header, .rp-scrolled .rp-header { background: #fffffff7; } }
 .rp-header .brand { color: var(--rp-ink); }
 .rp-header .mark, .rp-footer .mark { border-radius: 9px; background: var(--rp-ink); color: #fff; }
 .rp-header nav a { color: var(--rp-prose); font-size: 13px; font-weight: 400; }
@@ -87,7 +98,7 @@ code, kbd { background: #1d1d1f0a; }
 .rp-legal { color: var(--rp-muted); }
 
 /* Dialogs (sign-in, license, notices) follow the paper theme through the tokens. */
-dialog::backdrop { background: #00000073; }
+dialog::backdrop { background: #00000052; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 dialog { background: #fff; border-color: transparent; }
 dialog h2 { font-size: 30px; line-height: 1.1; }
 .dialog-top button:hover { color: var(--rp-ink); }
@@ -147,7 +158,14 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
 .home .card p { color: var(--rp-prose); }
 
 /* ---------------------------------------------------------------- 1 · Hero */
-.home-hero { padding-block: clamp(48px, 7vw, 96px) clamp(56px, 7vw, 104px); }
+.home-hero {
+  padding-block: clamp(48px, 7vw, 96px) clamp(56px, 7vw, 104px);
+  background:
+    radial-gradient(ellipse 38% 34% at 18% 6%, #9cc4ff73, transparent 72%),
+    radial-gradient(ellipse 34% 30% at 82% 4%, #d9b3ff66, transparent 72%),
+    radial-gradient(ellipse 30% 26% at 56% 30%, #ffc9d94d, transparent 72%),
+    linear-gradient(180deg, #f5f7fb 0%, #fff 62%);
+}
 .home-hero-grid {
   position: relative;
   isolation: isolate;
@@ -164,7 +182,11 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
   z-index: -1;
   align-self: stretch;
   border-radius: 28px;
-  background: radial-gradient(ellipse 70% 90% at 15% 0%, #1c2a44, transparent 70%), var(--rp-black);
+  background:
+    radial-gradient(ellipse 46% 70% at 88% 18%, #5e5ce699, transparent 70%),
+    radial-gradient(ellipse 42% 60% at 62% 104%, #ff375f66, transparent 70%),
+    radial-gradient(ellipse 55% 80% at 8% 0%, #0a84ff80, transparent 70%),
+    var(--rp-black);
 }
 .home-hero-copy {
   --rp-line: #1d1d1f1f;
@@ -185,9 +207,18 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
 .home-hero .lead { max-width: 54ch; margin-bottom: 0; color: var(--rp-prose); font-size: clamp(19px, 1.9vw, 24px); line-height: 1.38; font-weight: 500; }
 .home-hero .eyebrow { justify-content: center; }
 .home-hero .actions { justify-content: center; margin: 34px 0 28px; }
-.home-trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 0; margin: 0; padding: 0; list-style: none; }
-.home-trust li { display: inline-flex; align-items: center; color: var(--rp-muted); font-size: 13.5px; }
-.home-trust li + li::before { content: ""; width: 3px; height: 3px; margin-inline: 12px; border-radius: 50%; background: #86868b; }
+.home-trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.home-trust li {
+  padding: 6px 14px;
+  border: 1px solid #fff;
+  border-radius: 999px;
+  background: #ffffff8c;
+  box-shadow: 0 1px 2px #1d1d1f14;
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  backdrop-filter: saturate(180%) blur(12px);
+  color: var(--rp-prose);
+  font-size: 13px;
+}
 .home-device { margin: 14px 0 0; color: var(--rp-muted); font-size: 14.5px; }
 
 /* Phone frame (hero + how-it-works) */
@@ -212,9 +243,11 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  border: 1px solid #ffffff59;
+  border: 1px solid #ffffff4d;
   border-radius: 999px;
-  background: #1d1d1fd9;
+  background: #ffffff2e;
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  backdrop-filter: saturate(180%) blur(12px);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -227,7 +260,19 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
 .edit-show figcaption { margin-top: 16px; text-align: center; color: var(--rp-muted); font-size: 14px; }
 
 /* Shot timeline panel (on the ink stage) */
-.home .edit-panel { grid-area: panel; margin-right: clamp(28px, 4vw, 56px); padding: 0; border: 0; border-radius: 0; background: none; color: #f5f5f7; }
+/* Glass panel over the colour glow of the stage. */
+.home .edit-panel {
+  grid-area: panel;
+  margin-right: clamp(28px, 4vw, 56px);
+  padding: clamp(22px, 2.6vw, 32px);
+  border: 1px solid #ffffff33;
+  border-radius: 26px;
+  background: #ffffff1a;
+  box-shadow: inset 0 1px 0 #ffffff40, 0 30px 60px -30px #000;
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+  backdrop-filter: saturate(160%) blur(18px);
+  color: #f5f5f7;
+}
 .edit-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
 .edit-head p { margin: 0; font-size: 13.5px; color: var(--rp-muted); }
 .edit-head p:first-child { display: inline-flex; align-items: center; gap: 10px; color: #f5f5f7; font: 600 clamp(22px, 2.4vw, 30px)/1.1 var(--rp-font-display); letter-spacing: -.02em; }
@@ -240,8 +285,8 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
   margin: 22px 0 16px;
   overflow: hidden;
   border: 1px solid var(--rp-line);
-  border-radius: 10px;
-  background: #0a0a0c;
+  border-radius: 12px;
+  background: #00000066;
 }
 .edit-shot {
   position: absolute;
@@ -249,7 +294,7 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
   height: 30px;
   padding: 0;
   border: 0;
-  border-right: 2px solid #0a0a0c;
+  border-right: 2px solid #00000080;
   border-radius: 4px;
   background: var(--c, var(--rp-violet));
   opacity: .5;
@@ -304,9 +349,31 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
 .home-who-card:last-child .home-tag { color: var(--rp-muted); }
 
 /* ---------------------------------------------------------------- 3 · How it works */
+/* A black full-bleed chapter, like a product film section. */
+.home-how {
+  --rp-ink: #f5f5f7;
+  --rp-line: #ffffff24;
+  --rp-line-strong: #ffffff40;
+  --rp-prose: #d2d2d7;
+  --rp-muted: #86868b;
+  --rp-violet-soft: #2997ff;
+  --btn-link: #2997ff;
+  border-image: linear-gradient(#000, #000) fill 0 / 0 / 0 100vmax;
+  color: #f5f5f7;
+}
+.home-how .eyebrow { color: #2997ff; }
+.home-how::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 520px;
+  background: radial-gradient(ellipse 30% 90% at 32% 0%, #0a84ff47, transparent 72%), radial-gradient(ellipse 26% 80% at 68% 0%, #bf5af233, transparent 72%);
+  pointer-events: none;
+}
+.home-how > * { position: relative; }
 .home-how-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: clamp(36px, 6vw, 88px); align-items: start; }
-.home-how .promo-phone { width: clamp(250px, 23vw, 296px); border-color: transparent; }
-.home-chapters { padding: 20px; border-radius: var(--rp-radius); background: var(--rp-black); color: #f5f5f7; }
+.home-how .promo-phone { width: clamp(250px, 23vw, 296px); }
+.home-chapters { padding: 20px; border: 1px solid #ffffff24; border-radius: var(--rp-radius); background: #ffffff14; box-shadow: inset 0 1px 0 #ffffff33; color: #f5f5f7; }
 .home-chapters .home-tag { margin: 4px 0 10px 12px; color: var(--rp-muted); }
 .how-chapters { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .how-chapters button {
@@ -504,8 +571,30 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
   .home-hero-grid::before { grid-area: 2 / 1 / 4 / 2; }
   .home-hero-copy { margin-bottom: clamp(36px, 6vw, 56px); }
   .edit-show { justify-self: center; padding: 32px 0 8px; }
-  .edit-panel { margin: 0; padding: 24px clamp(20px, 5vw, 40px) 32px; }
-  .home-how-grid { grid-template-columns: minmax(0, 1fr); }
+  .home .edit-panel { margin: 20px clamp(14px, 4vw, 32px) clamp(14px, 4vw, 32px); }
+  /* A black full-bleed chapter, like a product film section. */
+.home-how {
+  --rp-ink: #f5f5f7;
+  --rp-line: #ffffff24;
+  --rp-line-strong: #ffffff40;
+  --rp-prose: #d2d2d7;
+  --rp-muted: #86868b;
+  --rp-violet-soft: #2997ff;
+  --btn-link: #2997ff;
+  border-image: linear-gradient(#000, #000) fill 0 / 0 / 0 100vmax;
+  color: #f5f5f7;
+}
+.home-how .eyebrow { color: #2997ff; }
+.home-how::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 520px;
+  background: radial-gradient(ellipse 30% 90% at 32% 0%, #0a84ff47, transparent 72%), radial-gradient(ellipse 26% 80% at 68% 0%, #bf5af233, transparent 72%);
+  pointer-events: none;
+}
+.home-how > * { position: relative; }
+.home-how-grid { grid-template-columns: minmax(0, 1fr); }
   .home-how .how-video { justify-self: center; }
   .home-feat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-faq { grid-template-columns: minmax(0, 1fr); }
@@ -539,7 +628,8 @@ dialog h2 { font-size: 30px; line-height: 1.1; }
 .mobile-cta {
   position: fixed; inset: auto 0 0 0; z-index: 40; display: flex; gap: 8px;
   padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-  background: #fffffff7; border-top: 1px solid var(--rp-line-strong);
+  background: #ffffffb8; border-top: 1px solid var(--rp-line);
+  -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px);
   transform: translateY(110%); transition: transform .25s ease;
 }
 .mobile-cta .button { flex: 1 1 0; min-height: 46px; padding-inline: 10px; font-size: 14px; }

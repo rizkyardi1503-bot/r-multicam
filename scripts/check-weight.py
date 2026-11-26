@@ -21,6 +21,7 @@ JS_MAX = 120 * KB
 VIDEO_MAX = 3.2 * MB
 ALLOWED_SCRIPT_HOSTS = {"static.cloudflareinsights.com"}
 BLUR_MAX_PX = 20
+BACKDROP_MAX = {"home.css": 6}
 CDN_HOSTS = ("cdn.jsdelivr.net", "unpkg.com", "cdnjs")
 
 failures = []
@@ -179,8 +180,11 @@ BLUR = re.compile(r"blur\(\s*([0-9]*\.?[0-9]+)\s*(px|rem|em)?\s*\)", re.I)
 def check_css_rules(site, path):
     name = rel(site, path)
     css = STRIP_COMMENTS.sub("", path.read_text(encoding="utf-8", errors="replace"))
-    if "backdrop-filter" in css:
-        fail(f"{name}: uses backdrop-filter (expensive to composite)")
+    # Glass surfaces are allowed on the homepage bundle only, and only a handful (each one is composited separately).
+    # Declarations are counted once: not the -webkit- twin and not an @supports test.
+    glass = len(re.findall(r"(?<![-(])backdrop-filter\s*:", css, re.I))
+    if glass > BACKDROP_MAX.get(path.name, 0):
+        fail(f"{name}: uses backdrop-filter {glass} times, budget is {BACKDROP_MAX.get(path.name, 0)} (expensive to composite)")
     if ANIMATION_INFINITE.search(css):
         fail(f"{name}: has an infinite animation (animation ... infinite)")
     if re.search(r"mix-blend-mode", css, re.I):
