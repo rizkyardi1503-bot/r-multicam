@@ -1,0 +1,16 @@
+{
+  "name": "r-project-multicam-engine",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless R Project Multicam AI engine: shared multicam plan format (rp-multicam-plan/1), Final Cut Pro FCPXML export, CLI and MCP server. Reuses the plugin's own engine files.",
+  "engines": { "node": ">=18" },
+  "bin": {
+    "rp-engine": "bin/rp-engine.mjs",
+    "rp-engine-mcp": "bin/rp-engine-mcp.mjs"
+  },
+  "scripts": {
+    "mcp": "node bin/rp-engine-mcp.mjs",
+    "test": "node test/run-tests.mjs"
+  }
+}

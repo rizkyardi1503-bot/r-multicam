@@ -91,6 +91,7 @@ class Account {
     this.sessionFile = opts.sessionFile || path.join(this.dataDir, 'davinci', 'session.json');
     this.deviceIdFn = opts.deviceId || (() => getDeviceId(this.dataDir));
     this.platform = opts.platform || 'Windows';
+    this.pluginVersion = opts.pluginVersion || PLUGIN_VERSION;
     this.log = opts.log || (() => {});
     this.timeoutMs = opts.timeoutMs || 30000;
     this.startGoogleFlow = opts.startGoogle || startGoogle;
@@ -155,7 +156,7 @@ class Account {
     return !!(e && e.status === 401) || (/refresh[_ ]?token/.test(m) && /(invalid|expired|revoked|not found|already used)/.test(m)) || /invalid[_ ]?grant/.test(m);
   }
 
-  rpcBody() { return { p_device_id: this.deviceId(), p_platform: this.platform, p_plugin_version: PLUGIN_VERSION }; }
+  rpcBody() { return { p_device_id: this.deviceId(), p_platform: this.platform, p_plugin_version: this.pluginVersion }; }
   async rpc(name) {
     const call = () => this.request('/rest/v1/rpc/' + name, { method: 'POST', auth: true, headers: Object.assign(this.headers(true), { Accept: 'application/vnd.pgrst.object+json' }), body: this.rpcBody() });
     try { return await call(); }
