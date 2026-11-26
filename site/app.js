@@ -101,10 +101,47 @@ document.querySelectorAll('[data-download]').forEach(button => button.onclick = 
  document.addEventListener('visibilitychange',()=>{if(document.hidden)clear();else if(visible)run(step);});
 })();
 
-// Feature tiles: one timer plays the small animations over the illustrations while the grid is on screen
-// (.is-b on and off, plus data-p 0..2 for the camera highlight).
+// Feature tiles: one choreographed loop per tile over its illustration (Web Animations), replayed every LOOP ms
+// while the grid is on screen and stopped when it leaves. Reduced motion or no Web Animations: the still pictures stay.
 (()=>{
- const g=document.querySelector('[data-feat-loop]');if(!g||!('IntersectionObserver' in window))return;
- if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){g.classList.add('is-b');return;}
- let t=0,n=0;new IntersectionObserver((es)=>es.forEach((e)=>{clearInterval(t);if(e.isIntersecting)t=setInterval(()=>{if(document.hidden)return;g.classList.toggle('is-b');n++;g.dataset.p=String(n%3);},2400);}),{threshold:.15}).observe(g);
+ const g=document.querySelector('[data-feat-loop]');if(!g||!g.animate||!('IntersectionObserver' in window))return;
+ if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+ const LOOP=6400,IO='cubic-bezier(.65,0,.35,1)',OUT='cubic-bezier(.22,1,.36,1)';
+ const $=(s,r)=>(r||g).querySelector(s),$$=(s,r)=>[...(r||g).querySelectorAll(s)];
+ const run=[];const anim=(el,k,o)=>{if(el)run.push(el.animate(k,Object.assign({fill:'both',easing:IO},o)));};
+ const sweep=(head,from,to,dur,delay)=>anim(head,[{left:from+'%',opacity:0},{opacity:1,offset:.06},{opacity:1,offset:.94},{left:to+'%',opacity:0}],{duration:dur,delay:delay||0,easing:'linear'});
+ const tiles={
+  map(t){const D=3600;sweep($('.fx-head',t),2,98,D,300);
+   anim($('.fx-lit',t),[{clipPath:'inset(0 98% 0 0)',opacity:1},{clipPath:'inset(0 2% 0 0)',opacity:1,offset:.82},{clipPath:'inset(0 2% 0 0)',opacity:0}],{duration:D+1400,delay:300,easing:'linear'});
+   anim($('.fx-bloom',t),[{transform:'translate(-50%,-50%) scale(.4)',opacity:0},{transform:'translate(-50%,-50%) scale(1.1)',opacity:1,offset:.3},{transform:'translate(-50%,-50%) scale(1.7)',opacity:0}],{duration:1700,delay:300+D*.5-150,easing:OUT});},
+  sync(t){anim($('img',t),[{transform:'translateY(0)'},{transform:'translateY(-3px)'},{transform:'translateY(0)'}],{duration:LOOP-200});
+   $$('.fx-ray',t).forEach((r,k)=>{const from=parseFloat(r.style.top),to=parseFloat(r.dataset.to)-14,d=700+k*180;
+    anim(r,[{top:from+'%',opacity:0},{opacity:1,offset:.2},{top:to+'%',opacity:1,offset:.85},{top:to+'%',opacity:0}],{duration:1100,delay:d});
+    anim($$('.fx-ring',t)[k],[{transform:'scale(.4)',opacity:0},{transform:'scale(1)',opacity:1,offset:.2},{transform:'scale(3.2)',opacity:0}],{duration:1200,delay:d+900,easing:OUT});});},
+  cut(t){const D=3000,A=3,Z=95.8,head=$('.fx-head',t),ps=$$('.fx-piece',t);sweep(head,A,Z,D,300);
+   $$('.fx-blade',t).forEach((b,k)=>{const at=300+D*(parseFloat(b.style.left)-A)/(Z-A);
+    anim(b,[{transform:'scaleY(0)',opacity:0},{transform:'scaleY(1)',opacity:1,offset:.25},{transform:'scaleY(1)',opacity:.9,offset:.6},{transform:'scaleY(.2)',opacity:0}],{duration:700,delay:at-120,easing:OUT});
+    anim(ps[k+1],[{transform:'translateY(0)'},{transform:'translateY(-6px)',offset:.35},{transform:'translateY(0)'}],{duration:620,delay:at,easing:OUT});});},
+  roles(t){const ps=$$('.fx-piece',t),live=$('.fx-live',t),X=['17.6%','49.9%','82.2%'],seq=[0,1,2,1],hold=LOOP/seq.length,n=seq.length;
+   const frames=(i)=>seq.map((s,k)=>[{offset:k/n,v:s===i},{offset:(k+.82)/n,v:s===i}]).flat();
+   ps.forEach((p,i)=>anim(p,frames(i).map((f)=>({offset:f.offset,transform:f.v?'scale(1.05)':'scale(.96)',opacity:f.v?1:.42,filter:f.v?'saturate(1)':'saturate(.5)'})).concat([{offset:1,transform:seq[0]===i?'scale(1.05)':'scale(.96)',opacity:seq[0]===i?1:.42,filter:seq[0]===i?'saturate(1)':'saturate(.5)'}]),{duration:LOOP,easing:IO}));
+   anim(live,seq.map((s,k)=>[{offset:k/n,left:X[s],opacity:1},{offset:(k+.82)/n,left:X[s],opacity:1}]).flat().concat([{offset:1,left:X[seq[0]],opacity:1}]),{duration:LOOP,easing:IO});},
+  drops(t){const v=t.closest('.feat-viz'),fr=$('.vz-frame',v),cards=$$('.fx-card',v),box=v.getBoundingClientRect(),f=fr.getBoundingClientRect();
+   $$('.fx-glow',t).forEach((gl,k)=>{anim(gl,[{transform:'translate(-50%,-50%) scale(.6)',opacity:0},{transform:'translate(-50%,-50%) scale(1)',opacity:1,offset:.4},{transform:'translate(-50%,-50%) scale(1.15)',opacity:0}],{duration:1400,delay:200+k*350,easing:OUT});
+    const r=gl.getBoundingClientRect(),sx=r.left+r.width/2-box.left-17,sy=r.top+r.height/2-box.top-11,ex=f.left+f.width/2-box.left-17,ey=f.top+f.height/2-box.top-11,mx=(sx+ex)/2,my=Math.min(sy,ey)-28;
+    anim(cards[k],[{transform:`translate(${sx}px,${sy}px) scale(.5)`,opacity:0},{transform:`translate(${sx}px,${sy-8}px) scale(1)`,opacity:1,offset:.2},{transform:`translate(${mx}px,${my}px) scale(1)`,opacity:1,offset:.6},{transform:`translate(${ex}px,${ey}px) scale(.7)`,opacity:0}],{duration:1500,delay:600+k*350});});
+   anim($('i',fr),[{transform:'scale(1)'},{transform:'scale(1)',offset:.3},{transform:'scale(1.16)',offset:.92},{transform:'scale(1)'}],{duration:LOOP-100,easing:'cubic-bezier(.45,0,.55,1)'});
+   $$('b',fr).forEach((b,k)=>{const dx=k%2?-6:6,dy=k<2?6:-6;anim(b,[{transform:'translate(0,0)'},{transform:'translate(0,0)',offset:.3},{transform:`translate(${dx}px,${dy}px)`,offset:.92},{transform:'translate(0,0)'}],{duration:LOOP-100,easing:'cubic-bezier(.45,0,.55,1)'});});},
+  lut(t){const K=[[0,12],[.42,88],[.62,88],[1,60]],o={duration:LOOP-200,easing:IO};
+   anim($('b',t),K.map(([offset,x])=>({offset,clipPath:`inset(0 ${100-x}% 0 0)`})),o);
+   anim($('.fx-divider',t),K.map(([offset,x])=>({offset,left:x+'%'})),o);
+   anim($('p span i',t),K.map(([offset,x])=>({offset,width:x+'%'})),o);}
+ };
+ const order=[['.fx-map','map'],['.fx-sync','sync'],['.fx-cut','cut'],['.fx-roles','roles'],['.fx-drops','drops'],['.v-lut','lut']];
+ let timer=0;
+ const stop=()=>{clearTimeout(timer);run.splice(0).forEach((a)=>a.cancel());};
+ const cycle=()=>{stop();order.forEach(([sel,name])=>{const t=$(sel);if(t)try{tiles[name](t);}catch(e){}});timer=setTimeout(cycle,LOOP);};
+ let on=false;
+ new IntersectionObserver((es)=>es.forEach((e)=>{if(e.isIntersecting&&!on){on=true;cycle();}else if(!e.isIntersecting&&on){on=false;stop();}}),{threshold:.12}).observe(g);
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();else if(on)cycle();});
 })();
