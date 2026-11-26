@@ -1,3 +1,13 @@
+v2.3.11.20 PUBLIC — Drone sync follows a camera with a working clock
+- Sync Cameras to Music, drones and FPV without audio: the drone is placed from the clock of a camera that synced by
+  audio. That camera used to be picked by clock format alone, so one camera with a wrong clock (a Blackmagic set ~93 min
+  late) put every drone clip outside the music and all of them were left out. The drone now follows another camera
+  when the first choice places fewer than half as many drone clips inside the music; otherwise nothing changes. The
+  result names the camera it skipped.
+- The sync result now says when a camera's clock puts its own clips outside the music, so a wrong camera clock is no
+  longer silent.
+- Optional update for v2.3.11.11 and later. Macs older than v2.3.11.11 install once from r-multicam.pages.dev.
+
 v2.3.11.19 PUBLIC — LUT for All Footage; camera sync and reliability fixes
 New in this release:
 - LUT for All Footage (tool 02B, Premiere Pro 2026 version 26 and later): puts one .cube LUT on every footage clip of

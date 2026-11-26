@@ -1,3 +1,12 @@
+v2.3.11.20 PUBLIC validation — 2026-11-26
+- Real shoot (Zumana 25 Nov 2026: 2 Sony, DJI Osmo Pocket 4P, Blackmagic Pocket 4K ~93 min late, DJI Mavic 4 Pro, 50
+  drone clips), live in Premiere Pro 2027 on macOS: v2.3.11.19 placed 0/50 drone clips (bridged through the Blackmagic),
+  v2.3.11.20 placed 50/50 bridged through the Osmo; synced sequence built.
+- scripts/test-drone-sync.cjs: 16 tests on both builds (wrong clock skipped, Sony used without the Osmo, only a wrong
+  clock places nothing, ties and near-ties keep the previous choice, drone footage before the set does not let a late
+  clock win, remembered correction applied); they fail on v2.3.11.19.
+- Windows: the same code passes the automated tests but has NOT been run live in Premiere on Windows.
+
 v2.3.11.19 PUBLIC validation — 2026-11-05
 - LUT for All Footage, live on Windows, Premiere Pro 26.3, measured on exported frames: apply and intensity values
   exact, change LUT, remove, save and reopen, an editor's own Lumetri with keyframes left intact through all of them,
