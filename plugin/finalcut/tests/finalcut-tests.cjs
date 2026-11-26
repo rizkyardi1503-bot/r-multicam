@@ -86,7 +86,7 @@ function call(eng, method, p, body, headers = {}) {
       assert.equal((await call(eng, 'GET', '/api/status', null, { Host: 'evil.example:80' })).status, 403);
       assert.equal((await call(eng, 'POST', '/api/music', {}, { Origin: 'http://evil.example' })).status, 403);
       const page = await call(eng, 'GET', '/');
-      assert.equal(page.status, 200); assert.match(page.text, /Drop your \.fcpxml/); assert.doesNotMatch(page.text, /\$\{/);
+      assert.equal(page.status, 200); assert.match(page.text, /From set to Reels\./); assert.match(page.text, /drop an \.fcpxml/); assert.doesNotMatch(page.text, /\$\{/);
     });
 
     await test('nothing chosen yet: Create Multicam Edit explains what is missing', async () => {
@@ -215,6 +215,43 @@ ${cams[0].map((f) => `<asset-clip ref="v${cams.flat().indexOf(f)}" offset="0s" d
       for (const [, ref, off, start] of shots) assert.ok(Math.abs(sec(off) - sec(start) - offsetOf[assets[ref]]) < 0.05, 'shot ' + ref + ' at ' + off + ' is in sync');
       let t = 0; for (const [, , off, , dur] of shots) { assert.ok(Math.abs(sec(off) - t) < 1e-6 || sec(off) > t, 'shots in order'); t = sec(off) + sec(dur); }
       assert.match(xml, /<asset-clip ref="r\d+" lane="-1" name="Set Night 1\.wav" offset="[^"]+" start="0s"/);
+    });
+
+    await test('Find drops, then export a 9:16 drop clip, the full set in 16:9 and a DaVinci XML from the same plan', async () => {
+      assert.equal((await call(eng, 'POST', '/api/export', { drops: [0] })).status, 202);
+      assert.match((await call(eng, 'GET', '/api/status')).body.lastResult.error, /Find the drops first/);
+      assert.equal((await call(eng, 'POST', '/api/drops', { cadences: [4, 8] })).status, 202);
+      let s = (await call(eng, 'GET', '/api/status')).body;
+      assert.notEqual(s.lastResult.ok, false, s.lastResult.error);
+      assert.ok(s.studio.drops.length >= 1, 'drops ' + s.studio.drops.length);
+      const drop = s.studio.drops.find((d) => Math.abs(d.time - 26) < 2);
+      assert.ok(drop, 'the drop at 26 s: ' + JSON.stringify(s.studio.drops));
+      assert.ok(drop.thumb);
+      const jpg = await call(eng, 'GET', '/api/thumb?i=' + drop.index + '&t=' + eng.token);
+      assert.equal(jpg.status, 200);
+      assert.equal((await call(eng, 'POST', '/api/export', { drops: [drop.index], full: true, format: '9x16', length: 15 })).status, 202);
+      s = (await call(eng, 'GET', '/api/status')).body;
+      assert.notEqual(s.lastResult.ok, false, s.lastResult.error);
+      assert.equal(s.studio.exports.length, 2);
+      const probe = (f) => JSON.parse(cp.spawnSync(FFMPEG.replace(/ffmpeg(\.exe)?$/, 'ffprobe$1'), ['-v', 'error', '-show_entries', 'stream=codec_type,width,height:format=duration', '-of', 'json', f], { encoding: 'utf8' }).stdout);
+      const dir = path.dirname(s.lastResult.folder ? path.join(s.lastResult.folder, 'x') : '');
+      const files = fs.readdirSync(dir).filter((f) => f.endsWith('.mp4')).sort();
+      assert.equal(files.length, 2, files.join(', '));
+      const clip = probe(path.join(dir, files.find((f) => /Drop 1 /.test(f) || /Drop \d+ 0\.2/.test(f)) || files.find((f) => /Drop/.test(f))));
+      assert.deepEqual(clip.streams.map((x) => x.codec_type).sort(), ['audio', 'video']);
+      const v = clip.streams.find((x) => x.codec_type === 'video');
+      assert.deepEqual([v.width, v.height], [1080, 1920]);
+      assert.ok(Math.abs(Number(clip.format.duration) - 15) < 0.15, 'clip ' + clip.format.duration);
+      const full = probe(path.join(dir, files.find((f) => /Full set/.test(f))));
+      assert.ok(Math.abs(Number(full.format.duration) - DUR) < 0.3, 'full ' + full.format.duration);
+      assert.equal((await call(eng, 'POST', '/api/export', { full: true, format: '16x9' })).status, 202);
+      s = (await call(eng, 'GET', '/api/status')).body;
+      const wide = probe(path.join(dir, fs.readdirSync(dir).find((f) => /Full set \(16x9\)/.test(f))));
+      assert.deepEqual(wide.streams.filter((x) => x.codec_type === 'video').map((x) => [x.width, x.height]), [[1920, 1080]]);
+      assert.equal((await call(eng, 'POST', '/api/export-xml', { target: 'resolve' })).status, 202);
+      s = (await call(eng, 'GET', '/api/status')).body;
+      assert.notEqual(s.lastResult.ok, false, s.lastResult.error);
+      assert.match(fs.readFileSync(s.studio.result.fcpxml, 'utf8'), /lane="-1"/);
     });
 
     await test('timeline with footage that is not on this computer: clear error, nothing loaded', async () => {

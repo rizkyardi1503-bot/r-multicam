@@ -5,7 +5,7 @@
 # No administrator password is needed. Re-running it updates the engine in place.
 set -euo pipefail
 BASE="$(cd "$(dirname "$0")" && pwd)"
-VERSION="1.1.0"
+VERSION="1.2.0"
 say_line(){ printf '%s\n' "$*"; }
 fail(){ say_line "ERROR: $*"; say_line "Press Enter to close."; read -r _ || true; exit 1; }
 blocked(){ fail "macOS did not allow Terminal to read the installer folder ($BASE). Move the extracted folder to your home folder (outside Downloads, Desktop and Documents) and run Install-FinalCut.command again, or allow Terminal under System Settings > Privacy & Security > Files and Folders."; }

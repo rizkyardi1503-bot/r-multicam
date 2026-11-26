@@ -21,7 +21,7 @@ $Support = Join-Path $env:LOCALAPPDATA 'RProjectMulticam'
 $Dest = Join-Path $Support 'finalcut'
 $ToolsDir = Join-Path $Support 'tools'
 $src = $PSScriptRoot
-Write-Host 'R Project Multicam AI (XML app) v1.1.0 - Windows'
+Write-Host 'R Project Multicam AI v1.2.0 - Windows'
 
 # ---------------------------------------------------------------- package integrity
 $sums = Join-Path $src 'SHA256SUMS-FinalCut.txt'

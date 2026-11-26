@@ -6,6 +6,7 @@
 const fs = require('fs'), path = require('path'), os = require('os'), cp = require('child_process');
 const { pathToFileURL } = require('url');
 const { readTimeline } = require('./xml-import');
+const render = require('./render');
 
 const MEDIA = /\.(mov|mp4|m4v|mxf|mts|m2ts|avi|mkv|insv|lrv|3gp)$/i;
 const MUSIC_TYPES = ['public.audio', 'public.movie'];
@@ -35,6 +36,28 @@ const macPicker = {
     'set out to ""\nrepeat with f in fs\nset out to out & POSIX path of f & linefeed\nend repeat\nreturn out'),
 };
 
+/** Windows dialogs (PowerShell + Windows Forms, on top of the browser). Each returns paths, [] when cancelled. */
+function psDialog(body) {
+  const script = '[Console]::OutputEncoding=[Text.Encoding]::UTF8;Add-Type -AssemblyName System.Windows.Forms;' +
+    '$o=New-Object System.Windows.Forms.Form -Property @{TopMost=$true};' + body;
+  return new Promise((resolve, reject) => {
+    cp.execFile('powershell.exe', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', script], { timeout: 15 * 60000, windowsHide: true }, (err, stdout, stderr) => {
+      if (err) return reject(new Error('Windows file dialog failed: ' + String(stderr || err.message).trim()));
+      resolve(String(stdout).split(/\r?\n/).map((x) => x.trim()).filter(Boolean));
+    });
+  });
+}
+const psq = (v) => "'" + String(v).replace(/'/g, "''") + "'";
+const winFile = (title, filter, multi) => psDialog('$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Title=' + psq(title) + ';$d.Filter=' + psq(filter) +
+  ';$d.Multiselect=$' + (multi ? 'true' : 'false') + ';if($d.ShowDialog($o) -eq "OK"){$d.FileNames}');
+const winPicker = {
+  music: () => winFile('Choose the master music (the DJ set or song)', 'Audio or video|*.wav;*.aif;*.aiff;*.mp3;*.m4a;*.aac;*.flac;*.mov;*.mp4|All files|*.*'),
+  folder: () => psDialog('$d=New-Object System.Windows.Forms.FolderBrowserDialog;$d.Description=' + psq('Choose the folder with the clips of ONE camera') + ';if($d.ShowDialog($o) -eq "OK"){$d.SelectedPath}'),
+  files: () => winFile('Choose the clips of ONE camera', 'Video|*.mov;*.mp4;*.m4v;*.mxf;*.mts;*.m2ts;*.avi;*.mkv|All files|*.*', true),
+  lut: () => winFile('Choose a LUT', 'LUT (.cube)|*.cube'),
+};
+macPicker.lut = () => osascript('set f to choose file with prompt ' + asText('Choose a LUT (.cube)') + '\nreturn POSIX path of f');
+
 /** Video files directly in a folder (not sub-folders), in name order. */
 function mediaIn(folder) {
   return fs.readdirSync(folder, { withFileTypes: true })
@@ -49,6 +72,8 @@ function stamp(d = new Date()) {
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + '.' + p(d.getMinutes()) + '.' + p(d.getSeconds());
 }
 /** A file name that is safe in Finder and in FCP's import (no slashes or colons). */
+/** 3725.4 -> '1:02:05' */
+function clock(t) { t = Math.max(0, Math.floor(Number(t) || 0)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, x = t % 60; return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(x).padStart(2, '0'); }
 function safeName(s) { return String(s).replace(/[\/:\\]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Multicam'; }
 
 /** Final Cut Pro: opens the FCPXML in it (imports it). DaVinci Resolve has no "open this file" import, so the file is
@@ -77,17 +102,21 @@ class Studio {
   constructor(opts = {}) {
     this.log = opts.log || (() => {});
     this.onProgress = opts.progress || (() => {});
-    this.picker = opts.picker || macPicker;
+    this.picker = opts.picker || (process.platform === 'win32' ? winPicker : macPicker);
     this.open = opts.open || openResult;
     this.outDir = opts.outDir || outputRoot();
     this.loadTools = opts.loadTools || (() => import(pathToFileURL(path.join(__dirname, '..', 'rp-engine', 'lib', 'tools.mjs')).href).then((m) => m.TOOLS));
     this.music = null; this.cameras = []; this.analysis = null; this.result = null; this.timeline = null;
+    this.plan = null; this.planFile = ''; this.project = ''; this.drops = []; this.exports = []; this.lut = '';
     this.busy = ''; this.abort = null;
   }
 
   state() {
     return { timeline: this.timeline, music: this.music, cameras: this.cameras.map((c) => ({ name: c.name, role: c.role, files: c.files.length, first: path.basename(c.files[0] || '') })),
-      analysis: this.analysis, result: this.result };
+      analysis: this.analysis, result: this.result, lut: this.lut ? path.basename(this.lut) : '',
+      drops: this.drops.map((d) => ({ index: d.index, time: d.time, confidence: d.confidence, thumb: !!d.thumb })),
+      set: this.plan ? { duration: this.plan.timeline.duration, cuts: this.plan.cuts.length, bpm: this.plan.music.bpm || null } : null,
+      exports: this.exports.map((e) => ({ name: path.basename(e.file), format: e.format, duration: e.duration })) };
   }
 
   /** Loads an FCPXML exported from Final Cut Pro or DaVinci Resolve: its music and one camera per video track. */
@@ -98,7 +127,7 @@ class Studio {
     this.music = t.music;
     this.cameras = t.cameras.map((c, i) => ({ name: c.name, role: 'Camera ' + (i + 1), files: c.files }));
     this.timeline = { file: String(fileName || 'timeline.fcpxml'), title: t.title, app: t.app };
-    this.analysis = null; this.result = null;
+    this.analysis = null; this.result = null; this.forget();
     this.log('Timeline "' + t.title + '" from ' + (t.app === 'resolve' ? 'DaVinci Resolve' : 'Final Cut Pro') + ': music ' + path.basename(t.music) + ', ' + t.cameras.length + ' camera' + (t.cameras.length === 1 ? '' : 's') + ' (' + t.cameras.map((c) => c.name + ' ' + c.files.length).join(', ') + ').');
     return { message: 'Loaded ' + t.title + '.', app: t.app };
   }
@@ -107,7 +136,7 @@ class Studio {
     const [file] = await this.picker.music();
     if (!file) return { message: 'No music chosen.' };
     if (!fs.statSync(file).isFile()) throw new Error('Not a file: ' + file);
-    if (file !== this.music) { this.music = file; this.analysis = null; this.result = null; }
+    if (file !== this.music) { this.music = file; this.analysis = null; this.result = null; this.forget(); }
     this.log('Music: ' + file);
     return { message: 'Music: ' + path.basename(file) };
   }
@@ -130,7 +159,7 @@ class Studio {
     let unique = name, n = 2;
     while (taken.has(unique)) unique = name + ' ' + n++;
     const cam = { name: unique, role: String(role || '').trim() || 'Camera ' + (this.cameras.length + 1), files };
-    this.cameras.push(cam); this.result = null;
+    this.cameras.push(cam); this.result = null; this.forget();
     this.log('Camera ' + this.cameras.length + ' "' + cam.name + '": ' + files.length + ' clip' + (files.length === 1 ? '' : 's') + ' (role ' + cam.role + ').');
     return { message: 'Added ' + cam.name + ' (' + files.length + ' clips).' };
   }
@@ -138,9 +167,88 @@ class Studio {
   removeCamera(index) {
     const i = Number(index);
     if (!(i >= 0 && i < this.cameras.length)) throw new Error('No camera ' + (i + 1) + '.');
-    const [c] = this.cameras.splice(i, 1); this.result = null;
+    const [c] = this.cameras.splice(i, 1); this.result = null; this.forget();
     this.log('Removed camera "' + c.name + '".');
     return { message: 'Removed ' + c.name + '.' };
+  }
+
+  forget() { this.plan = null; this.planFile = ''; this.drops = []; this.exports = []; }
+
+  async pickLut() {
+    const [file] = await this.picker.lut();
+    if (!file) { this.lut = ''; return { message: 'No LUT.' }; }
+    if (!/\.cube$/i.test(file)) throw new Error('Choose a .cube LUT file.');
+    this.lut = file; this.log('LUT: ' + file);
+    return { message: 'LUT: ' + path.basename(file) };
+  }
+
+  /** Path of a drop's still (for the page), or '' when there is none. */
+  thumb(i) { const d = this.drops[Number(i)]; return d && d.thumb && fs.existsSync(d.thumb) ? d.thumb : ''; }
+
+  /** Syncs the cameras and finds every drop: one plan, reused by every export. */
+  async findDrops(opts = {}) {
+    if (!this.music) throw new Error('Choose the music first.');
+    if (!this.cameras.length) throw new Error('Add at least one camera (one folder per camera).');
+    const cadences = (opts.cadences || []).map(Number).filter((n) => [2, 4, 6, 8].includes(n));
+    const title = safeName(this.timeline ? this.timeline.title : path.basename(this.music).replace(/\.[^.]+$/, ''));
+    const dir = path.join(this.outDir, title + ' ' + stamp()), planFile = path.join(dir, title + '.rpplan.json');
+    return this.run('Find drops', async (tools, progress, ctx) => {
+      await tools.find((t) => t.name === 'plan_multicam').run({
+        music: this.music, output: planFile, cameras: this.cameras.map((c) => ({ name: c.name, role: c.role, files: c.files })),
+        cadences: cadences.length ? cadences : undefined, cache_dir: path.join(this.outDir, '.cache'),
+      }, (p, text) => progress(typeof p === 'object' ? p : { p: Number(p) * 0.9, text }), ctx);
+      const plan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
+      const thumbs = path.join(dir, '.thumbs'); fs.mkdirSync(thumbs, { recursive: true });
+      const drops = render.dropWindows(plan);
+      for (const d of drops) {
+        try { d.thumb = await render.still(plan, d.time + 0.2, path.join(thumbs, 'drop' + d.index + '.jpg'), ctx); } catch (e) { d.thumb = ''; }
+        progress(0.9 + 0.1 * (d.index + 1) / drops.length, 'Drop ' + (d.index + 1) + ' of ' + drops.length);
+      }
+      this.plan = plan; this.planFile = planFile; this.project = dir; this.drops = drops; this.exports = [];
+      this.log('Found ' + drops.length + ' drop' + (drops.length === 1 ? '' : 's') + ' in ' + Math.round(plan.timeline.duration / 60) + ' min, ' + plan.cuts.length + ' camera cuts.');
+      return { ok: true, drops: drops.length };
+    });
+  }
+
+  /** opts: {drops:[index], full, format '9x16'|'4x5'|'16x9', length 15|30|60, zoom, lut}. Writes MP4s next to the plan. */
+  async exportVideos(opts = {}) {
+    if (!this.plan) throw new Error('Find the drops first.');
+    const format = render.FORMATS[opts.format] ? opts.format : '9x16';
+    const length = [15, 30, 60].includes(Number(opts.length)) ? Number(opts.length) : 30;
+    const wins = render.dropWindows(this.plan, length);
+    const jobs = [...new Set((opts.drops || []).map(Number))].filter((i) => wins[i]).sort((a, b) => a - b)
+      .map((i) => ({ start: wins[i].start, end: wins[i].end, name: 'Drop ' + (i + 1) + ' ' + clock(wins[i].time).replace(/:/g, '.') }));
+    if (opts.full) jobs.push({ start: 0, end: this.plan.timeline.duration, name: 'Full set' });
+    if (!jobs.length) throw new Error('Pick at least one drop (or the full set).');
+    const title = safeName(path.basename(this.project).replace(/ \d{4}-\d\d-\d\d .*$/, ''));
+    const tag = { '9x16': '9x16', '4x5': '4x5', '16x9': '16x9' }[format];
+    return this.run('Export', async (tools, progress, ctx) => {
+      const done = [];
+      for (let j = 0; j < jobs.length; j++) {
+        const out = path.join(this.project, title + ' - ' + jobs[j].name + ' (' + tag + ').mp4');
+        const r = await render.renderRange(this.plan, jobs[j].start, jobs[j].end, out, { format, zoom: opts.zoom !== false, lut: opts.lut === false ? '' : this.lut,
+          signal: ctx.signal, progress: (p, text) => progress((j + p) / jobs.length, text) });
+        done.push({ file: out, format, duration: r.duration });
+        this.exports.push(done[done.length - 1]);
+        this.log('Exported ' + path.basename(out) + ' (' + Math.round(r.duration) + ' s).');
+      }
+      return { ok: true, exported: done.length, folder: this.project };
+    });
+  }
+
+  /** FCPXML of the same plan for Final Cut Pro or DaVinci Resolve (no new analysis). */
+  async exportXml(target) {
+    if (!this.plan) throw new Error('Find the drops first.');
+    const t = target === 'resolve' ? 'resolve' : 'fcp';
+    const title = safeName(path.basename(this.project).replace(/ \d{4}-\d\d-\d\d .*$/, ''));
+    const fcpFile = path.join(this.project, title + ' - Multicam AI' + (t === 'resolve' ? ' (DaVinci)' : '') + '.fcpxml');
+    return this.run('Export XML', async (tools) => {
+      await tools.find((x) => x.name === 'export_fcpxml').run({ plan: this.planFile, output: fcpFile, project_name: title + ' - Multicam AI', event_name: 'R Project Multicam AI', flat: t === 'resolve' });
+      const app = await this.open(fcpFile, t);
+      this.result = { fcpxml: fcpFile, name: path.basename(fcpFile), folder: this.project, target: t, cuts: this.plan.cuts.length, openedIn: app };
+      this.log('Created ' + path.basename(fcpFile) + '.');
+      return { ok: true, ...this.result };
+    });
   }
 
   setRoles(roles) {
@@ -209,4 +317,4 @@ class Studio {
   }
 }
 
-module.exports = { Studio, mediaIn, macPicker, asText, safeName, openResult, revealFile, MEDIA };
+module.exports = { Studio, mediaIn, macPicker, winPicker, asText, safeName, clock, openResult, revealFile, MEDIA };

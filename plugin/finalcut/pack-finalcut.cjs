@@ -7,7 +7,7 @@ const fs = require('fs'), path = require('path'), crypto = require('crypto'), cp
 const { crc32 } = require('../davinci/pack-davinci.cjs');
 const zlib = require('zlib');
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const NAME = 'R-Project-Multicam-AI-XML-v' + VERSION;          // Final Cut Pro + DaVinci Resolve, macOS + Windows
 const HERE = __dirname, OUT_DIR = path.join(HERE, '..', '..', 'releases', 'finalcut');
 const DOS_TIME = 0, DOS_DATE = ((2026 - 1980) << 9) | (11 << 5) | 20;     // 2026-11-20 00:00:00 for every entry
