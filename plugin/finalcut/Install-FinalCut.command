@@ -111,12 +111,13 @@ EOF
 chmod 755 "$LAUNCH"
 APPBUNDLE="$APPS/R Project Multicam AI.app"
 rm -rf "$APPS/R Project Engine for Final Cut.app"; rm -f "$ROOT/Desktop/R Project Engine for Final Cut.app"
-if command -v osacompile >/dev/null 2>&1; then
+# RP_NO_LAUNCHER: run from inside the R Project Multicam AI.app of the .dmg, which is the app itself.
+if [ -z "${RP_NO_LAUNCHER:-}" ] && command -v osacompile >/dev/null 2>&1; then
   rm -rf "$APPBUNDLE"
   osacompile -o "$APPBUNDLE" -e "do shell script quoted form of \"$LAUNCH\" & \" --app >/dev/null 2>&1 &\"" >/dev/null 2>&1 || say_line "Could not create the app; use $LAUNCH --app instead."
   [ -d "$APPBUNDLE" ] && cp "$DEST/app/assets/icon.icns" "$APPBUNDLE/Contents/Resources/applet.icns" 2>/dev/null && touch "$APPBUNDLE" || true
 fi
-[ -d "$APPBUNDLE" ] && ln -sfn "$APPBUNDLE" "$ROOT/Desktop/R Project Multicam AI.app" 2>/dev/null || true
+[ -z "${RP_NO_LAUNCHER:-}" ] && [ -d "$APPBUNDLE" ] && ln -sfn "$APPBUNDLE" "$ROOT/Desktop/R Project Multicam AI.app" 2>/dev/null || true
 
 "$NODE" -e "require('$DEST/app/lib/fcp-workflow.js')" || fail "The engine does not start with Node.js on this Mac."
 say_line ""

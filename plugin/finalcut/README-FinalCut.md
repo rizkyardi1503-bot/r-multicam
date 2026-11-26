@@ -20,7 +20,10 @@ otomatis pakai CPU.
 3. Setelah selesai, **R Project Engine for Final Cut** terbuka sendiri. Nanti bisa dibuka lagi dari folder
    **Applications** atau Desktop.
 
-**Pasang di Windows (DaVinci Resolve)**: ekstrak ZIP, klik dua kali **Install-Windows.bat**. Buka **R Project Multicam AI**
+**Installer**: Windows `R-Project-Multicam-AI-Setup-<versi>.exe` (klik dua kali, Next, Finish). Mac
+`R-Project-Multicam-AI-<versi>.dmg` (seret ke Applications; pembukaan pertama menyiapkan Node.js dan FFmpeg).
+
+**Pasang di Windows dari ZIP (DaVinci Resolve)**: ekstrak ZIP, klik dua kali **Install-Windows.bat**. Buka **R Project Multicam AI**
 dari Desktop atau Start menu. Hasil edit disimpan di **Videos › R Project Multicam**. Hapus: **Uninstall-Windows.bat**.
 
 **Pakai**
@@ -72,7 +75,10 @@ to the CPU if the GPU fails.
 2. Right-click **Install-FinalCut.command** → **Open** → **Open**. No administrator password is needed.
 3. When it finishes, **R Project Engine for Final Cut** starts. Later, open it from **Applications** or the Desktop.
 
-**Install on Windows (DaVinci Resolve)**: extract the ZIP and double-click **Install-Windows.bat**. Open **R Project Multicam AI**
+**Installers**: Windows `R-Project-Multicam-AI-Setup-<version>.exe` (double-click, Next, Finish). Mac
+`R-Project-Multicam-AI-<version>.dmg` (drag to Applications; the first launch sets up Node.js and FFmpeg).
+
+**Install on Windows from the ZIP (DaVinci Resolve)**: extract the ZIP and double-click **Install-Windows.bat**. Open **R Project Multicam AI**
 from the Desktop or the Start menu. Edits are saved in **Videos › R Project Multicam**. Remove it with **Uninstall-Windows.bat**.
 
 **Use**
