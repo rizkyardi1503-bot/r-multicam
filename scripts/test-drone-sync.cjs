@@ -86,6 +86,19 @@ for (const platform of ['windows', 'macos']) {
     assert.equal(p.reference, 'camA');
     assert.equal(placed(p).length, 10);
   });
+  test(platform + ': a drone follows the camera it was paired with before (its Osmo), even when another camera ranks first', () => {
+    // Zumana 27 Nov 2026: Osmo (phone clock) and Blackmagic (most clips) both store true UTC like the drone; the
+    // remembered pairing Mini 4 -> Osmo wins on a later shoot day, whatever the ranking says.
+    const osmoUtc = Object.assign({}, osmo, { zone: ZONE, anchor: masterLocal - ZONE, placed: 3 });
+    const bmdRight = Object.assign({}, bmd, { anchor: masterLocal - ZONE - 19.5, placed: 53 });
+    const mini = Object.assign({}, drone, { model: 'DJI Mini4 Pro' });
+    const sameBrandBmd = Object.assign({}, bmdRight, { make: 'DJI', model: 'DJI Osmo Action 5', serial: 'Z9' });
+    assert.equal(D.planDrone(mini, [sameBrandBmd, osmoUtc], { musicDuration: MUSIC, frame: 0.04, learned: {} }).reference, 'cam 4', 'without memory the camera with most clips wins');
+    const key = D.offsetKey(mini, osmoUtc), learned = { [key]: { offset: 0, shots: { '2026-10-01': { offset: 0 } } } };
+    const p = D.planDrone(mini, [sameBrandBmd, osmoUtc], { musicDuration: MUSIC, frame: 0.04, learned });
+    assert.equal(p.reference, 'cam 3');
+    assert.equal(p.paired, true);
+  });
   test(platform + ': no clocked camera at all keeps the old explanation', () => {
     const p = D.planDrone(drone, [Object.assign({}, osmo, { anchor: NaN })], { musicDuration: MUSIC, frame: 0.04, learned: {} });
     assert.equal(p.reference, null);

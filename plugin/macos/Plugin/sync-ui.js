@@ -249,11 +249,17 @@ async function verifyDrones(results,ffmpeg,state,progress,deps){
  for(var i=0;i<results.length;i++){
   var cam=results[i];if(!cam.drone)continue;
   var rows=cam.rows.filter(function(r){return r.status==='placed'&&r.confidence==='clock';});if(!rows.length)continue;
+  // Same drone, same reference camera, same shoot day: the offset found before still holds, the light is not read again.
+  if(cam.learned&&cam.shootDay&&cam.learned.day===cam.shootDay&&!deps.forceVisual){cam.visual={verdict:'remembered',shift:0,reason:'offset '+cam.learned.offset+' s remembered for '+cam.shootDay};continue;}
   check(state);
   try{
    var v=await V.verify({clips:rows.map(function(r){return {id:r.nodeId,file:r.file,start:r.start,sourceIn:r.sourceIn||0,duration:r.sourceOut-(r.sourceIn||0)};})},cams,{ffmpeg:ffmpeg,state:state,lights:lights,progress:function(p,m){progress(.99,cam.name+' · '+m);}});
    cam.visual=v;
    if(v.verdict==='shift')rows.forEach(function(r){r.start=Math.round((r.start+v.shift)*1e6)/1e6;});
+   // Remember the clock offset now in use for this drone + reference camera + day, so the next Analyze places it
+   // right away (and a later shoot pairs the drone with this camera again).
+   if((v.verdict==='shift'||v.verdict==='confirmed')&&cam.key&&cam.shootDay){var total=(cam.learned?Number(cam.learned.offset)||0:0)+(v.verdict==='shift'?v.shift:0);
+    try{(deps.saveLearned||saveLearned)(cam.key,total,cam.shootDay,cam.reference);cam.remembered=total;}catch(e){}}
   }catch(e){if(state.cancelled)throw e;cam.visual={verdict:'inconclusive',reason:String(e.message||e)};}
  }
 }
@@ -517,7 +523,7 @@ function wire(){
  if($('syncBuyLifetime'))$('syncBuyLifetime').onclick=function(){if($('accountBuyLifetime'))$('accountBuyLifetime').click();};
  controls();
 }
-root.RPSyncUI={untickedDrones:untickedDrones,bridgeHint:bridgeHint,saveLearned:saveLearned,planCameras:planCameras,analyze:analyze,buildRows:buildRows,summary:summary,reportCsv:reportCsv,builtDrones:builtDrones,useSelected:useSelected,nudge:nudge,forget:forget,loadLearned:loadLearned,_ui:ui,controls:controls,canSync:canSync,stop:stop};
+root.RPSyncUI={verifyDrones:verifyDrones,untickedDrones:untickedDrones,bridgeHint:bridgeHint,saveLearned:saveLearned,planCameras:planCameras,analyze:analyze,buildRows:buildRows,summary:summary,reportCsv:reportCsv,builtDrones:builtDrones,useSelected:useSelected,nudge:nudge,forget:forget,loadLearned:loadLearned,_ui:ui,controls:controls,canSync:canSync,stop:stop};
 if(typeof document!=='undefined'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();}
 if(typeof module!=='undefined'&&module.exports)module.exports=root.RPSyncUI;
 }(typeof window!=='undefined'?window:globalThis));
