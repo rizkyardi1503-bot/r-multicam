@@ -75,6 +75,17 @@ function appBrowser() {
 /** Opens the page in its own window. Returns the window's process (it ends when the window closes), or null when only a
  *  normal browser tab could be opened. A separate browser profile keeps the window in a process of its own. */
 function openAppWindow(url, profileDir) {
+  // macOS: a real Cocoa window with WebKit (works without Chrome; no browser chrome at all).
+  if (process.platform === 'darwin' && !process.env.RP_APP_BROWSER) {
+    try {
+      const c = cp.spawn('/usr/bin/osascript', ['-l', 'JavaScript', path.join(APP, 'lib', 'mac-window.jxa'), url, path.join(APP, 'assets', 'icon.icns')], { stdio: 'ignore' });
+      const t0 = Date.now();
+      c.on('error', () => openBrowser(url));
+      // The native window failed to start (old macOS, blocked scripting): show the app in a browser window instead.
+      c.on('exit', (code) => { if (code && Date.now() - t0 < 5000) { const exe = appBrowser(); if (exe) cp.spawn(exe, ['--app=' + url, '--user-data-dir=' + profileDir], { stdio: 'ignore', detached: true }).unref(); else openBrowser(url); } });
+      return c;
+    } catch (e) { /* fall back to a browser app window */ }
+  }
   const exe = appBrowser();
   if (!exe) { openBrowser(url); return null; }
   try {
@@ -158,6 +169,18 @@ async function start(opts = {}) {
     catch (e) { log(name + ': ' + e.message); return { status: 400, body: { ok: false, error: e.message, code: e.code || '', account: account.status() } }; }
   }
 
+  /** Create account: the same Supabase sign-up as the website (email confirmation, then sign in in the app). */
+  async function signUp(email, password) {
+    email = String(email || '').trim(); password = String(password || '');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Enter a valid email address.');
+    if (password.length < 8) throw new Error('Use a password with at least 8 characters.');
+    let d;
+    try { d = await account.request('/auth/v1/signup?redirect_to=' + encodeURIComponent('https://r-multicam.pages.dev/auth/confirmed/'), { method: 'POST', body: { email, password } }); }
+    catch (e) { throw new Error(e && e.message ? e.message : 'Could not create the account.'); }
+    if (d && d.access_token) return account.signIn(email, password);
+    return { message: 'Account created. Open the confirmation email sent to ' + email + ', then sign in here.' };
+  }
+
   const routes = {
     'GET /api/status': async () => ({ body: { ok: true, version: VERSION, account: account.status(), busy: studio.busy, progress, lastResult, studio: studio.state(), ffmpeg: !!process.env.RP_FFMPEG } }),
     'POST /api/music': () => quick('Choose music', () => studio.pickMusic()),
@@ -186,7 +209,15 @@ async function start(opts = {}) {
       return { body: { ok: true, shownIn: await revealFile(r.fcpxml) } };
     },
     'POST /api/account/signin': async (b) => accountCall('Sign in', () => account.signIn(b.email, b.password)),
-    'POST /api/account/google': async () => accountCall('Google sign-in', () => account.startGoogle()),
+    'POST /api/account/signup': async (b) => accountCall('Create account', () => signUp(b.email, b.password)),
+    // The app window may not open new windows: the engine opens Google sign-in and website pages in the system browser.
+    'POST /api/account/google': async () => accountCall('Google sign-in', async () => { const r = await account.startGoogle(); if (r && r.link) openBrowser(r.link); return r; }),
+    'POST /api/open': async (b) => {
+      const u = String(b.url || '');
+      if (!/^https:\/\/r-multicam\.pages\.dev(\/|$)/.test(u)) return { status: 400, body: { ok: false, error: 'Not allowed.' } };
+      openBrowser(u); return { body: { ok: true } };
+    },
+    'POST /api/xml/pick': () => quick('Import XML', () => studio.pickXml()),
     'POST /api/account/google/cancel': async () => accountCall('Google sign-in', () => account.cancelGoogle()),
     'POST /api/account/forgot': async (b) => accountCall('Forgot password', () => account.forgotPassword(b.email)),
     'POST /api/account/signout': async () => accountCall('Sign out', () => account.signOut()),
@@ -266,165 +297,225 @@ try { ICON = 'data:image/png;base64,' + fs.readFileSync(path.join(APP, 'assets',
 function page(token) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>R Project Multicam AI</title>${ICON ? '<link rel="icon" href="' + ICON + '">' : ''}<style>
-:root{--ink:#1d1d1f;--prose:#424245;--muted:#6e6e73;--line:#0000001a;--soft:#f5f5f7;--blue:#0071e3;--blue2:#0066cc;--ok:#34c759;--err:#d70015}
-*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:#fff;color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;overflow:hidden}
-button,input{font:inherit;color:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.45}[hidden]{display:none!important}
-header{flex:none;display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 18px;border-bottom:1px solid var(--line);background:#fbfbfd}
-.brand{display:flex;align-items:center;gap:9px;font-weight:600}.brand i{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:var(--blue);color:#fff;font-style:normal;font-size:14px}
-.pill{display:inline-flex;align-items:center;gap:8px;min-height:30px;padding:0 13px;border:1px solid #d2d2d7;border-radius:999px;background:#fff;font-size:13px}.pill b{width:7px;height:7px;border-radius:50%;background:#c7c7cc}.pill b.on{background:var(--ok)}
-.app{flex:1;min-height:0;display:grid;grid-template-columns:290px 1fr 300px}
-aside,.right{overflow:auto;padding:18px;background:#fbfbfd}aside{border-right:1px solid var(--line)}.right{border-left:1px solid var(--line)}
-h3{margin:0 0 10px;font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.02em;text-transform:uppercase}h3+*{margin-top:0}
-.box{border-radius:14px;background:#fff;border:1px solid var(--line);padding:4px 12px;margin-bottom:12px}
-.item{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px}.item+.item{border-top:1px solid var(--line)}.item>span{color:var(--muted);font-size:13px;white-space:nowrap}
-.add{min-height:28px;max-width:170px;padding:0 11px;border:0;border-radius:999px;background:var(--soft);color:var(--blue2);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cams{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;padding:6px 0}.cams span{display:inline-flex;align-items:center;gap:5px;padding:3px 4px 3px 10px;border-radius:999px;background:var(--soft);font-size:12px}.cams span button{width:18px;height:18px;border:0;border-radius:50%;background:#e3e3e8;color:var(--muted);font-size:10px}
-.seg{display:inline-flex;padding:2px;border-radius:999px;background:#ececf0}.seg button{min-height:28px;padding:0 11px;border:0;border-radius:999px;background:none;color:var(--prose);font-size:12px;font-weight:500}.seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px #0000001f}
-.beats{display:inline-flex;gap:4px}.beats button{width:32px;height:28px;border:0;border-radius:999px;background:#ececf0;color:var(--prose);font-size:12px;font-weight:500}.beats button[aria-pressed="true"]{background:var(--ink);color:#fff}
-.switch{position:relative;width:40px;height:24px;border:0;border-radius:999px;background:#e3e3e8;transition:background .2s}.switch::after{content:"";position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}.switch[aria-pressed="true"]{background:var(--ok)}.switch[aria-pressed="true"]::after{transform:translateX(16px)}
-.go{display:block;width:100%;min-height:42px;border:0;border-radius:999px;background:var(--blue);color:#fff;font-size:15px;font-weight:500}.go:hover:not(:disabled){background:#0077ed}
-.btn{min-height:36px;padding:0 16px;border:1px solid var(--blue);border-radius:999px;background:#fff;color:var(--blue);font-size:13px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none}.btn.fill{background:var(--blue);color:#fff}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.note{margin:8px 0 0;color:var(--muted);font-size:12px}
-.link{padding:0;border:0;background:none;color:var(--blue2);font-size:12px}.link:hover{text-decoration:underline}
-.drops{display:grid;gap:6px}.drow{display:grid;grid-template-columns:72px 1fr auto;align-items:center;gap:10px;padding:6px;border:1px solid transparent;border-radius:12px;background:#fff;text-align:left}
-.drow.on{border-color:var(--blue);background:#0071e30a}.drow img,.drow .ph{width:72px;height:44px;border-radius:7px;object-fit:cover;background:#e3e3e8}.drow b{font-size:14px}.drow small{display:block;color:var(--muted);font-size:11px}
-.tick{width:22px;height:22px;border-radius:50%;border:1.5px solid #c7c7cc;background:#fff;position:relative}.tick[aria-pressed="true"]{background:var(--blue);border-color:var(--blue)}.tick[aria-pressed="true"]::after{content:"";position:absolute;left:6px;top:2px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
-main{min-width:0;display:flex;flex-direction:column;background:var(--soft)}
-.stage{flex:1;min-height:0;display:grid;place-items:center;padding:24px;position:relative}
-video{max-width:100%;max-height:calc(100vh - 52px - 48px - var(--tlh,0px));border-radius:14px;background:#000;box-shadow:0 20px 50px -25px #0006}
-.empty{max-width:340px;text-align:center;color:var(--muted)}.empty strong{display:block;margin-bottom:6px;color:var(--ink);font-size:22px;font-weight:600;letter-spacing:-.01em}
-.busy{position:absolute;inset:auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:999px;background:#ffffffe6;box-shadow:0 6px 20px -10px #0004;font-size:13px}.spin{width:16px;height:16px;border-radius:50%;border:2px solid #0071e333;border-top-color:var(--blue);animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
-.tl{flex:none;padding:12px 18px 16px;background:#fff;border-top:1px solid var(--line)}.tlhead{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-bottom:8px}
-.lanes{position:relative;display:grid;gap:4px;cursor:pointer;margin-left:96px}.lane{position:relative;height:22px;border-radius:6px;background:var(--soft)}.lane em{position:absolute;left:-96px;width:88px;top:3px;font-size:11px;font-style:normal;color:var(--muted);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.blk{position:absolute;top:0;bottom:0;border-radius:5px;opacity:.9}.dropmark{position:absolute;top:-4px;bottom:-4px;width:2px;background:#ff375f;border-radius:1px}.dropmark::before{content:"DROP";position:absolute;top:-14px;left:-14px;font-size:9px;font-weight:700;color:#ff375f}
-.head{position:absolute;top:-6px;bottom:-6px;width:2px;background:var(--ink);pointer-events:none}
-.prog{margin-top:12px}.bar{height:4px;border-radius:2px;background:#e3e3e8;overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .4s}.prog p{display:flex;justify-content:space-between;gap:8px;margin:8px 0 0;font-size:12px;color:var(--muted)}
-.err{margin-top:10px;color:var(--err);font-size:13px}.done{margin-top:12px;padding:12px;border-radius:12px;background:#34c75914;font-size:13px}.done b{display:block;margin-bottom:6px}
-details{margin-top:18px;font-size:12px;color:var(--muted)}#log{max-height:180px;overflow:auto;margin-top:8px;padding:10px;border-radius:10px;background:var(--soft);font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
-dialog{width:min(400px,calc(100% - 32px));padding:28px;border:0;border-radius:22px;box-shadow:0 30px 80px -20px #0000004d}dialog::backdrop{background:#0000004d;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-dialog h2{margin:0 0 6px;font-size:24px;font-weight:600}dialog p{margin:0 0 18px;color:var(--muted);font-size:15px}
-dialog input{display:block;width:100%;min-height:44px;margin-bottom:10px;padding:0 14px;border:1px solid #d2d2d7;border-radius:12px}dialog input:focus{outline:2px solid var(--blue);border-color:transparent}
-dialog .go{margin-top:6px}.alt{display:flex;justify-content:space-between;margin-top:14px}.alt .link{font-size:14px}.or{margin:16px 0;text-align:center;color:var(--muted);font-size:13px}
-.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:44px;border:1px solid #d2d2d7;border-radius:999px;background:#fff;font-size:15px}
-.btns{display:flex;justify-content:center;gap:10px;margin-top:18px;flex-wrap:wrap}.x{position:absolute;right:16px;top:14px;width:30px;height:30px;border:0;border-radius:50%;background:var(--soft);color:var(--muted)}
-.card-over{outline:2px dashed var(--blue);outline-offset:-2px}
-@media (max-width:980px){body{overflow:auto;height:auto}.app{display:block}aside,.right{border:0}.stage{min-height:420px}}
+:root{--ink:#1d1d1f;--sub:#6e6e73;--faint:#8e8e93;--hair:#0000001f;--side:#efeff2;--panel:#f6f6f8;--canvas:#e7e7ea;--sel:#0a84ff;--blue:#0a84ff;--ok:#30d158;--err:#ff3b30;--font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Roboto,sans-serif}
+*{box-sizing:border-box;margin:0}html,body{height:100%}
+body{display:flex;flex-direction:column;overflow:hidden;background:var(--panel);color:var(--ink);font:13px/1.35 var(--font);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
+input,select,button{font:inherit;color:inherit}input{-webkit-user-select:text;user-select:text;cursor:text}[hidden]{display:none!important}
+button{cursor:default}
+/* macOS-style push buttons */
+.pb{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:24px;padding:0 12px;border:.5px solid #00000033;border-radius:6px;background:linear-gradient(#fff,#f7f7f7);box-shadow:0 .5px 1px #0000001f;font-size:13px;white-space:nowrap}
+.pb:active:not(:disabled){background:#e8e8ea}.pb:disabled{opacity:.45}
+.pb.def{border-color:#0063e1;background:linear-gradient(#3b9dff,#0a7cff);color:#fff;box-shadow:0 .5px 1px #0050c0}.pb.def:active:not(:disabled){background:#0a6fe6}
+.pb.big{height:28px;font-size:13px;padding:0 16px}.pb.wide{width:100%}
+.ib{width:28px;height:24px;padding:0;border:0;border-radius:6px;background:none;color:var(--sub)}.ib:hover{background:#0000000d}
+select{height:22px;padding:0 6px;border:.5px solid #00000033;border-radius:5px;background:#fff;box-shadow:0 .5px 1px #0000001a}
+/* ---------------------------------------------------------------- sign-in screen */
+.gate{flex:1;display:grid;place-items:center;background:radial-gradient(1200px 600px at 50% -10%,#ffffff,#ececf0)}
+.gcard{width:340px;text-align:center}.gcard img{width:72px;height:72px;margin-bottom:14px;filter:drop-shadow(0 6px 14px #0a84ff40)}
+.gcard h1{font-size:22px;font-weight:600;letter-spacing:-.01em}.gcard>p{margin:6px 0 20px;color:var(--sub)}
+.tabs{display:inline-flex;padding:2px;margin-bottom:14px;border-radius:7px;background:#00000012}.tabs button{height:22px;padding:0 14px;border:0;border-radius:5px;background:none;font-size:12px}.tabs button[aria-pressed="true"]{background:#fff;box-shadow:0 1px 2px #00000026}
+.field{display:block;width:100%;height:28px;margin-bottom:8px;padding:0 9px;border:.5px solid #00000038;border-radius:6px;background:#fff;font-size:13px}.field:focus{outline:3px solid #0a84ff55;outline-offset:0;border-color:#0a84ff}
+.gcard .pb.def{width:100%;height:28px;margin-top:4px}
+.or{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--faint);font-size:11px}.or::before,.or::after{content:"";flex:1;height:.5px;background:var(--hair)}
+.lnk{border:0;background:none;padding:0;color:var(--blue);font-size:12px}.lnk:hover{text-decoration:underline}
+.gmsg{min-height:18px;margin-top:12px;font-size:12px;color:var(--sub)}.gmsg.bad{color:var(--err)}
+.gfoot{margin-top:18px;display:flex;justify-content:space-between}
+/* ---------------------------------------------------------------- main window */
+.tb{flex:none;display:flex;align-items:center;gap:8px;height:40px;padding:0 10px;border-bottom:.5px solid var(--hair);background:linear-gradient(#f8f8fa,#efeff2)}
+.tb .title{font-weight:600}.tb .grow{flex:1}.tb .sub{color:var(--sub)}
+.who{display:flex;align-items:center;gap:6px;height:24px;padding:0 4px 0 8px;border:0;border-radius:6px;background:none}.who:hover{background:#0000000d}
+.who i{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--blue);color:#fff;font-style:normal;font-size:10px;font-weight:600}
+.lic{font-size:11px;color:var(--sub)}
+.win{flex:1;min-height:0;display:grid;grid-template-columns:236px 1fr 260px}
+.side{overflow:auto;padding:8px 8px 12px;background:var(--side);border-right:.5px solid var(--hair)}
+.sh{display:flex;justify-content:space-between;align-items:center;padding:10px 8px 4px;font-size:11px;font-weight:600;color:var(--faint)}
+.row{display:flex;align-items:center;gap:8px;width:100%;min-height:26px;padding:3px 8px;border:0;border-radius:6px;background:none;text-align:left;font-size:13px}
+.row:hover{background:#0000000a}.row.on{background:var(--sel);color:#fff}.row.on small{color:#ffffffcc}
+.row svg{flex:none;width:16px;height:16px;color:var(--blue)}.row.on svg{color:#fff}.row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row small{color:var(--faint);font-size:11px}
+.row .x{visibility:hidden;width:16px;height:16px;border:0;border-radius:50%;background:#0000001a;color:var(--sub);font-size:9px;line-height:16px;padding:0}.row:hover .x{visibility:visible}
+.row.add{color:var(--blue)}.row img,.row .ph{flex:none;width:44px;height:26px;border-radius:4px;object-fit:cover;background:#d8d8dc}
+.chk{flex:none;width:14px;height:14px;margin:0;accent-color:var(--blue)}
+.center{min-width:0;display:flex;flex-direction:column;background:var(--canvas)}
+.stage{flex:1;min-height:0;display:grid;place-items:center;padding:18px;position:relative}
+video{max-width:100%;max-height:calc(100vh - 40px - 22px - 36px - var(--tlh,0px));border-radius:8px;background:#000;box-shadow:0 12px 34px -18px #0007}
+.empty{text-align:center;color:var(--sub);max-width:320px}.empty svg{width:44px;height:44px;color:#b4b4ba;margin-bottom:10px}.empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
+.busy{position:absolute;bottom:18px;display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:7px;background:#ffffffe8;box-shadow:0 4px 14px -6px #0004;font-size:12px}
+.spin{width:12px;height:12px;border-radius:50%;border:2px solid #0a84ff33;border-top-color:var(--blue);animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.tl{flex:none;padding:8px 12px 10px;border-top:.5px solid var(--hair);background:var(--panel)}.tlh{display:flex;justify-content:space-between;margin-bottom:6px;color:var(--sub);font-size:11px;font-variant-numeric:tabular-nums}
+.lanes{position:relative;display:grid;gap:3px;margin-left:86px}.lane{position:relative;height:18px;border-radius:4px;background:#00000009}
+.lane em{position:absolute;left:-86px;width:80px;top:2px;font-size:11px;font-style:normal;color:var(--sub);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blk{position:absolute;top:1px;bottom:1px;border-radius:3px}.dm{position:absolute;top:-3px;bottom:-3px;width:2px;background:#ff375f}.hd{position:absolute;top:-5px;bottom:-5px;width:1.5px;background:var(--ink);pointer-events:none}
+.insp{overflow:auto;padding:10px 12px;background:var(--panel);border-left:.5px solid var(--hair)}
+.grp{margin-bottom:14px}.grp h4{margin:0 0 6px;font-size:11px;font-weight:600;color:var(--faint)}
+.fr{display:grid;grid-template-columns:84px 1fr;align-items:center;gap:6px 8px;min-height:26px}.fr>label{color:var(--sub);text-align:right;font-size:12px}
+.seg{display:inline-flex;padding:1px;border-radius:6px;background:#0000000f}.seg button{height:20px;padding:0 8px;border:0;border-radius:5px;background:none;font-size:12px}.seg button[aria-pressed="true"]{background:#fff;box-shadow:0 .5px 2px #0000002e}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:6px}.note{margin-top:6px;color:var(--faint);font-size:11px}
+.done{margin-top:8px;padding:8px 10px;border-radius:7px;background:#30d1581a;font-size:12px}.done b{display:block}
+.err{margin-top:8px;padding:8px 10px;border-radius:7px;background:#ff3b3014;color:#c41d14;font-size:12px}
+.sb{flex:none;display:flex;align-items:center;gap:10px;height:22px;padding:0 10px;border-top:.5px solid var(--hair);background:var(--side);font-size:11px;color:var(--sub)}
+.sb .bar{width:140px;height:4px;border-radius:2px;background:#0000001a;overflow:hidden}.sb .bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .3s}
+.sb .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+details.log{font-size:11px}#log{position:fixed;right:12px;bottom:28px;width:520px;max-height:240px;overflow:auto;padding:10px;border-radius:8px;background:#fff;box-shadow:0 10px 30px -10px #0005;font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;-webkit-user-select:text;user-select:text}
+.over{outline:2px solid var(--blue);outline-offset:-2px}
+.menu{position:fixed;right:10px;top:38px;z-index:9;width:240px;padding:10px;border-radius:9px;background:#fffffff5;border:.5px solid var(--hair);box-shadow:0 12px 32px -10px #0005}.menu b{display:block;overflow:hidden;text-overflow:ellipsis}.menu p{margin:2px 0 10px;color:var(--sub);font-size:12px}.menu .pb{width:100%;margin-top:5px}
 </style></head><body>
-<header><div class="brand"><i>R</i>Multicam AI</div><button class="pill" id="acct"><b id="adot"></b><span id="alabel">Sign in</span></button></header>
-<div class="app">
-<aside>
-<h3>Footage</h3>
-<div class="box" id="footage">
-<div class="item"><span>Music</span><button class="add" id="music">Choose…</button></div>
-<div class="item"><span>Cameras</span><div class="cams" id="cams"></div></div>
-<div class="item"><span>Cut every</span><div class="beats" id="beats"><button data-b="2" aria-pressed="false">2</button><button data-b="4" aria-pressed="true">4</button><button data-b="6" aria-pressed="true">6</button><button data-b="8" aria-pressed="true">8</button></div></div>
+<!-- ================================================================ sign in (shown until the account may use the app) -->
+<section class="gate" id="gate">
+<div class="gcard">
+<img alt="" src="${ICON}"><h1 id="gtitle">R Project Multicam AI</h1><p id="gsub">Sign in with your R Project account.</p>
+<div id="gform">
+<div class="tabs"><button id="tIn" aria-pressed="true">Sign In</button><button id="tUp" aria-pressed="false">Create Account</button></div>
+<input class="field" id="email" type="email" placeholder="Email" autocomplete="username">
+<input class="field" id="password" type="password" placeholder="Password" autocomplete="current-password">
+<input class="field" id="password2" type="password" placeholder="Confirm password" autocomplete="new-password" hidden>
+<button class="pb def" id="gsubmit">Sign In</button>
+<div class="or">or</div>
+<button class="pb wide" id="google"><svg width="14" height="14" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45 24.5c0-1.6-.1-2.8-.4-4H24v7.6h11.9c-.5 3-2.4 5.5-5.2 7.2v6h8.4c4.9-4.5 7.9-11.1 7.9-16.8z"/><path fill="#34A853" d="M24 46c6.5 0 11.9-2.1 15.9-5.8l-8.4-6c-2.2 1.5-5.1 2.4-7.5 2.4-5.8 0-10.6-3.9-12.4-9.1H2.9v6.2C6.8 41.4 14.8 46 24 46z"/><path fill="#FBBC05" d="M11.6 27.5c-.4-1.3-.7-2.6-.7-4s.3-2.8.7-4v-6.2H2.9C1.1 16.8 0 20.3 0 23.5s1.1 6.7 2.9 10.2z"/><path fill="#EA4335" d="M24 10.4c3.3 0 6.2 1.1 8.5 3.3l7.4-7.4C35.9 2.6 30.5 0 24 0 14.8 0 6.8 4.6 2.9 13.3l8.7 6.2c1.8-5.2 6.6-9.1 12.4-9.1z"/></svg>Continue with Google</button>
+<div class="gfoot"><button class="lnk" id="forgot">Forgot password?</button><button class="lnk" id="site">r-multicam.pages.dev</button></div>
 </div>
-<button class="go" id="find" disabled>Find drops</button>
-<p class="note">One folder per camera, or drop an .fcpxml here · <button class="link" id="choose">Choose XML</button></p><input id="file" type="file" accept=".fcpxml,.xml" hidden>
-<div id="dropsbox" hidden><h3 style="margin-top:22px">Drops <span id="dcount" style="text-transform:none"></span></h3><div class="drops" id="drops"></div>
-<p class="note"><button class="link" id="all">Select all for export</button></p></div>
-</aside>
-<main>
-<div class="stage" id="stage"><div class="empty" id="empty"><strong>From set to Reels.</strong>Add the music and one folder per camera, then Find drops.</div>
-<video id="vid" controls playsinline hidden></video><div class="busy" id="vbusy" hidden><span class="spin"></span><span>Preparing preview…</span></div></div>
-<div class="tl" id="tl" hidden><div class="tlhead"><span id="tlname"></span><span id="tltime">0:00</span></div><div class="lanes" id="lanes"></div></div>
+<div id="gplan" hidden><div class="two" style="margin-top:4px"><button class="pb def" id="buy">Get a Plan</button><button class="pb" id="recheck">Check Again</button></div>
+<div class="gfoot" style="justify-content:center"><button class="lnk" id="gout">Sign out</button></div></div>
+<div class="gmsg" id="gmsg" role="status"></div>
+</div></section>
+
+<!-- ================================================================ app window -->
+<section id="appv" hidden style="flex:1;min-height:0;display:flex;flex-direction:column">
+<div class="tb"><span class="title" id="ptitle">Untitled</span><span class="sub" id="pinfo"></span><span class="grow"></span>
+<button class="pb" id="find" disabled>Find Drops</button>
+<button class="who" id="who" title="Account"><span class="lic" id="lic"></span><i id="ini">R</i></button></div>
+<div class="win">
+<nav class="side" id="side">
+<div class="sh">MUSIC</div><div id="mus"></div>
+<div class="sh">CAMERAS</div><div id="cams"></div>
+<div class="sh">CUT EVERY</div><div style="padding:2px 8px 4px"><div class="seg" id="beats"><button data-b="2" aria-pressed="false">2</button><button data-b="4" aria-pressed="true">4</button><button data-b="6" aria-pressed="true">6</button><button data-b="8" aria-pressed="true">8</button></div> <small style="color:var(--faint)">beats</small></div>
+<div id="dsec" hidden><div class="sh"><span>DROPS <span id="dcount"></span></span><button class="lnk" id="all" style="font-size:11px">Select All</button></div><div id="drops"></div></div>
+<div class="sh" style="margin-top:6px">IMPORT</div>
+<button class="row" id="xmlin"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/><path d="M6.2 9.5 5 11l1.2 1.5M9.8 9.5 11 11l-1.2 1.5"/></svg><span>Final Cut / DaVinci XML…</span></button>
+</nav>
+<main class="center">
+<div class="stage" id="stage"><div class="empty" id="empty"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="38" height="28" rx="4"/><path d="m21 19 9 5-9 5z" fill="currentColor"/></svg><b id="etitle">Add your footage</b><span id="etext">Choose the music and one folder per camera in the sidebar, then click Find Drops.</span></div>
+<video id="vid" controls playsinline hidden></video><div class="busy" id="vbusy" hidden><span class="spin"></span>Preparing preview…</div></div>
+<div class="tl" id="tl" hidden><div class="tlh"><span id="tlname"></span><span id="tltime">0:00</span></div><div class="lanes" id="lanes"></div></div>
 </main>
-<div class="right">
-<h3>Export</h3>
-<div class="box">
-<div class="item"><span>Format</span><div class="seg" id="fmt"><button data-v="9x16" aria-pressed="true">9:16</button><button data-v="4x5" aria-pressed="false">4:5</button><button data-v="16x9" aria-pressed="false">16:9</button></div></div>
-<div class="item"><span>Length</span><div class="seg" id="len"><button data-v="15" aria-pressed="false">15 s</button><button data-v="30" aria-pressed="true">30 s</button><button data-v="60" aria-pressed="false">60 s</button></div></div>
-<div class="item"><span>Zoom on drop</span><button class="switch" id="zoom" aria-pressed="true" aria-label="Zoom on drop"></button></div>
-<div class="item"><span>Color</span><button class="add" id="lut">Add LUT</button></div>
-<div class="item"><span>Encoding</span><span id="enc" style="color:var(--ink)">Auto</span></div>
-</div>
-<button class="go" id="export" disabled>Export</button>
-<div class="two"><button class="btn" id="full" disabled>Full set</button><button class="btn" id="reveal">Show folder</button></div>
-<h3 style="margin-top:22px">Finish in</h3>
-<div class="two"><button class="btn" id="xfcp" disabled>Final Cut</button><button class="btn" id="xres" disabled>DaVinci</button></div>
-<p class="note">Exports the whole cut as XML for fine-tuning.</p>
-<div class="prog" id="prog" hidden><div class="bar"><i id="bar"></i></div><p><span id="ptext">Starting…</span><button class="link" id="stop">Stop</button></p></div>
+<aside class="insp">
+<div class="grp"><h4>OUTPUT</h4>
+<div class="fr"><label>Format</label><div class="seg" id="fmt"><button data-v="9x16" aria-pressed="true">9:16</button><button data-v="4x5" aria-pressed="false">4:5</button><button data-v="16x9" aria-pressed="false">16:9</button></div>
+<label>Length</label><select id="len"><option value="15">15 seconds</option><option value="30" selected>30 seconds</option><option value="60">60 seconds</option></select>
+<label>Zoom</label><label style="text-align:left;color:var(--ink);display:flex;gap:6px;align-items:center"><input type="checkbox" class="chk" id="zoom" checked>Punch in on the drop</label>
+<label>Color</label><div><button class="pb" id="lut">Add LUT…</button></div>
+<label>Encoding</label><span id="enc">Auto</span></div></div>
+<div class="grp"><button class="pb def big wide" id="export" disabled>Export</button>
+<div class="two" style="margin-top:6px"><button class="pb" id="full" disabled>Full Set</button><button class="pb" id="reveal">Show in Folder</button></div></div>
+<div class="grp"><h4>FINISH IN</h4><div class="two"><button class="pb" id="xfcp" disabled>Final Cut Pro</button><button class="pb" id="xres" disabled>DaVinci Resolve</button></div>
+<div class="note">The whole cut as XML, for fine-tuning.</div></div>
 <div class="err" id="err" role="alert" hidden></div>
 <div class="done" id="done" hidden><b id="dtitle"></b><span id="dtext"></span></div>
-<details><summary>Details · ${VERSION}</summary><div id="log"></div></details>
+</aside>
 </div>
-</div>
-<dialog id="sheet"><button class="x" id="close" aria-label="Close">✕</button>
-<div id="out"><h2>Sign in</h2><p>Use your R Project account.</p><input id="email" type="email" placeholder="Email" autocomplete="username"><input id="password" type="password" placeholder="Password" autocomplete="current-password">
-<button class="go" id="signin">Sign in</button><div class="alt"><button class="link" id="forgot">Forgot password?</button><a class="link" href="https://r-multicam.pages.dev/?signup" target="_blank" rel="noopener noreferrer">Create account</a></div>
-<div class="or">or</div><button class="gbtn" id="google">Continue with Google</button><p id="glink" hidden><a class="link" id="glinkA" href="#" target="_blank" rel="noopener">Open Google sign-in</a></p></div>
-<div id="in" hidden><h2 id="iemail"></h2><p id="ilabel"></p><div class="btns"><a class="btn fill" id="buy" href="https://r-multicam.pages.dev/#pricing" target="_blank" rel="noopener noreferrer">Get a plan</a><button class="btn" id="check">Refresh</button><button class="btn" id="signout">Sign out</button></div></div>
-<p id="amsg" style="margin:14px 0 0"></p></dialog>
+<div class="sb"><span class="grow" id="stat">Ready</span><span id="pwrap" hidden style="display:flex;align-items:center;gap:8px"><span class="bar"><i id="bar"></i></span><button class="lnk" id="stop" style="font-size:11px">Stop</button></span><button class="lnk" id="logbtn" style="font-size:11px;color:var(--sub)">Log</button><span>${VERSION}</span></div>
+<div id="log" hidden></div>
+<div class="menu" id="menu" hidden><b id="memail"></b><p id="mlabel"></p><button class="pb" id="mplan">Plans &amp; Billing</button><button class="pb" id="mcheck">Check License</button><button class="pb" id="mout">Sign Out</button></div>
+</section>
+
 <script>
 const T=${JSON.stringify(token)};const $=(id)=>document.getElementById(id);
-let last=0,beats=[4,6,8],fmt='9x16',len=30,zoom=true,sel=new Set(),active=-1,dropsKey='',signed=false,can=false,busy=false,lastAct='',lut='',tl=null,vkey='';
-const COLORS=['#0071e3','#ff9f0a','#30d158','#bf5af2','#ff375f','#64d2ff','#ffd60a','#ac8e68'];
+let last=0,beats=[4,6,8],fmt='9x16',len=30,zoom=true,sel=new Set(),active=-1,dropsKey='',can=false,signed=false,busy=false,lastAct='',lut='',tl=null,vkey='',mode='in',acct={};
+const COLORS=['#0a84ff','#ff9f0a','#30d158','#bf5af2','#ff375f','#64d2ff','#ffd60a','#ac8e68'];
+const I={music:'<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6 12.2V3.6l7-1.6v8.2a2 2 0 1 1-1.2-1.8V4.7L7.2 5.8v6.4A2 2 0 1 1 6 12.2z"/></svg>',
+ cam:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="4" width="9.5" height="8" rx="1.6"/><path d="m11 7 3.5-2v6L11 9"/></svg>',
+ plus:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg>'};
 const esc=(s)=>String(s).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const clock=(t)=>{t=Math.max(0,Math.floor(t));const h=Math.floor(t/3600),m=Math.floor(t/60)%60,x=t%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0');};
 const q=(p,o)=>p+'?t='+T+Object.entries(o||{}).map(([k,v])=>'&'+k+'='+encodeURIComponent(v)).join('');
 async function api(p,b,o){const r=await fetch(q(p,o),b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{cache:'no-store'});let j={};try{j=await r.json();}catch(e){}return j;}
 function err(m){$('err').textContent=m||'';$('err').hidden=!m;}
+function gmsg(m,bad){$('gmsg').textContent=m||'';$('gmsg').className='gmsg'+(bad?' bad':'');}
 function addLog(l){last=Math.max(last,l.n);const d=$('log');d.textContent+=(d.textContent?'\\n':'')+l.t+'  '+l.text;d.scrollTop=d.scrollHeight;}
 let es=null;function connect(){if(es)es.close();es=new EventSource(q('/api/events',{since:last}));es.onmessage=(e)=>addLog(JSON.parse(e.data));es.onerror=()=>{es.close();setTimeout(connect,2000);};}
-async function quick(p,b){err('');const r=await api(p,b||{});if(!r.ok)err(r.error);tick();return r;}
-async function run(p,b,act){if(!can){$('sheet').showModal();return;}err('');$('done').hidden=true;lastAct=act;const r=await api(p,b);if(!r.ok)err(r.error);tick();}
-async function load(f){if(!f)return;const text=await f.text();quick('/api/xml',{name:f.name,text});}
-const side=document.querySelector('aside');['dragenter','dragover'].forEach((e)=>side.addEventListener(e,(v)=>{v.preventDefault();side.classList.add('card-over');}));
-['dragleave','drop'].forEach((e)=>side.addEventListener(e,(v)=>{v.preventDefault();side.classList.remove('card-over');}));
-side.addEventListener('drop',(v)=>load(v.dataTransfer.files[0]));$('choose').onclick=()=>$('file').click();$('file').onchange=(v)=>{load(v.target.files[0]);v.target.value='';};
-$('music').onclick=()=>quick('/api/music');
-$('cams').onclick=(e)=>{if(e.target.id==='addcam')return quick('/api/camera/add',{mode:'folder'});const i=e.target.dataset.rm;if(i!=null)quick('/api/camera/remove',{index:+i});};
-const seg=(id,set)=>$(id).querySelectorAll('button').forEach((b)=>b.onclick=()=>{$(id).querySelectorAll('button').forEach((x)=>x.setAttribute('aria-pressed',String(x===b)));set(b.dataset.v);show();});
-seg('fmt',(v)=>fmt=v);seg('len',(v)=>len=+v);
+const open=(url)=>api('/api/open',{url});
+// Files dropped anywhere must never navigate the window away; an .fcpxml dropped on the sidebar is imported.
+['dragover','drop'].forEach((e)=>window.addEventListener(e,(v)=>v.preventDefault()));
+const side=$('side');side.addEventListener('dragover',()=>side.classList.add('over'));side.addEventListener('dragleave',()=>side.classList.remove('over'));
+side.addEventListener('drop',async(v)=>{side.classList.remove('over');const f=v.dataTransfer.files[0];if(f){const text=await f.text();quick('/api/xml',{name:f.name,text});}});
+document.addEventListener('contextmenu',(e)=>{if(!e.target.closest('input'))e.preventDefault();});
+// ---------------------------------------------------------------- sign in
+function setMode(m){mode=m;$('tIn').setAttribute('aria-pressed',String(m==='in'));$('tUp').setAttribute('aria-pressed',String(m==='up'));$('password2').hidden=m!=='up';$('gsubmit').textContent=m==='up'?'Create Account':'Sign In';$('password').autocomplete=m==='up'?'new-password':'current-password';gmsg('');}
+$('tIn').onclick=()=>setMode('in');$('tUp').onclick=()=>setMode('up');
+async function submit(){const email=$('email').value.trim(),pw=$('password').value;
+ if(mode==='up'&&pw!==$('password2').value)return gmsg('The passwords do not match.',true);
+ $('gsubmit').disabled=true;gmsg(mode==='up'?'Creating your account…':'Signing in…');
+ const r=await api(mode==='up'?'/api/account/signup':'/api/account/signin',{email,password:pw});$('gsubmit').disabled=false;
+ if(!r.ok)return gmsg(r.error||'Could not sign in.',true);$('password').value='';$('password2').value='';
+ if(mode==='up'&&r.message){setMode('in');gmsg(r.message);}else gmsg('');tick();}
+$('gsubmit').onclick=submit;['email','password','password2'].forEach((id)=>$(id).addEventListener('keydown',(e)=>{if(e.key==='Enter')submit();}));
+$('google').onclick=async()=>{gmsg('Continue in your browser, then come back here.');const r=await api('/api/account/google',{});if(!r.ok)gmsg(r.error,true);};
+$('forgot').onclick=async()=>{const r=await api('/api/account/forgot',{email:$('email').value});gmsg(r.ok?(r.message||'Check your email.'):r.error,!r.ok);};
+$('site').onclick=()=>open('https://r-multicam.pages.dev/');$('buy').onclick=()=>open('https://r-multicam.pages.dev/#pricing');
+$('recheck').onclick=async()=>{gmsg('Checking…');const r=await api('/api/account/check',{});gmsg(r.ok?'':r.error,!r.ok);tick();};
+const signout=async()=>{await api('/api/account/signout',{});gmsg('Signed out.');tick();};$('gout').onclick=signout;
+$('who').onclick=(e)=>{e.stopPropagation();$('memail').textContent=acct.email||'';$('mlabel').textContent=acct.detail||acct.label||'';$('menu').hidden=!$('menu').hidden;};
+document.addEventListener('click',(e)=>{if(!e.target.closest('#menu'))$('menu').hidden=true;});
+$('mplan').onclick=()=>open('https://r-multicam.pages.dev/#pricing');$('mcheck').onclick=async()=>{await api('/api/account/check',{});tick();};$('mout').onclick=()=>{$('menu').hidden=true;signout();};
+// ---------------------------------------------------------------- app
+async function quick(p,b){err('');const r=await api(p,b||{});if(!r.ok&&r.error&&!/No (music|folder|file|clips) chosen/.test(r.error))err(r.error);tick();return r;}
+async function run(p,b,act){err('');$('done').hidden=true;lastAct=act;const r=await api(p,b);if(!r.ok)err(r.error);tick();}
+$('mus').onclick=()=>quick('/api/music');
+$('cams').onclick=(e)=>{const rm=e.target.closest('[data-rm]');if(rm){e.stopPropagation();return quick('/api/camera/remove',{index:+rm.dataset.rm});}if(e.target.closest('.add'))quick('/api/camera/add',{mode:'folder'});};
+$('xmlin').onclick=()=>quick('/api/xml/pick');
 $('beats').querySelectorAll('button').forEach((b)=>b.onclick=()=>{const n=+b.dataset.b,on=beats.includes(n);if(on&&beats.length===1)return;beats=on?beats.filter((x)=>x!==n):beats.concat(n).sort();b.setAttribute('aria-pressed',String(!on));});
-$('zoom').onclick=()=>{zoom=!zoom;$('zoom').setAttribute('aria-pressed',String(zoom));show();};
+$('fmt').querySelectorAll('button').forEach((b)=>b.onclick=()=>{$('fmt').querySelectorAll('button').forEach((x)=>x.setAttribute('aria-pressed',String(x===b)));fmt=b.dataset.v;show();});
+$('len').onchange=()=>{len=+$('len').value;show();};$('zoom').onchange=()=>{zoom=$('zoom').checked;show();};
 $('lut').onclick=()=>quick(lut?'/api/lut/clear':'/api/lut').then(show);
 $('find').onclick=()=>run('/api/drops',{cadences:beats},'drops');
-$('drops').onclick=(e)=>{const row=e.target.closest('.drow');if(!row)return;const i=+row.dataset.i;
- if(e.target.closest('.tick')){sel.has(i)?sel.delete(i):sel.add(i);e.target.closest('.tick').setAttribute('aria-pressed',String(sel.has(i)));count();return;}
- active=i;document.querySelectorAll('.drow').forEach((r)=>r.classList.toggle('on',+r.dataset.i===i));show();};
-$('all').onclick=()=>{const ticks=[...document.querySelectorAll('.drow')];const allOn=ticks.every((r)=>sel.has(+r.dataset.i));ticks.forEach((r)=>{const i=+r.dataset.i;allOn?sel.delete(i):sel.add(i);r.querySelector('.tick').setAttribute('aria-pressed',String(!allOn));});count();};
-function count(){const n=sel.size;$('export').textContent=n?'Export '+n+' clip'+(n>1?'s':''):'Tick drops to export';$('export').disabled=busy||!n;}
+$('drops').onclick=(e)=>{const row=e.target.closest('.row');if(!row)return;const i=+row.dataset.i;
+ if(e.target.classList.contains('chk')){e.target.checked?sel.add(i):sel.delete(i);count();return;}
+ active=i;document.querySelectorAll('#drops .row').forEach((r)=>r.classList.toggle('on',+r.dataset.i===i));show();};
+$('all').onclick=()=>{const rows=[...document.querySelectorAll('#drops .row')];const allOn=rows.every((r)=>sel.has(+r.dataset.i));rows.forEach((r)=>{const i=+r.dataset.i;allOn?sel.delete(i):sel.add(i);r.querySelector('.chk').checked=!allOn;});count();};
+function count(){const n=sel.size;$('export').textContent=n?'Export '+n+' Clip'+(n>1?'s':''):'Tick drops to export';$('export').disabled=busy||!n;}
 $('export').onclick=()=>run('/api/export',{drops:[...sel],format:fmt,length:len,zoom},'video');
 $('full').onclick=()=>run('/api/export',{full:true,format:fmt,zoom},'video');
 $('xfcp').onclick=()=>run('/api/export-xml',{target:'fcp'},'fcp');$('xres').onclick=()=>run('/api/export-xml',{target:'resolve'},'resolve');
 $('stop').onclick=()=>api('/api/stop',{});$('reveal').onclick=()=>api(lastAct==='video'?'/api/open-folder':'/api/reveal',{});
-// Preview: a fast low-resolution render of the chosen drop, with its camera timeline underneath.
+$('logbtn').onclick=()=>{$('log').hidden=!$('log').hidden;};
 const vid=$('vid');vid.addEventListener('loadstart',()=>{if(vid.src)$('vbusy').hidden=false;});vid.addEventListener('canplay',()=>{$('vbusy').hidden=true;});
-vid.addEventListener('error',()=>{$('vbusy').hidden=true;if(vid.src)err('Preview could not be made. Details shows why.');});
+vid.addEventListener('error',()=>{$('vbusy').hidden=true;if(vid.src)err('The preview could not be made. Open the Log for details.');});
 async function show(){if(active<0)return;const key=[active,fmt,len,zoom,lut].join('|');
  const r=await api('/api/timeline',null,{i:active,l:len});if(r.ok){tl=r.timeline;drawTl();}
  if(key===vkey)return;vkey=key;$('empty').hidden=true;vid.hidden=false;vid.src=q('/api/preview',{i:active,f:fmt,l:len,z:zoom?1:0,k:key});vid.play().catch(()=>{});}
-function drawTl(){if(!tl)return;$('tl').hidden=false;document.body.style.setProperty('--tlh',(56+tl.cameras.length*26)+'px');$('tlname').textContent='Drop at '+clock(tl.start+tl.drop)+' · '+tl.shots.length+' shots';
- const L=tl.length,pct=(t)=>(t/L*100).toFixed(3)+'%';
- $('lanes').innerHTML=tl.cameras.map((c,k)=>'<div class="lane"><em>'+esc(c.name)+'</em>'+tl.shots.filter((s)=>s.camera===k).map((s)=>'<i class="blk" style="left:'+pct(s.start)+';width:'+pct(s.end-s.start)+';background:'+COLORS[k%COLORS.length]+'"></i>').join('')+'</div>').join('')+
-  '<i class="dropmark" style="left:'+pct(tl.drop)+'"></i><i class="head" id="head" style="left:0"></i>';}
+function drawTl(){if(!tl)return;$('tl').hidden=false;document.body.style.setProperty('--tlh',(44+tl.cameras.length*21)+'px');
+ $('tlname').textContent='Drop at '+clock(tl.start+tl.drop)+' · '+tl.shots.length+' shots';const L=tl.length,pct=(t)=>(t/L*100).toFixed(3)+'%';
+ $('lanes').innerHTML=tl.cameras.map((c,k)=>'<div class="lane"><em>'+esc(c.name)+'</em>'+tl.shots.filter((s)=>s.camera===k).map((s)=>'<i class="blk" style="left:'+pct(s.start)+';width:'+pct(s.end-s.start)+';background:'+COLORS[k%COLORS.length]+'"></i>').join('')+'</div>').join('')+'<i class="dm" style="left:'+pct(tl.drop)+'"></i><i class="hd" id="hd" style="left:0"></i>';}
 $('lanes').onclick=(e)=>{if(!tl||vid.hidden)return;const r=$('lanes').getBoundingClientRect();vid.currentTime=Math.max(0,Math.min(tl.length,(e.clientX-r.left)/r.width*tl.length));};
-(function loop(){if(tl&&!vid.hidden&&$('head')){$('head').style.left=(Math.min(1,vid.currentTime/tl.length)*100)+'%';$('tltime').textContent=clock(vid.currentTime)+' / '+clock(tl.length);}requestAnimationFrame(loop);})();
-$('acct').onclick=()=>$('sheet').showModal();$('close').onclick=()=>$('sheet').close();
-const acc=async(p,b)=>{const r=await api(p,b);$('amsg').textContent=r.ok?(r.message||''):(r.error||'');tick();return r;};
-$('signin').onclick=async()=>{await acc('/api/account/signin',{email:$('email').value,password:$('password').value});$('password').value='';};
-$('forgot').onclick=()=>acc('/api/account/forgot',{email:$('email').value});$('signout').onclick=()=>acc('/api/account/signout',{});$('check').onclick=()=>acc('/api/account/check',{});
-$('google').onclick=async()=>{const w=window.open('about:blank','_blank');const r=await acc('/api/account/google',{});if(r.link){if(w)w.location=r.link;$('glinkA').href=r.link;$('glink').hidden=false;}else if(w)w.close();};
+(function loop(){if(tl&&!vid.hidden&&$('hd')){$('hd').style.left=(Math.min(1,vid.currentTime/tl.length)*100)+'%';$('tltime').textContent=clock(vid.currentTime)+' / '+clock(tl.length);}requestAnimationFrame(loop);})();
 async function tick(){let s;try{s=await api('/api/status');}catch(e){return;}if(!s.ok)return;
- const a=s.account||{};signed=!!a.signedIn;can=!!a.canUse;$('adot').className=can?'on':'';$('alabel').textContent=signed?a.label:'Sign in';
- $('out').hidden=signed;$('in').hidden=!signed;$('iemail').textContent=a.email||'';$('ilabel').textContent=a.detail||a.label||'';$('buy').hidden=a.licenseStatus==='lifetime';
+ acct=s.account||{};signed=!!acct.signedIn;can=!!acct.canUse;
+ // Gate: the app opens only for a signed-in account that may use it (trial, plan or lifetime).
+ const inApp=signed&&can;$('gate').hidden=inApp;$('appv').hidden=!inApp;
+ if(!inApp){const plan=signed&&!can;$('gform').hidden=plan;$('gplan').hidden=!plan;
+  $('gtitle').textContent=plan?(acct.label||'Your access has ended'):'R Project Multicam AI';
+  $('gsub').textContent=plan?(acct.detail||'Get a plan to keep using R Project Multicam AI on this computer.')+' · '+(acct.email||''):(mode==='up'?'Create your R Project account.':'Sign in with your R Project account.');
+  if(acct.googlePending)gmsg('Waiting for Google sign-in in your browser…');return;}
+ $('lic').textContent=acct.label||'';$('ini').textContent=(acct.email||'R')[0].toUpperCase();$('who').title=acct.email||'';
  const st=s.studio||{};busy=!!s.busy;
- $('music').textContent=st.music?'♪ '+st.music.split(/[\\\\/]/).pop():'Choose…';$('music').title=st.music||'';
- $('cams').innerHTML=(st.cameras||[]).map((c,i)=>'<span>'+esc(c.name)+' · '+c.files+'<button data-rm="'+i+'" aria-label="Remove">✕</button></span>').join('')+'<button class="add" id="addcam">+ Add</button>';
- const ready=!!(st.music&&(st.cameras||[]).length);$('find').disabled=busy||!ready;$('find').textContent=can?(st.set?'Find drops again':'Find drops'):'Sign in to start';
+ const mname=st.music?st.music.split(/[\\\\/]/).pop():'';
+ $('mus').innerHTML='<button class="row'+(st.music?'':' add')+'">'+(st.music?I.music:I.plus)+'<span>'+esc(mname||'Choose Music…')+'</span></button>';
+ $('cams').innerHTML=(st.cameras||[]).map((c,i)=>'<div class="row">'+I.cam+'<span>'+esc(c.name)+'</span><small>'+c.files+'</small><button class="x" data-rm="'+i+'" title="Remove">✕</button></div>').join('')+'<button class="row add">'+I.plus+'<span>Add Camera Folder…</span></button>';
+ $('ptitle').textContent=st.timeline?st.timeline.title:mname?mname.replace(/\\.[^.]+$/,''):'Untitled';
+ $('pinfo').textContent=st.set?clock(st.set.duration)+' · '+st.set.cuts+' cuts'+(st.set.bpm?' · '+Math.round(st.set.bpm)+' BPM':''):'';
+ const ready=!!(st.music&&(st.cameras||[]).length);$('find').disabled=busy||!ready;$('find').textContent=st.set?'Find Drops Again':'Find Drops';$('find').classList.toggle('def',ready&&!st.set);
+ if(!st.set){$('etitle').textContent=ready?'Ready to find the drops':'Add your footage';$('etext').textContent=ready?'Click Find Drops in the toolbar. The cameras are synced to the music and every drop is listed in the sidebar.':'Choose the music and one folder per camera in the sidebar, then click Find Drops.';}
  const d=st.drops||[],key=st.set?d.map((x)=>x.time).join(','):'';
  if(key!==dropsKey){dropsKey=key;sel=new Set();active=-1;vkey='';tl=null;vid.removeAttribute('src');vid.hidden=true;$('tl').hidden=true;$('empty').hidden=false;
-  $('drops').innerHTML=d.map((x,n)=>'<div class="drow" data-i="'+x.index+'" role="button" tabindex="0">'+(x.thumb?'<img alt="" src="'+q('/api/thumb',{i:x.index,k:key})+'">':'<span class="ph"></span>')+'<span><b>'+clock(x.time)+'</b><small>Drop '+(n+1)+'</small></span><button class="tick" aria-pressed="false" aria-label="Export this drop"></button></div>').join('');
-  if(d.length){active=d[0].index;document.querySelector('.drow').classList.add('on');setTimeout(show,0);}}
- $('dropsbox').hidden=!st.set;$('dcount').textContent=d.length?'· '+d.length:'';count();
- lut=st.lut||'';$('lut').textContent=lut?lut+'  ✕':'Add LUT';$('enc').textContent=st.encoder||'Auto';
+  $('drops').innerHTML=d.map((x,n)=>'<div class="row" data-i="'+x.index+'">'+(x.thumb?'<img alt="" src="'+q('/api/thumb',{i:x.index,k:key})+'">':'<span class="ph"></span>')+'<span>'+clock(x.time)+' <small>Drop '+(n+1)+'</small></span><input type="checkbox" class="chk" title="Export this drop"></div>').join('');
+  if(d.length){active=d[0].index;document.querySelector('#drops .row').classList.add('on');setTimeout(show,0);}}
+ $('dsec').hidden=!st.set;$('dcount').textContent=d.length?'· '+d.length:'';count();
+ lut=st.lut||'';$('lut').textContent=lut?lut+'  ✕':'Add LUT…';$('enc').textContent=st.encoder||'Auto';
  ['full','xfcp','xres'].forEach((id)=>$(id).disabled=busy||!st.set);
- const p=s.progress;$('prog').hidden=!busy;if(busy&&p){$('bar').style.width=Math.round(p.p*100)+'%';$('ptext').textContent=p.text||s.busy;}
+ const p=s.progress;$('pwrap').hidden=!busy;$('stat').textContent=busy&&p?(p.text||s.busy):(st.set?d.length+' drop'+(d.length===1?'':'s')+' found':'Ready');if(busy&&p)$('bar').style.width=Math.round(p.p*100)+'%';
  const lr=s.lastResult;if(!busy&&lr&&lr.ok===false&&!lr.license&&lr.at>(window._shown||0)){window._shown=lr.at;err(lr.error);}
  if(!busy&&lr&&lr.ok!==false&&lr.at>(window._done||0)&&/Export/.test(lr.action||'')){window._done=lr.at;$('done').hidden=false;
-  if(lr.action==='Export'){$('dtitle').textContent=lr.exported+' video'+(lr.exported>1?'s':'')+' ready to post.';$('dtext').textContent='Saved next to your project · '+(lr.encoders||'');lastAct='video';}
-  else{$('dtitle').textContent='XML ready.';$('dtext').textContent=lr.target==='resolve'?'In DaVinci Resolve: File → Import → Timeline.':lr.openedIn==='Final Cut Pro'?'Opened in Final Cut Pro.':'In Final Cut Pro: File → Import → XML.';lastAct='xml';}}
+  if(lr.action==='Export'){$('dtitle').textContent=lr.exported+' video'+(lr.exported>1?'s':'')+' ready to post';$('dtext').textContent=lr.encoders?'Encoded with '+lr.encoders+'.':'';lastAct='video';}
+  else{$('dtitle').textContent='XML ready';$('dtext').textContent=lr.target==='resolve'?'In DaVinci Resolve: File → Import → Timeline.':lr.openedIn==='Final Cut Pro'?'Opened in Final Cut Pro.':'In Final Cut Pro: File → Import → XML.';lastAct='xml';}}
  if(busy)$('done').hidden=true;}
 connect();tick();setInterval(tick,1000);
 </script></body></html>`;

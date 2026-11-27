@@ -86,7 +86,7 @@ function call(eng, method, p, body, headers = {}) {
       assert.equal((await call(eng, 'GET', '/api/status', null, { Host: 'evil.example:80' })).status, 403);
       assert.equal((await call(eng, 'POST', '/api/music', {}, { Origin: 'http://evil.example' })).status, 403);
       const page = await call(eng, 'GET', '/');
-      assert.equal(page.status, 200); assert.match(page.text, /From set to Reels\./); assert.match(page.text, /drop an \.fcpxml here/); assert.doesNotMatch(page.text, /\$\{/);
+      assert.equal(page.status, 200); assert.match(page.text, /Sign in with your R Project account\./); assert.match(page.text, /Find Drops/); assert.match(page.text, /Final Cut \/ DaVinci XML/); assert.doesNotMatch(page.text, /\$\{/);
     });
 
     await test('nothing chosen yet: Create Multicam Edit explains what is missing', async () => {

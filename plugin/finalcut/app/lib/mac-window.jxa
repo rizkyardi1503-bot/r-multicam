@@ -1,0 +1,59 @@
+// R Project Multicam AI: the app window on macOS, a real Cocoa window with a WebKit view (no browser needed).
+// Run by the engine:  osascript -l JavaScript mac-window.jxa <url> <icon.icns>
+// Quits when the window closes; the engine then stops too.
+ObjC.import('Cocoa');
+ObjC.import('WebKit');
+
+function run(argv) {
+  var url = argv[0], icon = argv[1];
+  try { $.NSProcessInfo.processInfo.processName = 'R Project Multicam AI'; } catch (e) { /* menu title stays osascript */ }
+  var app = $.NSApplication.sharedApplication;
+  app.setActivationPolicy(0);                                            // regular app: Dock icon and menu bar
+  if (icon) { var img = $.NSImage.alloc.initWithContentsOfFile(icon); if (img && !img.isNil()) app.applicationIconImage = img; }
+
+  ObjC.registerSubclass({
+    name: 'RPAppDelegate', superclass: 'NSObject', protocols: ['NSApplicationDelegate'],
+    methods: { 'applicationShouldTerminateAfterLastWindowClosed:': { types: ['bool', ['id']], implementation: function () { return true; } } },
+  });
+  var delegate = $.RPAppDelegate.alloc.init;
+  app.delegate = delegate;
+
+  // Menus: app menu (Hide, Quit) and Edit (so Cmd+C / Cmd+V / Cmd+A work in the sign-in fields).
+  var bar = $.NSMenu.alloc.init;
+  var add = function (menu, title, action, key) { var it = $.NSMenuItem.alloc.initWithTitleActionKeyEquivalent(title, action, key); menu.addItem(it); return it; };
+  var appItem = $.NSMenuItem.alloc.init; bar.addItem(appItem);
+  var appMenu = $.NSMenu.alloc.initWithTitle('R Project Multicam AI');
+  add(appMenu, 'Hide R Project Multicam AI', 'hide:', 'h');
+  appMenu.addItem($.NSMenuItem.separatorItem);
+  add(appMenu, 'Quit R Project Multicam AI', 'terminate:', 'q');
+  appItem.submenu = appMenu;
+  var editItem = $.NSMenuItem.alloc.init; bar.addItem(editItem);
+  var edit = $.NSMenu.alloc.initWithTitle('Edit');
+  [['Undo', 'undo:', 'z'], ['Redo', 'redo:', 'Z'], ['Cut', 'cut:', 'x'], ['Copy', 'copy:', 'c'], ['Paste', 'paste:', 'v'], ['Select All', 'selectAll:', 'a']]
+    .forEach(function (m) { add(edit, m[0], m[1], m[2]); });
+  editItem.submenu = edit;
+  var winItem = $.NSMenuItem.alloc.init; bar.addItem(winItem);
+  var winMenu = $.NSMenu.alloc.initWithTitle('Window');
+  add(winMenu, 'Minimize', 'performMiniaturize:', 'm');
+  add(winMenu, 'Close', 'performClose:', 'w');
+  winItem.submenu = winMenu;
+  app.mainMenu = bar;
+
+  // titled | closable | miniaturizable | resizable
+  var win = $.NSWindow.alloc.initWithContentRectStyleMaskBackingDefer($.NSMakeRect(0, 0, 1320, 840), 15, 2, false);
+  win.title = 'R Project Multicam AI';
+  win.minSize = $.NSMakeSize(1000, 640);
+  win.center;
+  win.setFrameAutosaveName('RProjectMulticamAIMain');
+  win.releasedWhenClosed = false;
+
+  var cfg = $.WKWebViewConfiguration.alloc.init;
+  var view = $.WKWebView.alloc.initWithFrameConfiguration(win.contentView.bounds, cfg);
+  view.autoresizingMask = 18;                                            // width + height sizable
+  win.contentView.addSubview(view);
+  view.loadRequest($.NSURLRequest.requestWithURL($.NSURL.URLWithString(url)));
+
+  win.makeKeyAndOrderFront(null);
+  app.activateIgnoringOtherApps(true);
+  app.run;
+}

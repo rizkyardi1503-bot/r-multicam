@@ -55,7 +55,9 @@ const winPicker = {
   folder: () => psDialog('$d=New-Object System.Windows.Forms.FolderBrowserDialog;$d.Description=' + psq('Choose the folder with the clips of ONE camera') + ';if($d.ShowDialog($o) -eq "OK"){$d.SelectedPath}'),
   files: () => winFile('Choose the clips of ONE camera', 'Video|*.mov;*.mp4;*.m4v;*.mxf;*.mts;*.m2ts;*.avi;*.mkv|All files|*.*', true),
   lut: () => winFile('Choose a LUT', 'LUT (.cube)|*.cube'),
+  xml: () => winFile('Choose the FCPXML exported from Final Cut Pro or DaVinci Resolve', 'FCPXML|*.fcpxml;*.xml'),
 };
+macPicker.xml = () => osascript('set f to choose file with prompt ' + asText('Choose the FCPXML exported from Final Cut Pro or DaVinci Resolve') + '\nreturn POSIX path of f');
 macPicker.lut = () => osascript('set f to choose file with prompt ' + asText('Choose a LUT (.cube)') + '\nreturn POSIX path of f');
 
 /** Video files directly in a folder (not sub-folders), in name order. */
@@ -220,6 +222,13 @@ class Studio {
     job.catch(() => this.previews.delete(key));
     this.previews.set(key, job);
     return job;
+  }
+
+  async pickXml() {
+    let [file] = await this.picker.xml();
+    if (!file) return { message: 'No file chosen.' };
+    if (fs.statSync(file).isDirectory()) { const inner = path.join(file, 'Info.fcpxml'); if (fs.existsSync(inner)) file = inner; }   // .fcpxmld bundle
+    return this.loadTimeline(fs.readFileSync(file, 'utf8'), path.basename(file));
   }
 
   async pickLut() {
