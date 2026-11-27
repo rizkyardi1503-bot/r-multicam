@@ -42,11 +42,22 @@ try {
   run('makensis', ['-V2', '-DVERSION=' + VERSION, '-DSRC=' + pkg, '-DOUT=' + exe, '-DNODEDIR=' + nodeDir, '-DFFDIR=' + ffDir, path.join(HERE, 'setup.nsi')]);
   outputs.push(exe);
 
-  // ---------------------------------------------------------------- macOS: .app inside a .dmg
-  const vol = path.join(work, 'dmg'), app = path.join(vol, 'R Project Multicam AI.app'), contents = path.join(app, 'Contents');
-  fs.mkdirSync(path.join(contents, 'MacOS'), { recursive: true });
-  fs.mkdirSync(path.join(contents, 'Resources'), { recursive: true });
-  fs.writeFileSync(path.join(contents, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+  // ---------------------------------------------------------------- macOS: self-contained .app, one ZIP per processor
+  // The app carries the engine, Node.js and FFmpeg (pinned builds, the same SHA-256 as Install-FinalCut.command), so it
+  // runs without installing or downloading anything. ZIP (not .dmg) keeps it small enough and Archive Utility keeps the
+  // executable bits.
+  const MAC = [
+    { arch: 'arm64', label: 'AppleSilicon', node: ['https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-arm64.tar.gz', 'bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057', 'node-v24.21.0-darwin-arm64'],
+      ff: ['https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip', 'c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924', 'ffmpeg-mac-arm64.zip'] },
+    { arch: 'x86_64', label: 'Intel', node: ['https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-x64.tar.gz', '1462cb3b3046b815cf8ea436d3da450ec1a9f11dac7e5a46b0ada5305d7e8097', 'node-v24.21.0-darwin-x64'],
+      ff: ['https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffmpeg.zip', '7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4', 'ffmpeg-mac-amd64.zip'] },
+  ];
+  for (const m of MAC) {
+    const nodeTgz = fetch([m.node[0]], m.node[1], m.node[2] + '.tar.gz'), ffz = fetch([m.ff[0]], m.ff[1], m.ff[2]);
+    const vol = path.join(work, 'mac-' + m.arch), app = path.join(vol, 'R Project Multicam AI.app'), contents = path.join(app, 'Contents');
+    const res = path.join(contents, 'Resources'), rt = path.join(res, 'runtime');
+    fs.mkdirSync(path.join(contents, 'MacOS'), { recursive: true }); fs.mkdirSync(rt, { recursive: true });
+    fs.writeFileSync(path.join(contents, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>R Project Multicam AI</string>
@@ -62,27 +73,36 @@ try {
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 `);
-  const launcher = path.join(contents, 'MacOS', 'R Project Multicam AI');
-  fs.copyFileSync(path.join(HERE, 'mac-launcher.sh'), launcher); fs.chmodSync(launcher, 0o755);
-  fs.copyFileSync(path.join(pkg, 'app', 'assets', 'icon.icns'), path.join(contents, 'Resources', 'AppIcon.icns'));
-  const payload = path.join(contents, 'Resources', 'payload');
-  fs.cpSync(pkg, payload, { recursive: true });
-  for (const f of ['Install-FinalCut.command', 'Uninstall-FinalCut.command']) fs.chmodSync(path.join(payload, f), 0o755);
-  fs.writeFileSync(path.join(payload, 'VERSION.txt'), VERSION);
-  fs.symlinkSync('/Applications', path.join(vol, 'Applications'));
-  fs.writeFileSync(path.join(vol, 'Read me.txt'), [
-    'R Project Multicam AI ' + VERSION, '',
-    '1. Drag "R Project Multicam AI" onto Applications.',
-    '2. Open it from Applications. The first time macOS asks: right-click the app > Open > Open',
-    '   (on macOS 15: System Settings > Privacy & Security > Open Anyway).',
-    '3. The first launch sets up Node.js and FFmpeg (about a minute, stay online), then the app opens.', '',
-    '1. Seret "R Project Multicam AI" ke Applications.',
-    '2. Buka dari Applications. Pertama kali: klik kanan aplikasi > Open > Open',
-    '   (macOS 15: System Settings > Privacy & Security > Open Anyway).',
-    '3. Pembukaan pertama menyiapkan Node.js dan FFmpeg (sekitar 1 menit, tetap online), lalu aplikasi terbuka.', ''].join('\n'));
-  const dmg = path.join(OUT, 'R-Project-Multicam-AI-' + VERSION + '.dmg');
-  run('genisoimage', ['-quiet', '-V', 'R Project Multicam AI', '-D', '-R', '-J', '-joliet-long', '-no-pad', '-o', dmg, vol]);
-  outputs.push(dmg);
+    const launcher = path.join(contents, 'MacOS', 'R Project Multicam AI');
+    fs.copyFileSync(path.join(HERE, 'mac-launcher.sh'), launcher); fs.chmodSync(launcher, 0o755);
+    fs.copyFileSync(path.join(pkg, 'app', 'assets', 'icon.icns'), path.join(res, 'AppIcon.icns'));
+    fs.cpSync(path.join(pkg, 'app'), path.join(res, 'app'), { recursive: true });
+    for (const f of ['README-FinalCut.md', 'THIRD-PARTY-NOTICES.txt']) fs.copyFileSync(path.join(pkg, f), path.join(res, f));
+    run('tar', ['-xzf', nodeTgz, '-C', work, m.node[2] + '/bin/node', m.node[2] + '/LICENSE']);
+    fs.renameSync(path.join(work, m.node[2], 'bin', 'node'), path.join(rt, 'node'));
+    fs.renameSync(path.join(work, m.node[2], 'LICENSE'), path.join(rt, 'NODE-LICENSE.txt'));
+    const ffx = path.join(work, 'ff-' + m.arch); run('unzip', ['-q', '-o', ffz, '-d', ffx]);
+    const ffbin = run('find', [ffx, '-type', 'f', '-name', 'ffmpeg']).trim().split('\n')[0];
+    fs.renameSync(ffbin, path.join(rt, 'ffmpeg'));
+    fs.chmodSync(path.join(rt, 'node'), 0o755); fs.chmodSync(path.join(rt, 'ffmpeg'), 0o755);
+    fs.writeFileSync(path.join(rt, 'ARCH.txt'), m.arch);
+    fs.writeFileSync(path.join(vol, 'Read me.txt'), [
+      'R Project Multicam AI ' + VERSION + ' for ' + (m.arch === 'arm64' ? 'Macs with Apple silicon (M1 or newer)' : 'Intel Macs'), '',
+      '1. Drag "R Project Multicam AI" into your Applications folder.',
+      '2. Right-click it > Open > Open (only the first time).',
+      '   macOS 15 or newer: open it once, then System Settings > Privacy & Security > Open Anyway.',
+      'Nothing else to install: the app includes everything it needs.', '',
+      '1. Seret "R Project Multicam AI" ke folder Applications.',
+      '2. Klik kanan > Open > Open (hanya pertama kali).',
+      '   macOS 15 ke atas: buka sekali, lalu System Settings > Privacy & Security > Open Anyway.',
+      'Tidak perlu install apa-apa lagi: semua sudah ada di dalam aplikasi.', ''].join('\n'));
+    const zip = path.join(OUT, 'R-Project-Multicam-AI-' + VERSION + '-Mac-' + m.label + '.zip');
+    fs.rmSync(zip, { force: true });
+    run('zip', ['-q', '-r', '-y', '-9', '-X', zip, 'R Project Multicam AI.app', 'Read me.txt'], { cwd: vol });
+    outputs.push(zip);
+  }
+  fs.rmSync(path.join(OUT, 'R-Project-Multicam-AI-' + VERSION + '.dmg'), { force: true });
+  fs.rmSync(path.join(OUT, 'R-Project-Multicam-AI-' + VERSION + '.dmg.sha256'), { force: true });
 
   for (const f of outputs) {
     fs.writeFileSync(f + '.sha256', sha(f) + '  ' + path.basename(f) + '\n');
