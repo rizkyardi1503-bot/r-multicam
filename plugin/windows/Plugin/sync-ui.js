@@ -131,7 +131,9 @@ async function analyzeRun(sources,cameras,ffmpeg,state,progress,deps,ctl){
  }
  var fb=await fallbacks(synced,master,parts,Number(seq.duration));
  planDrones(results,fb.duration,frame,deps.learned||loadLearned());
- await verifyDrones(results,ffmpeg,state,progress,deps);
+ // The venue-light check is not run by Analyze any more (it read whole camera files): drones follow the Osmo's clock
+ // (decided 27 Nov 2026). verifyDrones stays available to callers that ask for it.
+ if(deps&&deps.visual)await verifyDrones(results,ffmpeg,state,progress,deps);
  progress(1,'Sync analysis complete');
  var out={sequenceName:seq.name,sequenceID:seq.id||'',a1Signature:seq.a1Signature||'',frame:frame,cameras:results};if(fb.reference)out.reference=fb.reference;
  return out;

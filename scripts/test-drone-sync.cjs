@@ -37,7 +37,9 @@ for (const platform of ['windows', 'macos']) {
     assert.equal(p.reference, 'cam 3');
     assert.equal(placed(p).length, 50);
     assert.ok(Math.abs(placed(p)[0].start - 957.88) < 0.05, 'first clip at ' + placed(p)[0].start);
-    assert.match(p.warnings[0], /^cam 4 clock places 0 drone clip\(s\) inside the music; the drone follows cam 3 instead \(50 inside\)\.$/);
+    // The Osmo is taken first, so the Blackmagic is never tried and there is nothing to explain.
+    assert.equal(p.osmo, true);
+    assert.ok(!p.warnings.some((w) => /instead/.test(w)));
   });
   test(platform + ': without the Osmo the drone follows the Sony clock (all clips placed, ~67 s later)', () => {
     const p = D.planDrone(drone, [sony, bmd], { musicDuration: MUSIC, frame: 0.04, learned: {} });
@@ -54,7 +56,7 @@ for (const platform of ['windows', 'macos']) {
   test(platform + ': when every camera places the drone inside the music, the old order still decides (no change for working shoots)', () => {
     const goodBmd = Object.assign({}, bmd, { anchor: masterLocal - ZONE + 1.5 });
     const p = D.planDrone(drone, [sony, osmo, goodBmd], { musicDuration: MUSIC, frame: 0.04, learned: {} });
-    assert.equal(p.reference, 'cam 4', 'same-zone camera still preferred on a tie');
+    assert.equal(p.reference, 'cam 3', 'the Osmo is always the reference when it recorded (decided 27 Nov 2026)');
     assert.equal(placed(p).length, 50);
     assert.ok(!p.warnings.some((w) => /instead/.test(w)));
   });
@@ -98,6 +100,14 @@ for (const platform of ['windows', 'macos']) {
     const p = D.planDrone(mini, [sameBrandBmd, osmoUtc], { musicDuration: MUSIC, frame: 0.04, learned });
     assert.equal(p.reference, 'cam 3');
     assert.equal(p.paired, true);
+  });
+  test(platform + ': any drone follows the Osmo, even a new drone with nothing remembered and a better-ranked camera', () => {
+    // Zumana 25 Nov layout: the Blackmagic shares the Mavic's zone (true UTC) and would rank first; the Osmo wins.
+    const p = D.planDrone(drone, [sony, osmo, bmd], { musicDuration: MUSIC, frame: 0.04, learned: {} });
+    assert.equal(p.reference, 'cam 3');
+    assert.equal(p.osmo, true);
+    const noOsmo = D.planDrone(drone, [sony, bmd], { musicDuration: MUSIC, frame: 0.04, learned: {} });
+    assert.ok(noOsmo.reference && noOsmo.reference !== 'cam 3', 'without an Osmo the old ranking still works');
   });
   test(platform + ': no clocked camera at all keeps the old explanation', () => {
     const p = D.planDrone(drone, [Object.assign({}, osmo, { anchor: NaN })], { musicDuration: MUSIC, frame: 0.04, learned: {} });
