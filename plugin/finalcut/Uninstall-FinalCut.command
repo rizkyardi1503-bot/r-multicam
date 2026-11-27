@@ -8,7 +8,7 @@ if [ -f "$DEST/engine.lock" ]; then
   PID="$(sed -n 's/.*"pid":\([0-9]*\).*/\1/p' "$DEST/engine.lock" 2>/dev/null || true)"
   if [ -n "$PID" ] && ps -p "$PID" -o command= 2>/dev/null | grep -q rp-finalcut-engine; then kill "$PID" 2>/dev/null || true; fi
 fi
-rm -rf "$DEST" "$ROOT/Applications/R Project Engine for Final Cut.app"
-rm -f "$ROOT/Desktop/R Project Engine for Final Cut.app"
+rm -rf "$DEST" "$ROOT/Applications/R Project Engine for Final Cut.app" "$ROOT/Applications/R Project Multicam AI.app"
+rm -f "$ROOT/Desktop/R Project Engine for Final Cut.app" "$ROOT/Desktop/R Project Multicam AI.app"
 echo "R Project Multicam AI for Final Cut Pro was removed. Your edits in Movies/R Project Multicam are kept."
 echo "R Project Multicam AI untuk Final Cut Pro sudah dihapus. Hasil edit di Movies/R Project Multicam tetap ada."

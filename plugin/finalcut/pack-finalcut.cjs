@@ -1,4 +1,4 @@
-// Builds releases/finalcut/R-Project-Multicam-AI-FinalCut-macOS-v<version>.zip (+ .sha256) deterministically: fixed file
+// Builds releases/finalcut/R-Project-Multicam-AI-XML-v<version>.zip (+ .sha256) deterministically: fixed file
 // list, sorted entries, fixed timestamps, Unix modes (the .command files stay executable after Archive Utility
 // extracts them) and SHA256SUMS-FinalCut.txt for the installer's integrity check. No npm dependencies.
 // Usage: node pack-finalcut.cjs [--check]   (--check rebuilds in memory and fails if the committed ZIP differs)
@@ -7,8 +7,8 @@ const fs = require('fs'), path = require('path'), crypto = require('crypto'), cp
 const { crc32 } = require('../davinci/pack-davinci.cjs');
 const zlib = require('zlib');
 
-const VERSION = '1.0.0';
-const NAME = 'R-Project-Multicam-AI-FinalCut-macOS-v' + VERSION;
+const VERSION = '1.2.0';
+const NAME = 'R-Project-Multicam-AI-XML-v' + VERSION;          // Final Cut Pro + DaVinci Resolve, macOS + Windows
 const HERE = __dirname, OUT_DIR = path.join(HERE, '..', '..', 'releases', 'finalcut');
 const DOS_TIME = 0, DOS_DATE = ((2026 - 1980) << 9) | (11 << 5) | 20;     // 2026-11-20 00:00:00 for every entry
 const EXEC = new Set(['Install-FinalCut.command', 'Uninstall-FinalCut.command']);
@@ -18,7 +18,8 @@ function walk(dir) {
 }
 /** Everything a user gets: installer, uninstaller, readme, notices and the app folder. Nothing from tests/. */
 function fileList() {
-  return ['Install-FinalCut.command', 'Uninstall-FinalCut.command', 'README-FinalCut.md', 'THIRD-PARTY-NOTICES.txt', ...walk('app')].sort();
+  return ['Install-FinalCut.command', 'Uninstall-FinalCut.command', 'Install-Windows.bat', 'Install-Windows.ps1',
+    'Uninstall-Windows.bat', 'Uninstall-Windows.ps1', 'README-FinalCut.md', 'THIRD-PARTY-NOTICES.txt', ...walk('app')].sort();
 }
 
 function zipUnix(entries) {

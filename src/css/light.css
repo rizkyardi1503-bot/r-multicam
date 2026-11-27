@@ -1,0 +1,108 @@
+/* ==========================================================================
+   R Project — light theme shared by every page: white and soft-grey surfaces, near-black
+   type in the system UI face, one blue accent, frosted header, soft-grey footer.
+   Loaded after base.css in both bundles (home.css and site.css).
+   ========================================================================== */
+
+/* Light (paper) theme tokens, shared by every page. */
+:root {
+  color-scheme: light;
+  --rp-bg: #fff;
+  --rp-surface: #f5f5f7;
+  --rp-surface-2: #f5f5f7;
+  --rp-line: #1d1d1f1f;
+  --rp-line-strong: #1d1d1f3d;
+  --rp-text: #1d1d1f;
+  --rp-prose: #424245;
+  --rp-muted: #6e6e73;
+  --rp-violet: #0071e3;
+  --rp-violet-soft: #0066cc;
+  --rp-cyan: #0071e3;
+  --rp-danger: #b3261e;
+  --rp-grad: linear-gradient(120deg, #0071e3, #2997ff);
+  --rp-radius: 24px;
+  --rp-radius-sm: 999px;
+  --rp-shadow: 0 30px 70px -40px #00000066;
+  --rp-font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --rp-font-head: var(--rp-font-display);
+  --rp-font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --rp-ink: #1d1d1f;
+  --rp-paper: #fff;
+}
+::selection { background: #0071e333; color: var(--rp-ink); }
+
+/* ---------------------------------------------------------------- Base components on paper */
+h1, h2, h3, h4, strong, b { color: var(--rp-ink); }
+body { font-family: var(--rp-font-body); }
+h1, h2, h3 { font-family: var(--rp-font-display); font-weight: 600; letter-spacing: -.022em; }
+h1 em, h2 em { font-style: normal; background: none; color: var(--rp-muted); }
+h2 { font-size: clamp(32px, 4.6vw, 56px); line-height: 1.07; }
+.lead { color: var(--rp-prose); }
+.eyebrow { color: var(--rp-violet); letter-spacing: .06em; font-size: 13px; font-weight: 600; }
+.eyebrow::before { content: none; }
+label { color: var(--rp-prose); }
+input::placeholder, textarea::placeholder { color: #86868b; }
+input:hover, select:hover, textarea:hover { border-color: #1d1d1f66; }
+input:not([type=checkbox]):not([type=radio]), select, textarea { border-radius: 12px; }
+code, kbd { background: #1d1d1f0a; }
+.skip-link { color: var(--rp-paper); }
+
+/* Buttons: blue pill, blue outline as secondary (--btn-link is lighter on black surfaces). */
+.button {
+  background: var(--rp-violet);
+  color: #fff;
+  padding-inline: 22px;
+  font-weight: 500;
+  font-size: 16px;
+  letter-spacing: -.01em;
+}
+.button:hover { transform: none; background: #0077ed; }
+.button.secondary { background: transparent; border-color: var(--btn-link, var(--rp-violet)); color: var(--btn-link, var(--rp-violet)); }
+.button.secondary:hover { background: var(--btn-link, var(--rp-violet)); border-color: var(--btn-link, var(--rp-violet)); color: #fff; }
+.button.coming-soon:disabled, .button.coming-soon:disabled:hover { background: transparent; border-color: var(--rp-line-strong); color: var(--rp-muted); }
+.button.small { padding-inline: 16px; font-size: 14px; }
+.text-button { color: var(--rp-violet-soft); text-decoration-color: #0066cc66; }
+.text-button:hover { color: var(--rp-ink); }
+.card { border-radius: var(--rp-radius); }
+
+/* Header */
+/* Frosted navigation bar: translucent, blurs what scrolls under it. */
+.rp-header {
+  min-height: 52px;
+  padding-block: 6px;
+  border-bottom-color: transparent;
+  background: #ffffffb8;
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  backdrop-filter: saturate(180%) blur(18px);
+}
+.rp-scrolled .rp-header { background: #ffffffb8; border-bottom-color: var(--rp-line); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .rp-header, .rp-scrolled .rp-header { background: #fffffff7; } }
+.rp-header .brand { color: var(--rp-ink); }
+.rp-header .mark, .rp-footer .mark { border-radius: 9px; background: var(--rp-violet); color: #fff; }
+.rp-header nav a { color: var(--rp-prose); font-size: 13px; font-weight: 400; }
+.rp-header nav a:hover { color: var(--rp-ink); background: none; }
+.rp-lang a:hover { color: var(--rp-ink); }
+.rp-lang { border-color: transparent; background: var(--rp-surface); }
+.rp-lang a[aria-current="true"] { background: #fff; color: var(--rp-ink); box-shadow: 0 1px 3px #1d1d1f29; }
+
+/* Footer: soft grey with small grey type. */
+.rp-footer { margin-top: clamp(64px, 9vw, 120px); background: var(--rp-surface); }
+.rp-footer .brand { color: var(--rp-ink); }
+.rp-footer-links h2 { color: var(--rp-ink); letter-spacing: 0; text-transform: none; font-size: 12px; }
+.rp-footer-links a { color: var(--rp-prose); font-size: 12.5px; }
+.rp-footer-links a:hover { color: var(--rp-ink); text-decoration: underline; }
+.rp-legal { color: var(--rp-muted); }
+
+/* Dialogs (sign-in, license, notices) follow the paper theme through the tokens. */
+dialog::backdrop { background: #00000052; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+dialog { background: #fff; border-color: transparent; }
+dialog h2 { font-size: 30px; line-height: 1.1; }
+.dialog-top button:hover { color: var(--rp-ink); }
+.auth-options { border-radius: 999px; background: var(--rp-surface); border-color: transparent; }
+.auth-options .button, .auth-options .button:hover { background: transparent; border-color: transparent; color: var(--rp-muted); }
+.auth-options .button[aria-pressed="true"], .auth-options .button[aria-pressed="true"]:hover { background: #fff; border-color: var(--rp-line); color: var(--rp-ink); }
+.license-box { background: var(--rp-surface); border-color: transparent; border-radius: 18px; }
+.license-box strong { color: var(--rp-ink); }
+#phone-handoff { border-color: #0071e359; }
+#checkout-confirm { border-color: #0071e366; background: #0071e30d; border-radius: 18px; }
+

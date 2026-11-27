@@ -1,0 +1,77 @@
+name: App installers (macOS .dmg, Windows setup)
+# Builds the native macOS app (.dmg, Apple silicon and Intel), launches it on a real Mac and takes a picture of its
+# window, installs the Windows setup on a real Windows runner and checks that the engine answers, then publishes
+# everything as the GitHub release app-v<version> (prerelease).
+on:
+  push:
+    branches: ['claude/gracious-meitner-7jklzp', main]
+    paths: ['plugin/finalcut/**', 'releases/app/*.exe', '.github/workflows/app-release.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: app-release-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Build Apple silicon app and .dmg (with smoke test)
+        env:
+          RP_SMOKE_PNG: ${{ runner.temp }}/mac-window.png
+        run: bash plugin/finalcut/mac/build-mac.sh arm64 "$RUNNER_TEMP/out"
+      - name: Build Intel app and .dmg
+        run: bash plugin/finalcut/mac/build-mac.sh x86_64 "$RUNNER_TEMP/out"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="$(node -p "require('./plugin/finalcut/pack-finalcut.cjs').VERSION")"; TAG="app-v$V"
+          cp "$RUNNER_TEMP/mac-window.png" "$RUNNER_TEMP/out/macOS-app-window.png"
+          (cd "$RUNNER_TEMP/out" && shasum -a 256 *.dmg > SHA256SUMS-mac.txt)
+          gh release delete "$TAG" -y --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" --prerelease --target "$GITHUB_SHA" --title "R Project Multicam AI $V" \
+            --notes "Mac: open the .dmg for your Mac (Apple silicon = M1 or newer, else Intel) and drag the app to Applications. First launch: right-click > Open (macOS 15: System Settings > Privacy & Security > Open Anyway). Windows: run the Setup .exe." \
+            "$RUNNER_TEMP"/out/*.dmg "$RUNNER_TEMP/out/SHA256SUMS-mac.txt" "$RUNNER_TEMP/out/macOS-app-window.png"
+
+  windows:
+    needs: mac
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install silently and check the engine
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem releases/app/R-Project-Multicam-AI-Setup-*.exe | Select-Object -First 1
+          Start-Process -FilePath $exe.FullName -ArgumentList '/S' -Wait
+          $dest = Join-Path $env:LOCALAPPDATA 'RProjectMulticam\finalcut'
+          foreach ($f in 'runtime\node.exe','app\rp-finalcut-engine.js','R Project Multicam AI.vbs','Uninstall.exe') { if (-not (Test-Path (Join-Path $dest $f))) { throw "missing after install: $f" } }
+          if (-not (Test-Path (Join-Path $env:LOCALAPPDATA 'RProjectMulticam\tools\ffmpeg.exe'))) { throw 'missing ffmpeg.exe' }
+          $urlFile = Join-Path $env:RUNNER_TEMP 'url.txt'
+          $p = Start-Process -FilePath (Join-Path $dest 'runtime\node.exe') -ArgumentList @("`"$dest\app\rp-finalcut-engine.js`"", '--no-browser', '--url-file', "`"$urlFile`"") -PassThru -WindowStyle Hidden
+          for ($i = 0; $i -lt 60 -and -not (Test-Path $urlFile); $i++) { Start-Sleep -Milliseconds 500 }
+          $url = (Get-Content $urlFile -Raw).Trim(); Write-Host "engine: $url"
+          $status = Invoke-RestMethod ($url -replace '/\?t=', '/api/status?t=')
+          if (-not $status.ok) { throw 'engine status not ok' }
+          Write-Host "ffmpeg found: $($status.ffmpeg)"; if (-not $status.ffmpeg) { throw 'engine did not find ffmpeg' }
+          $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+          & $edge --headless=new --disable-gpu --window-size=1320,840 --screenshot="$env:RUNNER_TEMP\windows-app-window.png" $url
+          Start-Sleep -Seconds 5
+          Stop-Process -Id $p.Id -Force
+          Start-Process -FilePath (Join-Path $dest 'Uninstall.exe') -ArgumentList '/S' -Wait
+          Start-Sleep -Seconds 3
+          Write-Host "uninstalled: $(-not (Test-Path (Join-Path $dest 'app')))"
+      - name: Add to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="$(node -p "require('./plugin/finalcut/pack-finalcut.cjs').VERSION")"
+          files=(releases/app/R-Project-Multicam-AI-Setup-*.exe)
+          [ -f "$RUNNER_TEMP/windows-app-window.png" ] && files+=("$RUNNER_TEMP/windows-app-window.png")
+          gh release upload "app-v$V" "${files[@]}" --clobber

@@ -5,7 +5,7 @@
 # No administrator password is needed. Re-running it updates the engine in place.
 set -euo pipefail
 BASE="$(cd "$(dirname "$0")" && pwd)"
-VERSION="1.0.0"
+VERSION="1.2.0"
 say_line(){ printf '%s\n' "$*"; }
 fail(){ say_line "ERROR: $*"; say_line "Press Enter to close."; read -r _ || true; exit 1; }
 blocked(){ fail "macOS did not allow Terminal to read the installer folder ($BASE). Move the extracted folder to your home folder (outside Downloads, Desktop and Documents) and run Install-FinalCut.command again, or allow Terminal under System Settings > Privacy & Security > Files and Folders."; }
@@ -13,7 +13,7 @@ ls "$BASE" >/dev/null 2>&1 || blocked
 [ "$(uname -s)" = "Darwin" ] || [ -n "${RP_INSTALL_TEST_ROOT:-}" ] || fail "This installer is for macOS."
 [ -f "$BASE/app/rp-finalcut-engine.js" ] || fail "The app folder is missing. Extract the whole ZIP first, then run Install-FinalCut.command from the extracted folder."
 
-say_line "R Project Multicam AI for Final Cut Pro v$VERSION"
+say_line "R Project Multicam AI (Final Cut Pro + DaVinci Resolve) v$VERSION"
 SUMS="$BASE/SHA256SUMS-FinalCut.txt"
 [ -f "$SUMS" ] || fail "Package checksum inventory is missing."
 while IFS= read -r line || [ -n "$line" ]; do
@@ -100,23 +100,27 @@ rm -rf "$STAGE"; cp -R "$BASE/app" "$STAGE"
 rm -rf "$DEST/app"; mv "$STAGE" "$DEST/app"
 xattr -dr com.apple.quarantine "$DEST/app" 2>/dev/null || true
 
-# ---- Launcher: a small app in ~/Applications that opens the engine in Terminal (the window shows the engine log).
+# ---- Launcher: "R Project Multicam AI" in ~/Applications with the app icon. It starts the engine in the background and
+# opens the app in its own window; closing the window quits it.
 LAUNCH="$DEST/Start-RProject-Engine.command"
 cat > "$LAUNCH" <<EOF
 #!/bin/bash
-# R Project Engine for Final Cut Pro. Close this window to stop the engine.
+# R Project Multicam AI. Run with --app for the app window.
 exec "$NODE" "$DEST/app/rp-finalcut-engine.js" "\$@"
 EOF
 chmod 755 "$LAUNCH"
-APPBUNDLE="$APPS/R Project Engine for Final Cut.app"
-if command -v osacompile >/dev/null 2>&1; then
+APPBUNDLE="$APPS/R Project Multicam AI.app"
+rm -rf "$APPS/R Project Engine for Final Cut.app"; rm -f "$ROOT/Desktop/R Project Engine for Final Cut.app"
+# RP_NO_LAUNCHER: run from inside the R Project Multicam AI.app of the .dmg, which is the app itself.
+if [ -z "${RP_NO_LAUNCHER:-}" ] && command -v osacompile >/dev/null 2>&1; then
   rm -rf "$APPBUNDLE"
-  osacompile -o "$APPBUNDLE" -e "do shell script \"open -a Terminal \" & quoted form of \"$LAUNCH\"" >/dev/null 2>&1 || say_line "Could not create the app launcher; use $LAUNCH instead."
+  osacompile -o "$APPBUNDLE" -e "do shell script quoted form of \"$LAUNCH\" & \" --app >/dev/null 2>&1 &\"" >/dev/null 2>&1 || say_line "Could not create the app; use $LAUNCH --app instead."
+  [ -d "$APPBUNDLE" ] && cp "$DEST/app/assets/icon.icns" "$APPBUNDLE/Contents/Resources/applet.icns" 2>/dev/null && touch "$APPBUNDLE" || true
 fi
-[ -d "$APPBUNDLE" ] && ln -sfn "$APPBUNDLE" "$ROOT/Desktop/R Project Engine for Final Cut.app" 2>/dev/null || true
+[ -z "${RP_NO_LAUNCHER:-}" ] && [ -d "$APPBUNDLE" ] && ln -sfn "$APPBUNDLE" "$ROOT/Desktop/R Project Multicam AI.app" 2>/dev/null || true
 
 "$NODE" -e "require('$DEST/app/lib/fcp-workflow.js')" || fail "The engine does not start with Node.js on this Mac."
 say_line ""
-say_line "Installed. Start \"R Project Engine for Final Cut\" from your Applications folder (or the Desktop)."
-say_line "Terpasang. Buka \"R Project Engine for Final Cut\" dari folder Applications (atau Desktop)."
-if [ -z "${RP_INSTALL_TEST_ROOT:-}" ] && [ -z "${RP_NO_START:-}" ]; then open -a Terminal "$LAUNCH" || true; fi
+say_line "Installed. Open \"R Project Multicam AI\" from your Applications folder (or the Desktop)."
+say_line "Terpasang. Buka \"R Project Multicam AI\" dari folder Applications (atau Desktop)."
+if [ -z "${RP_INSTALL_TEST_ROOT:-}" ] && [ -z "${RP_NO_START:-}" ]; then if [ -d "$APPBUNDLE" ]; then open "$APPBUNDLE" || true; else "$LAUNCH" --app >/dev/null 2>&1 & fi; fi
