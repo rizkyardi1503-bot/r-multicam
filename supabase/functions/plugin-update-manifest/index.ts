@@ -5,14 +5,14 @@ const MINIMUM_SUPPORTED = "2.3.11.11";
 const base = "https://ngotkvqtzqiotztnqwaw.supabase.co/functions/v1/plugin-update-download";
 const releases = {
   windows: {
-    version: "2.3.11.20",
-    download: base + "?platform=windows&version=2.3.11.20",
-    sha256: "8f802b3acc176b7bce83451f3c7a97fc092fc006072182fc4775bfd46a84abe5"
+    version: "2.3.11.21",
+    download: base + "?platform=windows&version=2.3.11.21",
+    sha256: "349a5a6ba756cc0fc0f37e865790373afbf27a2133bb1190f5d82de56aac8b57"
   },
   macos: {
-    version: "2.3.11.20",
-    download: base + "?platform=macos&version=2.3.11.20",
-    sha256: "883714bf14e2983494f1340eed3ba56dd5b193bb46fe933d0a392c1a9edff574"
+    version: "2.3.11.21",
+    download: base + "?platform=macos&version=2.3.11.21",
+    sha256: "b66a316f146d5f4460c0acf744dc02c39c548ede2331c25a15857fd9d30f4a78"
   }
 };
 
@@ -41,7 +41,7 @@ Deno.serve((req: Request) => {
     required: !supported(url.searchParams.get("v"), MINIMUM_SUPPORTED),
     minimum_version: MINIMUM_SUPPORTED,
     grace_period_days: 0,
-    release_notes: "v2.3.11.20 PUBLIC Windows and macOS: drone sync now follows a camera whose clock places the drone inside the music, so one camera with a wrong clock no longer leaves every drone clip out; the sync result names a camera whose clock looks wrong. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.20 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
+    release_notes: "v2.3.11.21 PUBLIC Windows and macOS: drones without audio follow the DJI Osmo's clock when an Osmo recorded, remember their camera pairing and offset per shoot day, and Analyze no longer reads whole camera files for the venue-light check. On macOS the update installs while Premiere is open; restart Premiere afterwards. Mac panels older than v2.3.11.11 cannot finish the in-panel update: install v2.3.11.21 once from r-multicam.pages.dev (sign in, Download for Mac, run Install-macOS.command).",
     windows_download: releases.windows.download,
     macos_download: releases.macos.download,
     windows_sha256: releases.windows.sha256,

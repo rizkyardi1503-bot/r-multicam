@@ -1,3 +1,12 @@
+v2.3.11.21 PUBLIC — Drones follow the DJI Osmo's clock
+- Sync Cameras to Music, drones and FPV without audio: when a DJI Osmo recorded, any drone is placed from the Osmo's
+  clock (set from the phone), before any other camera. Zumana 27 Nov 2026: the Osmo agreed with the DJI Mini 4 Pro's GPS
+  clock within 1 s, while a Blackmagic with most clips was 19.5 s off and was followed before.
+- A drone remembers the camera it was paired with (model and serial) and its offset per shoot day; the same day uses the
+  remembered offset at once. The Final Cut Pro app shares the same drone memory.
+- Analyze no longer runs the venue-light check, which read whole camera files (about 1.5 min on an 80-min set).
+- Optional update for v2.3.11.11 and later. Macs older than v2.3.11.11 install once from r-multicam.pages.dev.
+
 v2.3.11.20 PUBLIC — Drone sync follows a camera with a working clock
 - Sync Cameras to Music, drones and FPV without audio: the drone is placed from the clock of a camera that synced by
   audio. That camera used to be picked by clock format alone, so one camera with a wrong clock (a Blackmagic set ~93 min
