@@ -36,7 +36,8 @@ function appDir() { return process.env.RP_FINALCUT_DIR || path.join(supportDir()
 function ffmpegPath() {
   if (process.env.RP_FFMPEG) return process.env.RP_FFMPEG;
   try { const p = fs.readFileSync(path.join(supportDir(), 'tools', 'ffmpeg-path.txt'), 'utf8').trim(); if (p && fs.existsSync(p)) return p; } catch (e) { /* none */ }
-  return '';
+  const own = path.join(supportDir(), 'tools', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');   // put there by the installers
+  return fs.existsSync(own) ? own : '';
 }
 
 /** Streams an MP4 with Range support (the player needs it to seek). */
