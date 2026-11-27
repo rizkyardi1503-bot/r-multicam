@@ -55,10 +55,17 @@ function openWindow(url, icon) {
   win.center;
   win.setFrameAutosaveName('RProjectMulticamAIMain');
   win.releasedWhenClosed = false;
+  // Unified look: no title text, the title bar takes the window colour, which matches the app's toolbar
+  // (light or dark, following System Settings > Appearance).
+  win.titleVisibility = 1;                                               // NSWindowTitleHidden
+  win.titlebarAppearsTransparent = true;
+  win.backgroundColor = $.NSColor.windowBackgroundColor;
+  win.tabbingMode = 2;                                                   // no tab bar
 
   var cfg = $.WKWebViewConfiguration.alloc.init;
   var view = $.WKWebView.alloc.initWithFrameConfiguration(win.contentView.bounds, cfg);
   view.autoresizingMask = 18;                                            // width + height sizable
+  try { view.setValueForKey($.NSNumber.numberWithBool(false), 'drawsBackground'); } catch (e) { /* white until loaded */ }
   win.contentView.addSubview(view);
   view.loadRequest($.NSURLRequest.requestWithURL($.NSURL.URLWithString(url)));
 
