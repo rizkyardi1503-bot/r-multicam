@@ -131,6 +131,9 @@ async function analyzeRun(sources,cameras,ffmpeg,state,progress,deps,ctl){
  }
  var fb=await fallbacks(synced,master,parts,Number(seq.duration));
  planDrones(results,fb.duration,frame,deps.learned||loadLearned());
+ // The venue-light check is not run by Analyze any more (it read whole camera files): drones follow the Osmo's clock
+ // (decided 27 Nov 2026). verifyDrones stays available to callers that ask for it.
+ if(deps&&deps.visual)await verifyDrones(results,ffmpeg,state,progress,deps);
  progress(1,'Sync analysis complete');
  var out={sequenceName:seq.name,sequenceID:seq.id||'',a1Signature:seq.a1Signature||'',frame:frame,cameras:results};if(fb.reference)out.reference=fb.reference;
  return out;
@@ -236,6 +239,30 @@ async function analyzeRun(sources,cameras,ffmpeg,state,progress,deps,ctl){
     var res=await runSync(master,s.clips);applySync(s.result.rows,res,[row]);refresh(s,res);
    }
   }
+ }
+}
+/** Drone visual check (RPDroneVisual): a drone placed by a camera clock is compared with the light the audio-synced cameras
+    see; when the venue light clearly agrees at another position, every clock-placed clip of that drone moves by that shift
+    (Zumana 25 Nov: the Osmo clock was ~123.5 s behind the Mavic's GPS clock). Unclear light changes nothing. */
+async function verifyDrones(results,ffmpeg,state,progress,deps){
+ var V=deps.visual===false?null:(deps.visual||root.RPDroneVisual);if(!V)return;
+ var cams=results.filter(function(c){return !c.drone;}).map(function(c){return {name:c.name,clips:c.rows.filter(function(r){return r.status==='placed'&&r.start!=null;}).map(function(r){return {file:r.file,start:r.start,sourceIn:r.sourceIn||0,sourceOut:r.sourceOut};})};}).filter(function(c){return c.clips.length;});
+ if(!cams.length)return;var lights={};
+ for(var i=0;i<results.length;i++){
+  var cam=results[i];if(!cam.drone)continue;
+  var rows=cam.rows.filter(function(r){return r.status==='placed'&&r.confidence==='clock';});if(!rows.length)continue;
+  // Same drone, same reference camera, same shoot day: the offset found before still holds, the light is not read again.
+  if(cam.learned&&cam.shootDay&&cam.learned.day===cam.shootDay&&!deps.forceVisual){cam.visual={verdict:'remembered',shift:0,reason:'offset '+cam.learned.offset+' s remembered for '+cam.shootDay};continue;}
+  check(state);
+  try{
+   var v=await V.verify({clips:rows.map(function(r){return {id:r.nodeId,file:r.file,start:r.start,sourceIn:r.sourceIn||0,duration:r.sourceOut-(r.sourceIn||0)};})},cams,{ffmpeg:ffmpeg,state:state,lights:lights,progress:function(p,m){progress(.99,cam.name+' · '+m);}});
+   cam.visual=v;
+   if(v.verdict==='shift')rows.forEach(function(r){r.start=Math.round((r.start+v.shift)*1e6)/1e6;});
+   // Remember the clock offset now in use for this drone + reference camera + day, so the next Analyze places it
+   // right away (and a later shoot pairs the drone with this camera again).
+   if((v.verdict==='shift'||v.verdict==='confirmed')&&cam.key&&cam.shootDay){var total=(cam.learned?Number(cam.learned.offset)||0:0)+(v.verdict==='shift'?v.shift:0);
+    try{(deps.saveLearned||saveLearned)(cam.key,total,cam.shootDay,cam.reference);cam.remembered=total;}catch(e){}}
+  }catch(e){if(state.cancelled)throw e;cam.visual={verdict:'inconclusive',reason:String(e.message||e)};}
  }
 }
 /** Drone cameras: bridge their camera clock through the audio-synced cameras (RPDroneSync.planDrone). */
@@ -351,7 +378,12 @@ function showResult(a){
  var s=summary(a),lines=['Synced '+a.cameras.length+' camera'+(a.cameras.length===1?'':'s')+':'],miss=untickedDrones(ui.sources,ui.picked,loadLearned());
  miss.forEach(function(w){lines.push('! '+w);});
  a.cameras.forEach(function(c){var n={placed:0,review:0,excluded:0};c.rows.forEach(function(r){n[r.status==='placed'?'placed':r.status==='review'?'review':'excluded']++;});
-  if(c.drone){lines.push('· '+c.name+' (drone, no audio'+(c.reference?'; camera clock bridged through '+c.reference:'')+'): '+n.placed+' placed [CLOCK], '+n.excluded+' excluded'+(c.flights&&c.flights.length?' · '+c.flights.length+' flight'+(c.flights.length===1?'':'s'):''));if(c.learned)lines.push('  remembered drone clock offset '+(c.learned.offset>=0?'+':'')+c.learned.offset.toFixed(2)+' s'+(c.learned.day?' (from the '+c.learned.day+' shoot'+(c.learned.day!==c.shootDay?', nearest to this one':'')+')':c.learned.at?' (saved '+String(c.learned.at).slice(0,10)+')':'')+' applied');(c.warnings||[]).forEach(function(w){lines.push('  ! '+w);});return;}
+  if(c.drone){lines.push('· '+c.name+' (drone, no audio'+(c.reference?'; camera clock bridged through '+c.reference:'')+'): '+n.placed+' placed [CLOCK], '+n.excluded+' excluded'+(c.flights&&c.flights.length?' · '+c.flights.length+' flight'+(c.flights.length===1?'':'s'):''));if(c.learned)lines.push('  remembered drone clock offset '+(c.learned.offset>=0?'+':'')+c.learned.offset.toFixed(2)+' s'+(c.learned.day?' (from the '+c.learned.day+' shoot'+(c.learned.day!==c.shootDay?', nearest to this one':'')+')':c.learned.at?' (saved '+String(c.learned.at).slice(0,10)+')':'')+' applied');(c.warnings||[]).forEach(function(w){lines.push('  ! '+w);});
+   var v=c.visual;if(v){var agree=(v.cameras||[]).filter(function(x){return x.lag!==null&&Math.abs(x.lag-v.shift)<=2;}).map(function(x){return x.name;});
+    if(v.verdict==='shift')lines.push('  visual check: the venue light matches '+(v.shift>0?v.shift.toFixed(1)+' s later':(-v.shift).toFixed(1)+' s earlier')+' than the camera clock ('+(agree.join(', ')||'the cameras')+'; '+v.clipsAgree+' of '+v.clipsChecked+' clips agree): every drone clip moved '+(v.shift>0?'+':'')+v.shift.toFixed(1)+' s.');
+    else if(v.verdict==='confirmed')lines.push('  visual check: the venue light confirms the camera-clock position ('+(agree.join(', ')||'the cameras')+').');
+    else lines.push('  visual check: not conclusive ('+(v.reason||'unclear light')+'); the drone stays at its camera-clock position, check it by eye.');}
+   return;}
   lines.push('· '+c.name+(c.clockAnchored?' (audio, checked against its camera clock)':' (audio only)')+': '+n.placed+' placed, '+n.review+' review, '+n.excluded+' excluded');
   // Clips the camera clock puts outside the music were never searched by audio: if they were filmed during the set,
   // that camera's clock is wrong (Zumana 25 Nov: a Blackmagic ~93 min late lost 36 clips this way). Say so.
@@ -493,7 +525,7 @@ function wire(){
  if($('syncBuyLifetime'))$('syncBuyLifetime').onclick=function(){if($('accountBuyLifetime'))$('accountBuyLifetime').click();};
  controls();
 }
-root.RPSyncUI={untickedDrones:untickedDrones,bridgeHint:bridgeHint,saveLearned:saveLearned,planCameras:planCameras,analyze:analyze,buildRows:buildRows,summary:summary,reportCsv:reportCsv,builtDrones:builtDrones,useSelected:useSelected,nudge:nudge,forget:forget,loadLearned:loadLearned,_ui:ui,controls:controls,canSync:canSync,stop:stop};
+root.RPSyncUI={verifyDrones:verifyDrones,untickedDrones:untickedDrones,bridgeHint:bridgeHint,saveLearned:saveLearned,planCameras:planCameras,analyze:analyze,buildRows:buildRows,summary:summary,reportCsv:reportCsv,builtDrones:builtDrones,useSelected:useSelected,nudge:nudge,forget:forget,loadLearned:loadLearned,_ui:ui,controls:controls,canSync:canSync,stop:stop};
 if(typeof document!=='undefined'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire);else wire();}
 if(typeof module!=='undefined'&&module.exports)module.exports=root.RPSyncUI;
 }(typeof window!=='undefined'?window:globalThis));

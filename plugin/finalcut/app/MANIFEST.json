@@ -8,7 +8,7 @@
   "engine/music-intelligence-v10.js": "fc11219510aa0822ff005fede85820e2eb993f0d44dc2f4001bc07bf6fc1e6a3",
   "engine/visual-quality.js": "9acb87da6aa4297d7dfb9d51bb242b1a4245fc81b76dd27d6040782df803e112",
   "engine/ai-director.js": "edadab300e0f0c9590a102f4be5552f9619dec6504037a26994e2840c7bd1a1c",
-  "engine/CSXS/manifest.xml": "057d65ec7666926468bb03d9be1da6516973856c3fc7ba65139685e3f3bd66af",
+  "engine/CSXS/manifest.xml": "f1252960db3d6a4535577f18504dbb99c2140229c6007a1c97f956656719c30d",
   "rp-engine/package.json": "7a39fdf32ce80317e1b60750da2cdad6bf7d057c8d8080f7ac9241135ef4fe8b",
   "rp-engine/bin/rp-engine-mcp.mjs": "f6a2ffb862e3e432ba61cf8192cfd28a49108736dcd35524cbbf8128110575e7",
   "rp-engine/bin/rp-engine.mjs": "fe9370ed7624fc5951a7d64c7b6f98f9a3acf5ff7818686c7ef40490697b02b8",
@@ -24,5 +24,5 @@
   "lib/account.js": "d036dc4bc22417a20cedd6151cc877f851673fbdfc3bf72d5405067380267d1a",
   "lib/google-auth.js": "17d41ca8e53e6e9c926f07907b6ba6c3d00e9f1273e4cf92fef19cf3b2444d9b"
  },
- "sourceBuildId": "R Project Multicam AI v2.3.11.20 · MUSIC ENGINE V19 · PUBLIC macOS LOW MEMORY"
+ "sourceBuildId": "R Project Multicam AI v2.3.11.21 · MUSIC ENGINE V19 · PUBLIC macOS LOW MEMORY"
 }

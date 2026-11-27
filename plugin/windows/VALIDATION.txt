@@ -1,3 +1,12 @@
+v2.3.11.21 PUBLIC validation — 2026-11-28
+- Real shoot (Zumana 27 Nov 2026: Blackmagic Pocket 4K, DJI Osmo Pocket 4P, 2 Sony, Android phone, DJI Mini 4 Pro, 49
+  drone clips): the drone is bridged through the Osmo and lands within 1 s of the venue-light match on two audio-synced
+  cameras; through the Blackmagic (v2.3.11.20) it was 19.5 s late.
+- scripts/test-drone-sync.cjs: 20 tests on both builds (any drone follows an Osmo first, remembered pairing wins, old
+  ranking without an Osmo); scripts/test-drone-memory.cjs: 6 tests (offset remembered, same-day skip);
+  scripts/test-drone-visual.cjs: 9 tests.
+- Not yet run live in Premiere Pro on Windows or macOS with this build.
+
 v2.3.11.20 PUBLIC validation — 2026-11-26
 - Real shoot (Zumana 25 Nov 2026: 2 Sony, DJI Osmo Pocket 4P, Blackmagic Pocket 4K ~93 min late, DJI Mavic 4 Pro, 50
   drone clips), live in Premiere Pro 2027 on macOS: v2.3.11.19 placed 0/50 drone clips (bridged through the Blackmagic),

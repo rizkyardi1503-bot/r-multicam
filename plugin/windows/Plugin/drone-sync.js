@@ -101,7 +101,15 @@ function clockReport(cameras,ref){
  * Returns {reference, droneZone, refZone, clips:[{id,name,flight,start,status,reason}], flights:[...] , warnings:[...]}
  */
 function planDrone(drone,cameras,opts){
- opts=opts||{};var dz=deviceZone(drone.clips),ranked=rankReferences(cameras,drone.make,dz),best=null;
+ opts=opts||{};
+ // A drone matched before to one of these cameras (model + serial, e.g. its own Osmo, whose clock comes from the phone)
+ // follows that camera again, whatever else recorded (Zumana 27 Nov 2026: the Osmo agreed with the Mini 4's GPS clock
+ // within 1 s while the Blackmagic, with most clips, was 19.5 s off). The pairing is the key in the remembered offsets.
+ if(opts.learned&&!opts._paired){var paired=(cameras||[]).filter(function(c){var k=offsetKey(drone,c);return k&&opts.learned[k];});
+  if(paired.length){var pp=planDrone(drone,paired,Object.assign({},opts,{_paired:true}));if(pp.reference&&pp.clips.some(function(c){return c.status==='placed';})){pp.paired=true;return pp;}}}
+ // Any drone follows a DJI Osmo when one recorded (its clock is set from the phone), before any other camera.
+ if(!opts._paired&&!opts._osmo){var osmos=(cameras||[]).filter(function(c){return c&&num(c.anchor)&&/osmo/i.test(String(c.model||c.name||''));});
+  if(osmos.length){var po=planDrone(drone,osmos,Object.assign({},opts,{_osmo:true}));if(po.reference&&po.clips.some(function(c){return c.status==='placed';})){po.osmo=true;return po;}}}var dz=deviceZone(drone.clips),ranked=rankReferences(cameras,drone.make,dz),best=null;
  if(!ranked.length)return {reference:null,clips:(drone.clips||[]).map(function(c){return {id:c.id,name:c.name,flight:-1,start:null,status:'excluded',reason:'no audio-synced camera with a trusted clock to bridge from'};}),flights:[],warnings:['No camera clock to bridge from: sync at least one camera by audio with its clock trusted.']};
  // A camera whose clock is wrong (Zumana 25 Nov: the Blackmagic ran ~93 min late and stores true UTC like the Mavic, so it
  // won the zone match) would put every drone clip outside the music. The first camera in the order above (zone, brand,
