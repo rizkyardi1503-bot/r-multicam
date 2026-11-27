@@ -6,6 +6,15 @@ ObjC.import('WebKit');
 
 function run(argv) {
   var url = argv[0], icon = argv[1];
+  try { return openWindow(url, icon); }
+  catch (e) {
+    // No native window (very old macOS, scripting blocked): open the app in the default browser instead.
+    $.NSWorkspace.sharedWorkspace.openURL($.NSURL.URLWithString(url));
+    throw e;
+  }
+}
+
+function openWindow(url, icon) {
   try { $.NSProcessInfo.processInfo.processName = 'R Project Multicam AI'; } catch (e) { /* menu title stays osascript */ }
   var app = $.NSApplication.sharedApplication;
   app.setActivationPolicy(0);                                            // regular app: Dock icon and menu bar

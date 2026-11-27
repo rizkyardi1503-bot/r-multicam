@@ -69,7 +69,6 @@ try {
   <key>CFBundleExecutable</key><string>R Project Multicam AI</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
-  <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 `);

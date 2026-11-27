@@ -523,12 +523,18 @@ connect();tick();setInterval(tick,1000);
 
 async function main() {
   const args = process.argv.slice(2), noBrowser = args.includes('--no-browser'), appMode = args.includes('--app');
+  // macOS app bundle: the launcher opens the window itself; it passes --url-file (where to write the address) and
+  // --parent-pid (the window's process: when it ends, the engine ends too).
+  const arg = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : ''; };
+  const urlFile = arg('--url-file'), parentPid = Number(arg('--parent-pid')) || 0;
+  const tellUrl = (u) => { if (urlFile) try { fs.writeFileSync(urlFile, u); } catch (e) { /* launcher times out */ } };
   const portArg = args.indexOf('--port'), port = portArg >= 0 ? Number(args[portArg + 1]) : 0;
   const dir = appDir(), lockFile = path.join(dir, 'engine.lock');
   fs.mkdirSync(dir, { recursive: true });
   const lock = await acquireLock(lockFile);
   if (lock.running) {
     console.log('R Project Engine is already running: ' + lock.running);
+    tellUrl(lock.running);
     if (!noBrowser) { if (appMode) openAppWindow(lock.running, path.join(dir, 'window')); else openBrowser(lock.running); }
     return;
   }
@@ -537,6 +543,7 @@ async function main() {
   catch (e) { fs.closeSync(lock.fd); fs.rmSync(lockFile, { force: true }); throw e; }
   fs.writeSync(lock.fd, JSON.stringify({ pid: process.pid, url: eng.url }));
   fs.closeSync(lock.fd);
+  tellUrl(eng.url);
   console.log('\nOpen this address if the browser does not open:\n  ' + eng.url + '\nClose this window to stop R Project Engine.\n');
   let ended = false, win = null;
   if (!noBrowser && appMode) win = openAppWindow(eng.url, path.join(dir, 'window'));
@@ -549,6 +556,9 @@ async function main() {
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, shutdown);
   // App mode: closing the window quits the app (a window that ends within seconds handed off to a running browser instead).
   if (win) { const opened = Date.now(); win.on('exit', () => { if (Date.now() - opened > 5000) { eng.studio.stop(); shutdown(); } }); }
+  if (parentPid) {
+    const watch = setInterval(() => { try { process.kill(parentPid, 0); } catch (e) { clearInterval(watch); eng.studio.stop(); shutdown(); } }, 1500);
+  }
 }
 
 if (require.main === module) main().catch((e) => { console.error('R Project Engine failed: ' + (e && e.stack || e)); process.exitCode = 1; });
